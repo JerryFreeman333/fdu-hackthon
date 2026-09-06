@@ -1,0 +1,35 @@
+name: route1-health-agent-ci
+
+on:
+  push:
+    paths:
+      - 'route1-health-agent/**'
+      - '.github/workflows/route1-ci.yml'
+  pull_request:
+    paths:
+      - 'route1-health-agent/**'
+      - '.github/workflows/route1-ci.yml'
+
+jobs:
+  build-route1:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: route1-health-agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
