@@ -1,0 +1,17 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 编辑器与系统文件
+.vs/
+.vscode/
+.idea/
+*.suo
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地环境
+.env
+.env.local
