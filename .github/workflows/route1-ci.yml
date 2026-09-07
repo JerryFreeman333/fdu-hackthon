@@ -37,6 +37,23 @@ jobs:
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
 
+      - name: Refresh package lock
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit package lock changes back to the PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cd ..
+          if git diff --quiet -- route1-health-agent/package-lock.json; then
+            echo "Route 1 package lock is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent/package-lock.json
+          git commit -m "build(route1): refresh package lock"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
       - name: Install locked dependencies
         run: npm ci
 
