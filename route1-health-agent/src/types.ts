@@ -77,6 +77,8 @@ export interface HealthMeasurement {
   unit: string;
   source: DataSource;
   confidence?: number;
+  /** measurement-level visibility prevents private values from leaking into family projections. */
+  visibility?: PrivacyScope;
   metadata?: Record<string, string | number | boolean>;
 }
 
