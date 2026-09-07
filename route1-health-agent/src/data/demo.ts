@@ -16,6 +16,10 @@ function dateOffset(offset: number): string {
   return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10);
 }
 
+function chatTime(offset: number, time: string): string {
+  return `${dateOffset(offset).slice(5)} ${time}`;
+}
+
 export const profile: ElderProfile = {
   name: '王秀兰奶奶',
   age: 72,
@@ -94,36 +98,36 @@ export const seedPhotoObservations: Observation[] = [
 ];
 
 export const seedChat: ChatMessage[] = [
-  { id: 'c1', role: 'elder', text: '今天很累，什么都不想干', time: '09-03 09:12', persisted: true },
+  { id: 'c1', role: 'elder', text: '今天很累，什么都不想干', time: chatTime(-3, '09:12'), persisted: true },
   {
     id: 'c2',
     role: 'agent',
     text: '最近活动量也比平时少一些了。我想多了解一点：这种累大概是最近几天才开始的吗？',
-    time: '09-03 09:12',
+    time: chatTime(-3, '09:12'),
     persisted: true,
   },
-  { id: 'c3', role: 'elder', text: '最近走路有点喘，走两步就想歇', time: '09-04 08:40', persisted: true },
+  { id: 'c3', role: 'elder', text: '最近走路有点喘，走两步就想歇', time: chatTime(-2, '08:40'), persisted: true },
   {
     id: 'c4',
     role: 'agent',
     text: '好，我记下了。是走一点路就喘，还是上楼、快走时更明显？休息后能不能缓过来？',
-    time: '09-04 08:40',
+    time: chatTime(-2, '08:40'),
     persisted: true,
   },
-  { id: 'c5', role: 'elder', text: '这两天睡不好，一晚上要起来好几趟', time: '09-05 07:55', persisted: true },
+  { id: 'c5', role: 'elder', text: '这两天睡不好，一晚上要起来好几趟', time: chatTime(-1, '07:55'), persisted: true },
   {
     id: 'c6',
     role: 'agent',
     text: '我记下了。因为最近夜间活动也增加了，我想确认一下：大概一晚上会起来几次？',
-    time: '09-05 07:55',
+    time: chatTime(-1, '07:55'),
     persisted: true,
   },
-  { id: 'c7', role: 'elder', text: '早上脚踝有点肿，鞋都紧了', time: '09-06 08:05', persisted: true },
+  { id: 'c7', role: 'elder', text: '早上脚踝有点肿，鞋都紧了', time: chatTime(0, '08:05'), persisted: true },
   {
     id: 'c8',
     role: 'agent',
     text: '我先帮您记下来。最近有几项变化叠在一起，我建议今天和女儿联系一下；如果呼吸明显困难或突然不舒服加重，要及时求助。',
-    time: '09-06 08:05',
+    time: chatTime(0, '08:05'),
     persisted: true,
   },
 ];
