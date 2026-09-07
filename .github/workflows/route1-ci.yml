@@ -46,12 +46,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Formatter preview for QA
-        run: |
-          npx --yes prettier@3.5.3 --write .
-          git diff -- . ':(exclude)package-lock.json'
-          exit 1
-
       - name: Verify formatting
         run: npm run format:check
 
