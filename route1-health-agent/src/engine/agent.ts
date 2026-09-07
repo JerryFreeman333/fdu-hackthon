@@ -4,12 +4,7 @@ import type { AgentContext } from './context';
 import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
 
-interface IntentRule {
-  tag: SymptomTag;
-  patterns: RegExp[];
-  replies: string[];
-}
-
+interface IntentRule { tag: SymptomTag; patterns: RegExp[]; replies: string[]; }
 const INTENT_RULES: IntentRule[] = [
   { tag: 'fatigue', patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/], replies: ['先歇一歇，别硬撑。我也看到最近活动量比平时少一些了。'] },
   { tag: 'dyspnea', patterns: [/喘/, /气(短|不够|促)/, /憋气/, /胸闷/, /上(楼|台阶)(费劲|吃力|喘)/], replies: ['别着急，慢慢说。您提到走路会喘，我会把这个和最近的活动变化放在一起看。'] },
@@ -25,22 +20,14 @@ const INTENT_RULES: IntentRule[] = [
   { tag: 'fall', patterns: [/(摔|跌)(倒|了一跤|了一下)/, /摔倒/], replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'] },
 ];
 
-export interface ParsedInput {
-  tags: SymptomTag[];
-  matchedTexts: string[];
-}
-
+export interface ParsedInput { tags: SymptomTag[]; matchedTexts: string[] }
 export function parseElderInput(text: string): ParsedInput {
   const tags: SymptomTag[] = [];
   const matchedTexts: string[] = [];
   for (const rule of INTENT_RULES) {
     for (const pattern of rule.patterns) {
       const match = text.match(pattern);
-      if (match) {
-        tags.push(rule.tag);
-        matchedTexts.push(match[0]);
-        break;
-      }
+      if (match) { tags.push(rule.tag); matchedTexts.push(match[0]); break; }
     }
   }
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
@@ -48,16 +35,11 @@ export function parseElderInput(text: string): ParsedInput {
 
 function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFall: boolean, context?: AgentContext): string {
   const urgent = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
-  if (urgent && newTags.some((tag) => ['chestPain', 'neuroChange', 'fall'].includes(tag))) {
-    return `先别做别的：${urgent.title}。${urgent.detail}`;
-  }
+  if (urgent && newTags.some((tag) => ['chestPain', 'neuroChange', 'fall'].includes(tag))) return `先别做别的：${urgent.title}。${urgent.detail}`;
   if (newTags.length === 0) {
     const changes = context?.personTwin.safetyRelevantChanges ?? [];
-    return changes.length
-      ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。`
-      : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
+    return changes.length ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。` : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
-
   const parts: string[] = [];
   for (const tag of newTags.slice(0, 2)) {
     const rule = INTENT_RULES.find((item) => item.tag === tag);
@@ -67,11 +49,8 @@ function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFa
     const followUps = suggestFollowUpQuestions(newTags, context);
     if (followUps.length > 0) parts.push(followUps[0].question);
   }
-  const fusion = context?.priorityFindings.find((f) => f.ruleId === 'fusion.multisignal_deterioration')
-    ?? findings.find((f) => f.ruleId === 'fusion.multisignal_deterioration');
-  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea'))) {
-    parts.push(`另外我留意了一下：${fusion.evidence[0]}。我会继续帮您观察变化。`);
-  }
+  const fusion = context?.priorityFindings.find((f) => f.ruleId === 'fusion.multisignal_deterioration') ?? findings.find((f) => f.ruleId === 'fusion.multisignal_deterioration');
+  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea'))) parts.push(`另外我留意了一下：${fusion.evidence[0]}。我会继续帮您观察变化。`);
   if (isNewFall) parts.push('我已经把跌倒标成紧急事件了，请先保持电话畅通。');
   return parts.join('\n');
 }
@@ -83,8 +62,7 @@ export interface LlmAdapter {
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
-    const text = buildRuleBasedReply(parsed.tags, context?.priorityFindings ?? [], parsed.tags.includes('fall'), context);
-    return { text, tags: parsed.tags };
+    return { text: buildRuleBasedReply(parsed.tags, context?.priorityFindings ?? [], parsed.tags.includes('fall'), context), tags: parsed.tags };
   },
 };
 
@@ -92,10 +70,11 @@ export const ruleBasedAdapter: LlmAdapter = {
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   return {
     async complete(systemPrompt, userText, context) {
+      const safeContext = context ? { ...context, observations: context.observations.filter((observation) => observation.visibility !== 'private') } : undefined;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText, context }),
+        body: JSON.stringify({ systemPrompt, userText, context: safeContext }),
       });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = await response.json() as { text?: string; tags?: SymptomTag[] };
