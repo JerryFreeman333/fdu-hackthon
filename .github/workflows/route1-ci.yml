@@ -42,14 +42,14 @@ jobs:
       - name: Verify formatting
         run: npm run format:check
 
-      - name: Package formatted Route 1
-        run: tar -czf route1-formatted.tgz --exclude=.git --exclude=node_modules --exclude=.test-build .
+      - name: Export formatting patch
+        run: git diff --binary -- route1-health-agent > ../route1-format.patch
 
-      - name: Upload formatted Route 1
+      - name: Upload formatting patch
         uses: actions/upload-artifact@v4
         with:
-          name: route1-formatted
-          path: route1-health-agent/route1-formatted.tgz
+          name: route1-format-patch
+          path: route1-format.patch
           if-no-files-found: error
 
   verify-route1:
@@ -72,7 +72,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Verify formatting
+      - name: Verify current branch formatting
         run: npm run format:check
 
       - name: Typecheck
