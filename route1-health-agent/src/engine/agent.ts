@@ -21,7 +21,13 @@ const INTENT_RULES: IntentRule[] = [
   { tag: 'chestPain', patterns: [/胸(口)?痛/, /胸疼/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/], replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'] },
   {
     tag: 'neuroChange',
-    patterns: [/说话(不清楚|含糊|不利索)/, /(嘴角|嘴).{0,3}(歪|偏)/, /(一侧|半边|一边).{0,4}(无力|没劲|发麻|麻木)/, /(手脚|胳膊|腿).{0,4}(突然)?(无力|没劲|发麻|麻木)/, /突然看不清/],
+    patterns: [
+      /说话(不清楚|含糊|不利索)/,
+      /(嘴角|嘴).{0,3}(歪|偏)/,
+      /(一侧|半边|一边).{0,4}(无力|没劲|发麻|麻木)/,
+      /(手脚|胳膊|腿).{0,4}(突然)?(无力|没劲|发麻|麻木)/,
+      /突然看不清/,
+    ],
     replies: ['先别走动，立即联系家里人并寻求急救。这类突然出现的情况不适合在家继续观察。'],
   },
   { tag: 'pain', patterns: [/(疼|痛)/, /不舒服/], replies: ['哪里不舒服可以慢慢告诉我：位置、持续多久，以及什么时候最明显。'] },
@@ -67,7 +73,9 @@ function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFa
   }
   if (newTags.length === 0) {
     const changes = context?.personTwin.safetyRelevantChanges ?? [];
-    return changes.length ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。` : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
+    return changes.length
+      ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。`
+      : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
   const parts: string[] = [];
   for (const tag of newTags.slice(0, 2)) {
@@ -148,7 +156,11 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 
 const SYSTEM_PROMPT = '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。';
 
-const UNSAFE_REPLY_PATTERNS = [/^\s*(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/, /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/];
+const UNSAFE_REPLY_PATTERNS = [
+  /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
+  /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
+  /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
+];
 const MAX_AGENT_REPLY_LENGTH = 500;
 
 export function isSafeAgentReply(text: string): boolean {
