@@ -193,6 +193,18 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 const SYSTEM_PROMPT =
   '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。';
 
+const UNSAFE_REPLY_PATTERNS = [
+  /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
+  /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
+];
+const MAX_AGENT_REPLY_LENGTH = 500;
+
+export function isSafeAgentReply(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return false;
+  return !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export async function generateAgentReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -210,7 +222,8 @@ export async function generateAgentReply(
   const systemPrompt = `${SYSTEM_PROMPT}\n${safetyGuard}\n已识别标签：${newTags.join(', ') || '无'}。`;
   try {
     const completion = await adapter.complete(systemPrompt, elderText, context);
-    return completion.text || buildRuleBasedReply(newTags, findings, isNewFall, context);
+    if (isSafeAgentReply(completion.text)) return completion.text.trim();
+    return buildRuleBasedReply(newTags, findings, isNewFall, context);
   } catch {
     return buildRuleBasedReply(newTags, findings, isNewFall, context);
   }
