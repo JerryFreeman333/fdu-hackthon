@@ -15,8 +15,8 @@ export default function ReportView({ records, observations, findings, today }: R
     <div className="report-view">
       <div className="card">
         <div className="report-head">
-          <h3>每周健康周报</h3>
-          <span className="muted">{report.rangeText}</span>
+          <h3>每周变化小结</h3>
+          <span className="muted">{report.rangeText} · 当前为本地 Demo 即时生成</span>
         </div>
         <p className="report-summary">{report.forElder}</p>
       </div>
@@ -33,9 +33,9 @@ export default function ReportView({ records, observations, findings, today }: R
       ))}
 
       <div className="card family-card">
-        <h3>给子女的版本</h3>
+        <h3>给家属的版本</h3>
         <p>{report.forFamily}</p>
-        <p className="muted">周报默认每周日发给老人一份、子女一份；有 alert 级变化时会提前单独通知，不用等到周末。</p>
+        <p className="muted">当前 Demo 只负责生成内容，不执行真实的定时发送或消息推送；后续可在不改变 Report Engine 的前提下接入通知服务。</p>
       </div>
     </div>
   );

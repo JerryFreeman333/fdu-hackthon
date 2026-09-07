@@ -1,6 +1,41 @@
-/** 领域模型与类型定义 —— 路线一：老年健康 Agent */
+/** 路线一领域模型：老人、健康事件、发现与 Agent。 */
 
-/** 可观测指标（来自手表/手机/拍照录入） */
+export type DataSource = 'demo' | 'device' | 'photo' | 'manual' | 'import' | 'chat';
+export type UserRole = 'elder' | 'family';
+export type FamilySharing = 'granted' | 'ask' | 'denied';
+export type NightVisionStatus = 'normal' | 'reduced' | 'unknown';
+export type CognitionStatus = 'stable' | 'mild_change' | 'unknown';
+export type MobilityStatus = 'independent' | 'uses_cane' | 'needs_support' | 'unknown';
+export type PrivacyScope = 'private' | 'family_ok';
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'dismissed';
+
+export interface FamilyLink {
+  id: string;
+  relation: string;
+  displayName: string;
+  maskedContact: string;
+  inviteCode: string;
+  status: 'active' | 'pending';
+}
+
+export interface CareTask {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  status: TaskStatus;
+  createdAt: string;
+  sourceFindingId?: string;
+  kind: 'medication_check' | 'safety_check' | 'contact_family' | 'observation';
+  completionNote?: string;
+}
+
+export interface ConsentState {
+  familySharing: FamilySharing;
+  familyLink: FamilyLink | null;
+  updatedAt: string;
+}
+
 export type MetricKey =
   | 'steps'
   | 'walkSpeed'
@@ -10,13 +45,13 @@ export type MetricKey =
   | 'weight'
   | 'spo2'
   | 'systolic'
-  | 'diastolic';
+  | 'diastolic'
+  | 'bloodGlucose';
 
 export interface MetricMeta {
   key: MetricKey;
   label: string;
   unit: string;
-  /** 该指标升高是否代表变差（steps 升高是好事，restingHr 升高是坏事） */
   higherIsBad: boolean;
   decimals: number;
 }
@@ -31,26 +66,50 @@ export const METRICS: Record<MetricKey, MetricMeta> = {
   spo2: { key: 'spo2', label: '血氧', unit: '%', higherIsBad: false, decimals: 0 },
   systolic: { key: 'systolic', label: '收缩压', unit: 'mmHg', higherIsBad: true, decimals: 0 },
   diastolic: { key: 'diastolic', label: '舒张压', unit: 'mmHg', higherIsBad: true, decimals: 0 },
+  bloodGlucose: { key: 'bloodGlucose', label: '血糖', unit: 'mmol/L', higherIsBad: true, decimals: 1 },
 };
 
-/** 某一天的整体记录（设备同步 + 拍照录入合并而成） */
-export interface DayRecord {
-  date: string; // YYYY-MM-DD
-  metrics: Partial<Record<MetricKey, number>>;
+export interface HealthMeasurement {
+  id: string;
+  timestamp: string;
+  metric: MetricKey;
+  value: number;
+  unit: string;
+  source: DataSource;
+  confidence?: number;
+  metadata?: Record<string, string | number | boolean>;
 }
 
-/** 主观症状标签（从聊天里识别出来） */
+export interface DayRecord {
+  date: string;
+  metrics: Partial<Record<MetricKey, number>>;
+  measurements?: HealthMeasurement[];
+}
+
+export interface LabResult {
+  id: string;
+  timestamp: string;
+  name: string;
+  value: number;
+  unit: string;
+  source: DataSource;
+  confidence?: number;
+  referenceRange?: { low?: number; high?: number };
+}
+
 export type SymptomTag =
-  | 'fatigue' // 乏力/累
-  | 'dyspnea' // 气喘/气短
-  | 'poorSleep' // 睡不好
-  | 'edema' // 水肿
-  | 'dizziness' // 头晕
-  | 'medicationMissed' // 漏服药
-  | 'pain' // 疼痛
-  | 'moodLow' // 情绪低落
-  | 'fall' // 跌倒
-  | 'bpHigh'; // 血压偏高
+  | 'fatigue'
+  | 'dyspnea'
+  | 'poorSleep'
+  | 'edema'
+  | 'dizziness'
+  | 'medicationMissed'
+  | 'pain'
+  | 'moodLow'
+  | 'fall'
+  | 'bpHigh'
+  | 'chestPain'
+  | 'neuroChange';
 
 export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   fatigue: '疲劳乏力',
@@ -63,18 +122,21 @@ export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   moodLow: '情绪低落',
   fall: '跌倒',
   bpHigh: '血压偏高',
+  chestPain: '胸痛',
+  neuroChange: '突发神经系统异常',
 };
 
-/** 一次主观/客观观察（聊天、拍照、设备摘要） */
 export interface Observation {
   id: string;
   date: string;
-  source: 'chat' | 'photo' | 'device';
+  source: DataSource;
   text: string;
   tags: SymptomTag[];
+  visibility?: PrivacyScope;
+  measurements?: HealthMeasurement[];
+  labResults?: LabResult[];
 }
 
-/** 发现的严重程度 —— 决定通知谁 */
 export type Severity = 'info' | 'watch' | 'alert' | 'urgent';
 
 export interface Finding {
@@ -82,14 +144,14 @@ export interface Finding {
   date: string;
   severity: Severity;
   title: string;
-  /** 面向老人的白话解释 */
   detail: string;
-  /** 证据链：具体数字对比 */
   evidence: string[];
-  /** 面向家属的推送文案（alert/urgent 时有值） */
   familyMessage?: string;
-  /** 就医/联系路径建议（urgent 时有值） */
   carePath?: string;
+  ruleId?: string;
+  score?: number;
+  signalKeys?: string[];
+  familyEligible?: boolean;
 }
 
 export interface ChatMessage {
@@ -97,13 +159,18 @@ export interface ChatMessage {
   role: 'elder' | 'agent';
   text: string;
   time: string;
+  persisted?: boolean;
 }
 
-/** 老人档案 */
 export interface ElderProfile {
   name: string;
   age: number;
   conditions: string[];
   medications: string[];
   familyContact: string;
+  mobility: MobilityStatus;
+  usesCane: boolean;
+  nightVision: NightVisionStatus;
+  cognition: CognitionStatus;
+  familySharing: FamilySharing;
 }

@@ -1,32 +1,28 @@
-/** 分级通知策略 —— 核心原则：平时不打扰家属，需要时才说话 */
-import type { Finding, Severity } from '../types';
+/** 家属协同策略：只在真正需要时提示，并受老人家庭共享授权控制。 */
+import type { FamilySharing, Finding, Severity } from '../types';
 
 export interface FamilyNotification {
   finding: Finding;
-  /** 推送给家属的完整文案 */
   message: string;
-  /** 建议的行动路径 */
   actionPath?: string;
+  reason: string;
 }
 
-/** 哪些等级会通知家属：只有 alert（建议关注）和 urgent（需要尽快处理） */
 export const FAMILY_LEVELS: Severity[] = ['alert', 'urgent'];
 
-/**
- * 从检测结果里筛出应该推送给家属的通知。
- * watch/info 只留在应用内提醒老人，不外发。
- */
-export function collectFamilyNotifications(findings: Finding[]): FamilyNotification[] {
+export function collectFamilyNotifications(findings: Finding[], familySharing: FamilySharing): FamilyNotification[] {
+  // ask = 每次需要时先征求老人同意；因此在明确授权前不向家属展示。
+  if (familySharing !== 'granted') return [];
   return findings
-    .filter((f) => FAMILY_LEVELS.includes(f.severity) && f.familyMessage)
-    .map((f) => ({
-      finding: f,
-      message: f.familyMessage as string,
-      actionPath: f.carePath,
+    .filter((finding) => FAMILY_LEVELS.includes(finding.severity) && finding.familyMessage && finding.familyEligible !== false)
+    .map((finding) => ({
+      finding,
+      message: finding.familyMessage as string,
+      actionPath: finding.carePath,
+      reason: finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
     }));
 }
 
-/** 应用内给老人看的提醒（所有等级都显示，但措辞已按等级区分） */
 export function severityBadge(sev: Severity): { text: string; className: string } {
   switch (sev) {
     case 'urgent':
