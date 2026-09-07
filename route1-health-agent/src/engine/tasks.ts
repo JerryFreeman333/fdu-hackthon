@@ -10,8 +10,9 @@ export function buildInitialTasks(_today: string): CareTask[] {
 
 export function createTaskFromFinding(finding: Finding, today: string): CareTask | null {
   if (!finding.carePath) return null;
+  const stableKey = finding.ruleId ?? finding.id;
   return {
-    id: `task-finding-${finding.id}`,
+    id: `task-finding-${stableKey}`,
     title: finding.severity === 'urgent' ? '立即确认当前安全情况' : '今天确认一次当前状态',
     description: finding.carePath,
     dueDate: today,
