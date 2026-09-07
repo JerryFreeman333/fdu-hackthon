@@ -7,7 +7,12 @@ interface ChatViewProps {
   quickInputs: string[];
 }
 
-type SpeechRecognitionResultEvent = Event & { results: { [index: number]: { [index: number]: { transcript: string } } } };
+type SpeechRecognitionResultEvent = Event & {
+  results: {
+    length: number;
+    [index: number]: { [index: number]: { transcript: string } };
+  };
+};
 type SpeechRecognitionLike = {
   lang: string;
   interimResults: boolean;
@@ -64,9 +69,7 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
     recognition.interimResults = false;
     recognition.continuous = false;
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results as unknown as ArrayLike<{ [index: number]: { transcript: string } }>)
-        .map((result) => result[0]?.transcript ?? '')
-        .join('');
+      const transcript = Array.from({ length: event.results.length }, (_, index) => event.results[index]?.[0]?.transcript ?? '').join('');
       if (transcript.trim()) send(transcript);
     };
     recognition.onend = () => setListening(false);
