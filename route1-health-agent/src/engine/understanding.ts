@@ -6,6 +6,7 @@
  */
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
+import { extractHealthValues } from './extract';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
@@ -18,6 +19,7 @@ export interface StructuredClaim {
   timeScope: TimeScope;
   eventDate: string | null;
   tags: SymptomTag[];
+  hasHealthValue: boolean;
   outcome?: 'death_reported';
 }
 
@@ -44,7 +46,7 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
   if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
-  if (/(\b我\b|我的|我自己|本人)/.test(clause)) return 'self';
+  if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
   if (/^(他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self'))];
     return unique.length === 1 ? unique[0] : 'unknown';
@@ -60,12 +62,16 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   return { scope: 'today', eventDate: today };
 }
 
-function statusFromText(clause: string, tags: SymptomTag[]): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && tags.length > 0) return 'hypothetical';
-  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃)/.test(clause)) {
+function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
+  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
+    return 'hypothetical';
+  }
+  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) {
     return 'negated';
   }
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && tags.length > 0) return 'uncertain';
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
+    return 'uncertain';
+  }
   return 'occurred';
 }
 
@@ -96,9 +102,10 @@ export function understandElderInput(text: string, today: string, recentMessages
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
     const tags = parsed.tags;
+    const hasHealthValue = extractHealthValues(clause).length > 0;
     const time = timeFromText(clause, today);
     const subject = subjectFromText(clause, subjectsSeen);
-    const status = statusFromText(clause, tags);
+    const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
@@ -109,13 +116,14 @@ export function understandElderInput(text: string, today: string, recentMessages
         timeScope: time.scope,
         eventDate: time.eventDate,
         tags,
+        hasHealthValue,
         outcome: 'death_reported',
       });
       subjectsSeen.push(subject);
       continue;
     }
 
-    if (tags.length === 0 && subject !== 'unknown') continue;
+    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') continue;
     claims.push({
       text: clause,
       subject,
@@ -123,11 +131,14 @@ export function understandElderInput(text: string, today: string, recentMessages
       timeScope: time.scope,
       eventDate: time.eventDate,
       tags,
+      hasHealthValue,
     });
     subjectsSeen.push(subject);
   }
 
-  const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown' && claim.tags.length > 0);
+  const hasUnclearFamilyReference = claims.some(
+    (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
+  );
   return {
     claims,
     recallRequested,
@@ -140,7 +151,11 @@ export function understandElderInput(text: string, today: string, recentMessages
 
 export function acceptedSelfClaims(input: StructuredElderInput): StructuredClaim[] {
   return input.claims.filter(
-    (claim) => claim.subject === 'self' && claim.status === 'occurred' && claim.tags.length > 0 && claim.eventDate !== null,
+    (claim) =>
+      claim.subject === 'self' &&
+      claim.status === 'occurred' &&
+      (claim.tags.length > 0 || claim.hasHealthValue) &&
+      claim.eventDate !== null,
   );
 }
 
