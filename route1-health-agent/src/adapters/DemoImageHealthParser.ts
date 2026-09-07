@@ -18,7 +18,7 @@ export class DemoImageHealthParser implements ImageHealthParser {
     };
 
     const measurementFor = (metric: MetricKey, value: number, unit: string) => ({
-      id: `demo-photo-${kind}-${capturedAt}`,
+      id: `demo-photo-${kind}-${metric}-${capturedAt}`,
       timestamp: capturedAt,
       metric,
       value,
