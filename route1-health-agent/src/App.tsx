@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CareTask, ChatMessage, ElderProfile, FamilyLink, HealthMeasurement, Observation, UserRole } from './types';
+import type { CareTask, ChatMessage, ElderProfile, FamilyLink, HealthMeasurement, UserRole } from './types';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
 import { appendHealthEvents, legacySnapshotToEvents, materializeHealthData, measurementToEvent, observationToEvent, mergeHealthEvents, type HealthEvent } from './pipeline/events';
