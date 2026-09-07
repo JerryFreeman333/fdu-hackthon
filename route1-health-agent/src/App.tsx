@@ -2,12 +2,28 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, HealthMeasurement, UserRole } from './types';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
-import { appendHealthEvents, legacySnapshotToEvents, materializeHealthData, measurementToEvent, observationToEvent, mergeHealthEvents, type HealthEvent } from './pipeline/events';
+import {
+  appendHealthEvents,
+  legacySnapshotToEvents,
+  materializeHealthData,
+  measurementToEvent,
+  observationToEvent,
+  mergeHealthEvents,
+  type HealthEvent,
+} from './pipeline/events';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
-import { createHttpLlmAdapter, generateAgentReply, msg, parseElderInput, QUICK_INPUTS, ruleBasedAdapter, tagLabel } from './engine/agent';
+import {
+  createHttpLlmAdapter,
+  generateAgentReply,
+  msg,
+  parseElderInput,
+  QUICK_INPUTS,
+  ruleBasedAdapter,
+  tagLabel,
+} from './engine/agent';
 import { extractHealthValues } from './engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from './engine/privacy';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from './engine/tasks';
@@ -22,6 +38,7 @@ const TASK_KEY = 'ankang-route1-tasks-v2';
 const CONSENT_KEY = 'ankang-route1-consent-v1';
 const FAMILY_LINK_KEY = 'ankang-route1-family-link-v1';
 const INVITE_PREFIX = 'ankang-route1-invite:';
+const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
@@ -78,9 +95,10 @@ function loadFamilyLink(): FamilyLink | null {
 }
 
 function createInviteCode(): string {
-  const random = typeof crypto !== 'undefined' && 'getRandomValues' in crypto
-    ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
-    : Math.floor(Math.random() * 10000);
+  const random =
+    typeof crypto !== 'undefined' && 'getRandomValues' in crypto
+      ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
+      : Math.floor(Math.random() * 10000);
   return `AN-${TODAY.slice(0, 4)}-${random.toString().padStart(4, '0')}`;
 }
 
@@ -101,7 +119,10 @@ export default function App() {
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations } = healthData;
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
-  const agentContext = useMemo(() => buildAgentContext(activeProfile, events, TODAY, findings), [activeProfile, events, findings]);
+  const agentContext = useMemo(
+    () => buildAgentContext(activeProfile, events, TODAY, findings),
+    [activeProfile, events, findings],
+  );
   const familyNotifs = useMemo(() => collectFamilyNotifications(findings, familySharing), [findings, familySharing]);
 
   useEffect(() => {
@@ -111,7 +132,9 @@ export default function App() {
       if (cancelled) return;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -156,11 +179,19 @@ export default function App() {
 
     const { tags } = parseElderInput(text);
     const extractedValues = extractHealthValues(text);
-    const effectiveSharing = intent === 'share_family' ? 'granted' as const : familySharing;
+    const effectiveSharing = intent === 'share_family' ? ('granted' as const) : familySharing;
     const canShare = canShareWithFamily(effectiveSharing, intent);
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
-    const agentText = await generateAgentReply(text, tags, findings, tags.includes('fall'), agentContext, llmAdapter);
+    const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
+    const agentText = await generateAgentReply(
+      text,
+      tags,
+      findings,
+      tags.includes('fall'),
+      agentContext,
+      selectedAdapter,
+    );
     setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
 
     if (intent === 'no_record') {
@@ -170,14 +201,16 @@ export default function App() {
 
     const incomingEvents: HealthEvent[] = [];
     if (tags.length > 0) {
-      incomingEvents.push(observationToEvent({
-        id: `obs-live-${Date.now()}`,
-        date: TODAY,
-        source: 'chat',
-        text,
-        tags,
-        visibility: canShare ? 'family_ok' : 'private',
-      }));
+      incomingEvents.push(
+        observationToEvent({
+          id: `obs-live-${Date.now()}`,
+          date: TODAY,
+          source: 'chat',
+          text,
+          tags,
+          visibility: canShare ? 'family_ok' : 'private',
+        }),
+      );
     }
 
     const recordedValues = canShare ? extractedValues : [];
@@ -198,35 +231,62 @@ export default function App() {
     if (incomingEvents.length > 0) {
       setEvents((current) => appendHealthEvents(current, incomingEvents));
       const labels = tags.map(tagLabel);
-      const values = recordedValues.map((item) => `${item.metric === 'nightWakes' ? '夜间醒来' : '活动步数'} ${item.value}${item.unit}`);
-      showToast(`已记录：${[...labels, ...values].join('、')}${canShare ? '；按当前授权可供家属查看必要变化' : '；仅供您本人使用'}`);
+      const values = recordedValues.map(
+        (item) => `${item.metric === 'nightWakes' ? '夜间醒来' : '活动步数'} ${item.value}${item.unit}`,
+      );
+      showToast(
+        `已记录：${[...labels, ...values].join('、')}${
+          canShare ? '；按当前授权可供家属查看必要变化' : '；仅供您本人使用'
+        }`,
+      );
     } else if (extractedValues.length > 0) {
       showToast('这次数值信息先按隐私设置保留在当前对话中，不进入共享健康记录。');
     }
 
     if (tags.includes('medicationMissed')) {
-      setTasks((current) => current.some((task) => task.kind === 'medication_check' && task.status === 'pending') ? current : [...current, {
-        id: `task-medication-${TODAY}`,
-        title: '确认今天是否按原来的医生方案服药',
-        description: '不要自行加倍或调整药量，只确认并按原方案处理。',
-        dueDate: TODAY,
-        status: 'pending',
-        createdAt: `${TODAY}T${new Date().toTimeString().slice(0, 8)}`,
-        kind: 'medication_check',
-      }]);
+      setTasks((current) =>
+        current.some((task) => task.kind === 'medication_check' && task.status === 'pending')
+          ? current
+          : [
+              ...current,
+              {
+                id: `task-medication-${TODAY}`,
+                title: '确认今天是否按原来的医生方案服药',
+                description: '不要自行加倍或调整药量，只确认并按原方案处理。',
+                dueDate: TODAY,
+                status: 'pending',
+                createdAt: `${TODAY}T${new Date().toTimeString().slice(0, 8)}`,
+                kind: 'medication_check',
+              },
+            ],
+      );
     }
     if (tags.includes('fall')) showToast('已标记为紧急事件，请先确认安全并保持电话畅通。');
   }
 
   function handleTaskStatus(taskId: string, status: CareTask['status']) {
-    setTasks((current) => current.map((task) => task.id === taskId ? updateTaskStatus(task, status) : task));
+    setTasks((current) => current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)));
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
   }
 
-  function requestFamilyShare() { setFamilySharing('granted'); showToast('已同意在必要时与家属共享。'); }
-  function keepFamilyPrivate() { setFamilySharing('denied'); showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。'); }
-  function revokeFamilyShare() { setFamilySharing('denied'); showToast('已暂停家属共享。老人本人仍可继续使用助手。'); }
-  function contactElder() { showToast(`演示联系：${activeProfile.familyContact}`); }
+  function requestFamilyShare() {
+    setFamilySharing('granted');
+    showToast('已同意在必要时与家属共享。');
+  }
+
+  function keepFamilyPrivate() {
+    setFamilySharing('denied');
+    showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
+  }
+
+  function revokeFamilyShare() {
+    setFamilySharing('denied');
+    showToast('已暂停家属共享。老人本人仍可继续使用助手。');
+  }
+
+  function contactElder() {
+    showToast(`演示联系：${activeProfile.familyContact}`);
+  }
 
   function generateInvite() {
     const code = createInviteCode();
@@ -238,7 +298,10 @@ export default function App() {
       inviteCode: code,
       status: 'pending',
     };
-    window.localStorage.setItem(`${INVITE_PREFIX}${code}`, JSON.stringify({ elderId: `elder-${profile.name}`, relation: '家属' }));
+    window.localStorage.setItem(
+      `${INVITE_PREFIX}${code}`,
+      JSON.stringify({ elderId: DEMO_ELDER_ID, relation: '家属' }),
+    );
     setFamilyLink(link);
     showToast(`邀请码已生成：${code}`);
   }
@@ -249,7 +312,7 @@ export default function App() {
       const raw = window.localStorage.getItem(`${INVITE_PREFIX}${inviteCode}`);
       if (!raw) return false;
       const invite = JSON.parse(raw) as { elderId?: string; relation?: string };
-      if (invite.elderId !== `elder-${profile.name}`) return false;
+      if (invite.elderId !== DEMO_ELDER_ID) return false;
       const link: FamilyLink = {
         id: `family-${Date.now()}`,
         relation: invite.relation ?? '家属',
@@ -275,10 +338,17 @@ export default function App() {
           <div>
             <div className="persona-name">{activeProfile.name}</div>
             <div className="persona-sub">
-              今天 · {activeProfile.familySharing === 'granted' ? '已允许必要的家属协同' : activeProfile.familySharing === 'ask' ? '需要时先问您' : '暂不共享给家属'}
+              今天 ·{' '}
+              {activeProfile.familySharing === 'granted'
+                ? '已允许必要的家属协同'
+                : activeProfile.familySharing === 'ask'
+                  ? '需要时先问您'
+                  : '暂不共享给家属'}
             </div>
           </div>
-          <button className="btn-secondary" onClick={resetRole}>切换身份</button>
+          <button className="btn-secondary" onClick={resetRole}>
+            切换身份
+          </button>
         </header>
         <main className="content">
           <ElderHome
@@ -310,10 +380,14 @@ export default function App() {
         <div>
           <div className="persona-name">{activeProfile.name} · 家属端</div>
           <div className="persona-sub">
-            {familyLink?.status === 'active' ? `绑定关系：${familyLink.relation} ${familyLink.displayName}` : '尚未绑定老人'}
+            {familyLink?.status === 'active'
+              ? `绑定关系：${familyLink.relation} ${familyLink.displayName}`
+              : '尚未绑定老人'}
           </div>
         </div>
-        <button className="btn-secondary" onClick={resetRole}>切换身份</button>
+        <button className="btn-secondary" onClick={resetRole}>
+          切换身份
+        </button>
       </header>
       <main className="content">
         <FamilyDashboard
@@ -335,7 +409,8 @@ export default function App() {
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。当前硬件与 OCR 仍通过 Adapter/本地能力预留；LLM 默认本地规则，可通过服务端 Endpoint 接入真实模型。
+        第一阶段 MVP：先认识老人。当前硬件与 OCR 仍通过 Adapter/本地能力预留；LLM 默认本地规则，可通过服务端 Endpoint
+        接入真实模型。
       </footer>
     </div>
   );

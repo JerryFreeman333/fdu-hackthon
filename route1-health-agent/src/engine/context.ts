@@ -5,10 +5,37 @@ import { diffDays, computeBaseline, recentMean } from './baseline';
 import { materializeHealthData, type HealthEvent } from '../pipeline/events';
 import { buildPersonTwin, type PersonTwin } from './personTwin';
 
-export interface AgentMetricContext { metric: MetricKey; label: string; unit: string; latestValue: number; latestTimestamp: string; recentMean: number | null; baselineMean: number | null; changeRatio: number | null; direction: 'higher' | 'lower' | 'stable' | 'unknown'; }
-export interface AgentObservationContext { date: string; text: string; tags: SymptomTag[]; visibility?: 'private' | 'family_ok'; }
-export interface AgentLabContext { name: string; value: number; unit: string; timestamp: string; }
-export interface AgentFindingContext { severity: Finding['severity']; title: string; detail: string; evidence: string[]; ruleId?: string; familyEligible?: boolean; }
+export interface AgentMetricContext {
+  metric: MetricKey;
+  label: string;
+  unit: string;
+  latestValue: number;
+  latestTimestamp: string;
+  recentMean: number | null;
+  baselineMean: number | null;
+  changeRatio: number | null;
+  direction: 'higher' | 'lower' | 'stable' | 'unknown';
+}
+export interface AgentObservationContext {
+  date: string;
+  text: string;
+  tags: SymptomTag[];
+  visibility?: 'private' | 'family_ok';
+}
+export interface AgentLabContext {
+  name: string;
+  value: number;
+  unit: string;
+  timestamp: string;
+}
+export interface AgentFindingContext {
+  severity: Finding['severity'];
+  title: string;
+  detail: string;
+  evidence: string[];
+  ruleId?: string;
+  familyEligible?: boolean;
+}
 
 export interface AgentContext {
   today: string;
@@ -22,7 +49,18 @@ export interface AgentContext {
   suggestedAction?: string;
 }
 
-const METRIC_KEYS: MetricKey[] = ['steps', 'walkSpeed', 'sleepHours', 'nightWakes', 'restingHr', 'weight', 'spo2', 'systolic', 'diastolic', 'bloodGlucose'];
+const METRIC_KEYS: MetricKey[] = [
+  'steps',
+  'walkSpeed',
+  'sleepHours',
+  'nightWakes',
+  'restingHr',
+  'weight',
+  'spo2',
+  'systolic',
+  'diastolic',
+  'bloodGlucose',
+];
 const SEVERITY_ORDER: Record<Finding['severity'], number> = { urgent: 0, alert: 1, watch: 2, info: 3 };
 
 function directionFor(changeRatio: number | null): AgentMetricContext['direction'] {
@@ -31,36 +69,85 @@ function directionFor(changeRatio: number | null): AgentMetricContext['direction
   return changeRatio > 0 ? 'higher' : 'lower';
 }
 
-function buildMetricContexts(records: ReturnType<typeof materializeHealthData>['records'], measurements: ReturnType<typeof materializeHealthData>['measurements'], today: string, windowDays: number): AgentMetricContext[] {
+function buildMetricContexts(
+  records: ReturnType<typeof materializeHealthData>['records'],
+  measurements: ReturnType<typeof materializeHealthData>['measurements'],
+  today: string,
+  windowDays: number,
+): AgentMetricContext[] {
   const output: AgentMetricContext[] = [];
   for (const metric of METRIC_KEYS) {
     const recentMeasurements = measurements
-      .filter((m) => m.metric === metric && diffDays(m.timestamp.slice(0, 10), today) >= 0 && diffDays(m.timestamp.slice(0, 10), today) < windowDays)
+      .filter(
+        (m) =>
+          m.metric === metric &&
+          diffDays(m.timestamp.slice(0, 10), today) >= 0 &&
+          diffDays(m.timestamp.slice(0, 10), today) < windowDays,
+      )
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
     const latest = recentMeasurements[recentMeasurements.length - 1];
     if (!latest) continue;
     const recent = recentMean(records, metric, today, windowDays);
-    const baseline = computeBaseline(records, metric, { endDate: today, excludeDays: windowDays, windowDays: 14, minPoints: 5 });
-    const changeRatio = baseline && Math.abs(baseline.mean) > 1e-9 && recent !== null ? (recent - baseline.mean) / Math.abs(baseline.mean) : null;
-    output.push({ metric, label: METRICS[metric].label, unit: METRICS[metric].unit, latestValue: latest.value, latestTimestamp: latest.timestamp, recentMean: recent, baselineMean: baseline?.mean ?? null, changeRatio, direction: directionFor(changeRatio) });
+    const baseline = computeBaseline(records, metric, {
+      endDate: today,
+      excludeDays: windowDays,
+      windowDays: 14,
+      minPoints: 5,
+    });
+    const changeRatio =
+      baseline && Math.abs(baseline.mean) > 1e-9 && recent !== null
+        ? (recent - baseline.mean) / Math.abs(baseline.mean)
+        : null;
+    output.push({
+      metric,
+      label: METRICS[metric].label,
+      unit: METRICS[metric].unit,
+      latestValue: latest.value,
+      latestTimestamp: latest.timestamp,
+      recentMean: recent,
+      baselineMean: baseline?.mean ?? null,
+      changeRatio,
+      direction: directionFor(changeRatio),
+    });
   }
   return output;
 }
 
-export function buildAgentContext(profile: ElderProfile, events: HealthEvent[], today: string, findings: Finding[], windowDays = 7): AgentContext {
+export function buildAgentContext(
+  profile: ElderProfile,
+  events: HealthEvent[],
+  today: string,
+  findings: Finding[],
+  windowDays = 7,
+): AgentContext {
   const materialized = materializeHealthData(events);
   const observations = materialized.observations
     .filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) < windowDays)
-    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 8)
     .map((o) => ({ date: o.date, text: o.text, tags: o.tags, visibility: o.visibility }));
   const labs = materialized.labResults
-    .filter((lab) => diffDays(lab.timestamp.slice(0, 10), today) >= 0 && diffDays(lab.timestamp.slice(0, 10), today) < 30)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8)
+    .filter(
+      (lab) => diffDays(lab.timestamp.slice(0, 10), today) >= 0 && diffDays(lab.timestamp.slice(0, 10), today) < 30,
+    )
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 8)
     .map((lab) => ({ name: lab.name, value: lab.value, unit: lab.unit, timestamp: lab.timestamp }));
   const priorityFindings = [...findings]
-    .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || (b.score ?? 0) - (a.score ?? 0)).slice(0, 6)
-    .map((finding) => ({ severity: finding.severity, title: finding.title, detail: finding.detail, evidence: finding.evidence.slice(0, 3), ruleId: finding.ruleId, familyEligible: finding.familyEligible }));
-  const safetyLevel = findings.reduce<Finding['severity']>((highest, finding) => SEVERITY_ORDER[finding.severity] < SEVERITY_ORDER[highest] ? finding.severity : highest, 'info');
+    .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 6)
+    .map((finding) => ({
+      severity: finding.severity,
+      title: finding.title,
+      detail: finding.detail,
+      evidence: finding.evidence.slice(0, 3),
+      ruleId: finding.ruleId,
+      familyEligible: finding.familyEligible,
+    }));
+  const safetyLevel = findings.reduce<Finding['severity']>(
+    (highest, finding) => (SEVERITY_ORDER[finding.severity] < SEVERITY_ORDER[highest] ? finding.severity : highest),
+    'info',
+  );
   return {
     today,
     windowDays,
@@ -75,10 +162,18 @@ export function buildAgentContext(profile: ElderProfile, events: HealthEvent[], 
 }
 
 export function serializeAgentContext(context: AgentContext): string {
-  const metrics = context.metrics.map((m) => { const change = m.changeRatio === null ? '无足够基线' : `${m.changeRatio >= 0 ? '+' : ''}${Math.round(m.changeRatio * 100)}%`; return `${m.label}=${m.latestValue}${m.unit}；近${context.windowDays}天均值=${m.recentMean ?? '无'}；较个人基线=${change}`; }).join('\n');
+  const metrics = context.metrics
+    .map((m) => {
+      const change =
+        m.changeRatio === null ? '无足够基线' : `${m.changeRatio >= 0 ? '+' : ''}${Math.round(m.changeRatio * 100)}%`;
+      return `${m.label}=${m.latestValue}${m.unit}；近${context.windowDays}天均值=${m.recentMean ?? '无'}；较个人基线=${change}`;
+    })
+    .join('\n');
   const observations = context.observations.map((o) => `${o.date}：${o.text} [${o.tags.join('、')}]`).join('\n');
   const labs = context.labs.map((l) => `${l.name}=${l.value}${l.unit} (${l.timestamp.slice(0, 10)})`).join('\n');
-  const findings = context.priorityFindings.map((f) => `${f.severity}：${f.title}；证据：${f.evidence.join('；')}`).join('\n');
+  const findings = context.priorityFindings
+    .map((f) => `${f.severity}：${f.title}；证据：${f.evidence.join('；')}`)
+    .join('\n');
   const functionProfile = [
     `行动能力=${context.personTwin.functionalProfile.mobility}`,
     `是否使用拐杖=${context.personTwin.functionalProfile.usesCane ? '是' : '否'}`,
@@ -91,10 +186,16 @@ export function serializeAgentContext(context: AgentContext): string {
     `Person Twin：活动=${context.personTwin.activity}；行动趋势=${context.personTwin.mobility}；睡眠=${context.personTwin.sleep}；夜间活动=${context.personTwin.nightActivity}`,
     `功能画像：${functionProfile}`,
     `与居家安全相关的近期变化：${context.personTwin.safetyRelevantChanges.join('、') || '暂无'}`,
-    '近期关键指标：', metrics || '暂无',
-    '近期主诉：', observations || '暂无',
-    '近期化验：', labs || '暂无',
-    '当前重点发现：', findings || '暂无',
+    '近期关键指标：',
+    metrics || '暂无',
+    '近期主诉：',
+    observations || '暂无',
+    '近期化验：',
+    labs || '暂无',
+    '当前重点发现：',
+    findings || '暂无',
     context.suggestedAction ? `建议行动：${context.suggestedAction}` : '',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }

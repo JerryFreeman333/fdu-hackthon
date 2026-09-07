@@ -32,7 +32,8 @@ export default function ElderHome({
 }: ElderHomeProps) {
   const summary = taskSummary(tasks);
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
-  const familyAsk = profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
+  const familyAsk =
+    profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
 
   return (
     <div className="elder-home">
@@ -53,7 +54,9 @@ export default function ElderHome({
         <div className="section-head">
           <div>
             <h3>今天要做的事</h3>
-            <span className="muted">完成 {summary.completed} · 进行中 {summary.inProgress} · 待处理 {summary.pending}</span>
+            <span className="muted">
+              完成 {summary.completed} · 进行中 {summary.inProgress} · 待处理 {summary.pending}
+            </span>
           </div>
         </div>
         {tasks.length === 0 ? (
@@ -70,9 +73,13 @@ export default function ElderHome({
                 {task.status !== 'completed' && task.status !== 'dismissed' ? (
                   <div className="task-actions">
                     {task.status === 'pending' && (
-                      <button className="btn-secondary" onClick={() => onTaskStatus(task.id, 'in_progress')}>开始</button>
+                      <button className="btn-secondary" onClick={() => onTaskStatus(task.id, 'in_progress')}>
+                        开始
+                      </button>
                     )}
-                    <button className="btn-primary" onClick={() => onTaskStatus(task.id, 'completed')}>完成</button>
+                    <button className="btn-primary" onClick={() => onTaskStatus(task.id, 'completed')}>
+                      完成
+                    </button>
                   </div>
                 ) : (
                   <span className="task-status-label">{task.status === 'completed' ? '已完成' : '已忽略'}</span>
@@ -88,8 +95,12 @@ export default function ElderHome({
           <h3>要告诉家里人吗？</h3>
           <p>我发现有一件事情值得关注。除非您同意，我不会把普通聊天直接告诉家属。</p>
           <div className="privacy-actions">
-            <button className="btn-primary" onClick={onRequestFamilyShare}>告诉家属</button>
-            <button className="btn-secondary" onClick={onKeepFamilyPrivate}>先不告诉</button>
+            <button className="btn-primary" onClick={onRequestFamilyShare}>
+              告诉家属
+            </button>
+            <button className="btn-secondary" onClick={onKeepFamilyPrivate}>
+              先不告诉
+            </button>
             <span className="muted">当前：{sharingLabel(profile.familySharing)}</span>
           </div>
         </section>
@@ -103,11 +114,17 @@ export default function ElderHome({
           </div>
         </div>
         {familyLink?.status === 'active' ? (
-          <p>已绑定家属：{familyLink.relation} · {familyLink.displayName}</p>
+          <p>
+            已绑定家属：{familyLink.relation} · {familyLink.displayName}
+          </p>
         ) : familyLink ? (
-          <p>请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong></p>
+          <p>
+            请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
+          </p>
         ) : (
-          <button className="btn-primary" onClick={onGenerateInvite}>生成家属邀请码</button>
+          <button className="btn-primary" onClick={onGenerateInvite}>
+            生成家属邀请码
+          </button>
         )}
       </section>
 

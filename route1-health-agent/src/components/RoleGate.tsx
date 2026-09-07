@@ -23,7 +23,9 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
             <span>只在真正需要时知道该不该介入</span>
           </button>
         </div>
-        <p className="role-note">本 Demo 使用本地模拟数据；未来硬件、OCR、云端服务均通过独立接口接入，不改变 Agent 核心。</p>
+        <p className="role-note">
+          本 Demo 使用本地模拟数据；未来硬件、OCR、云端服务均通过独立接口接入，不改变 Agent 核心。
+        </p>
       </div>
     </div>
   );

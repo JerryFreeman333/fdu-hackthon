@@ -57,12 +57,7 @@ export function computeBaseline(
 }
 
 /** 最近 n 天（含 endDate）某指标的平均值 */
-export function recentMean(
-  records: DayRecord[],
-  metric: MetricKey,
-  endDate: string,
-  days: number,
-): number | null {
+export function recentMean(records: DayRecord[], metric: MetricKey, endDate: string, days: number): number | null {
   const values = records
     .filter((r) => r.metrics[metric] !== undefined)
     .filter((r) => {

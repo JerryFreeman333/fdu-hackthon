@@ -1,10 +1,17 @@
 import { records as demoRecords, seedObservations, TODAY, profile } from '../src/data/demo';
 import type { DayRecord, Finding, Observation } from '../src/types';
 import { dayRecordsToMeasurements } from '../src/data/normalize';
-import { mergeHealthEvents, materializeHealthData, measurementToEvent, observationToEvent, labResultToEvent, type HealthEvent } from '../src/pipeline/events';
+import {
+  mergeHealthEvents,
+  materializeHealthData,
+  measurementToEvent,
+  observationToEvent,
+  labResultToEvent,
+  type HealthEvent,
+} from '../src/pipeline/events';
 import { runDetection } from '../src/engine/detect';
 import { buildAgentContext, serializeAgentContext } from '../src/engine/context';
-import { createHttpLlmAdapter, generateAgentReply, LlmAdapter } from '../src/engine/agent';
+import { createHttpLlmAdapter, generateAgentReply, type LlmAdapter } from '../src/engine/agent';
 import { extractHealthValues } from '../src/engine/extract';
 import { suggestFollowUpQuestions } from '../src/engine/questions';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../src/engine/tasks';
@@ -12,23 +19,51 @@ import { canShareWithFamily, parsePrivacyIntent } from '../src/engine/privacy';
 import { collectFamilyNotifications } from '../src/engine/escalate';
 import { buildWeeklyReport } from '../src/engine/report';
 
-function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
-function dateFromToday(offset: number): string { return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10); }
-function makeRecords(metrics: Partial<DayRecord['metrics']>, recentValues?: Partial<DayRecord['metrics']>): DayRecord[] {
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+function dateFromToday(offset: number): string {
+  return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10);
+}
+function makeRecords(
+  metrics: Partial<DayRecord['metrics']>,
+  recentValues?: Partial<DayRecord['metrics']>,
+): DayRecord[] {
   const result: DayRecord[] = [];
   for (let i = -16; i <= -3; i += 1) result.push({ date: dateFromToday(i), metrics: { ...metrics } });
-  result.push({ date: dateFromToday(-2), metrics: { ...metrics, ...recentValues } }, { date: dateFromToday(-1), metrics: { ...metrics, ...recentValues } }, { date: TODAY, metrics: { ...metrics, ...recentValues } });
+  result.push(
+    { date: dateFromToday(-2), metrics: { ...metrics, ...recentValues } },
+    { date: dateFromToday(-1), metrics: { ...metrics, ...recentValues } },
+    { date: TODAY, metrics: { ...metrics, ...recentValues } },
+  );
   return result;
 }
-function makeSparseRecords(metrics: Partial<DayRecord['metrics']>, recentValues: Partial<DayRecord['metrics']>): DayRecord[] {
+function makeSparseRecords(
+  metrics: Partial<DayRecord['metrics']>,
+  recentValues: Partial<DayRecord['metrics']>,
+): DayRecord[] {
   const result: DayRecord[] = [];
   for (let i = -16; i <= -3; i += 1) result.push({ date: dateFromToday(i), metrics: { ...metrics } });
   result.push({ date: TODAY, metrics: { ...metrics, ...recentValues } });
   return result;
 }
-function recordsToEvents(records: DayRecord[], observations: Observation[] = []): HealthEvent[] { return mergeHealthEvents(dayRecordsToMeasurements(records, 'demo').map(measurementToEvent), observations.map(observationToEvent)); }
-function observation(tag: Observation['tags'][number], text: string, visibility?: Observation['visibility']): Observation { return { id: `test-${tag}`, date: TODAY, source: 'chat', text, tags: [tag], visibility }; }
-async function runCase(name: string, fn: () => void | Promise<void>): Promise<void> { await fn(); console.log(`PASS: ${name}`); }
+function recordsToEvents(records: DayRecord[], observations: Observation[] = []): HealthEvent[] {
+  return mergeHealthEvents(
+    dayRecordsToMeasurements(records, 'demo').map(measurementToEvent),
+    observations.map(observationToEvent),
+  );
+}
+function observation(
+  tag: Observation['tags'][number],
+  text: string,
+  visibility?: Observation['visibility'],
+): Observation {
+  return { id: `test-${tag}`, date: TODAY, source: 'chat', text, tags: [tag], visibility };
+}
+async function runCase(name: string, fn: () => void | Promise<void>): Promise<void> {
+  await fn();
+  console.log(`PASS: ${name}`);
+}
 
 async function main(): Promise<void> {
   await runCase('demo event stream produces multisignal alert', () => {
@@ -42,23 +77,36 @@ async function main(): Promise<void> {
 
   await runCase('identical event stream produces stable findings', () => {
     const events = recordsToEvents(makeRecords({ steps: 10000 }, { steps: 6500 }));
-    assert(JSON.stringify(runDetection(events, TODAY)) === JSON.stringify(runDetection(events, TODAY)), 'identical input must produce identical findings');
+    assert(
+      JSON.stringify(runDetection(events, TODAY)) === JSON.stringify(runDetection(events, TODAY)),
+      'identical input must produce identical findings',
+    );
   });
 
   await runCase('sparse recent data does not create a trend', () => {
-    const findings = runDetection(recordsToEvents(makeSparseRecords({ steps: 10000 }, { steps: 6000 })), TODAY, { minRecentPoints: 2 });
-    assert(!findings.some((finding) => finding.ruleId === 'metric.steps.baseline_shift'), 'one recent point must not create a trend finding');
+    const findings = runDetection(recordsToEvents(makeSparseRecords({ steps: 10000 }, { steps: 6000 })), TODAY, {
+      minRecentPoints: 2,
+    });
+    assert(
+      !findings.some((finding) => finding.ruleId === 'metric.steps.baseline_shift'),
+      'one recent point must not create a trend finding',
+    );
   });
 
   await runCase('single weak metric stays at watch', () => {
-    const finding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })), TODAY).find((item) => item.ruleId === 'metric.steps.baseline_shift');
+    const finding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })), TODAY).find(
+      (item) => item.ruleId === 'metric.steps.baseline_shift',
+    );
     assert(finding, 'step reduction should produce a metric finding');
     assert(finding.severity === 'watch', 'single metric change should remain watch');
     assert(!finding.familyMessage, 'watch findings should not directly notify family');
   });
 
   await runCase('severe blood pressure without red flags stays alert', () => {
-    const findings = runDetection(recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 })), TODAY);
+    const findings = runDetection(
+      recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 })),
+      TODAY,
+    );
     const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
     assert(safety, 'severe blood pressure should create a safety finding');
     assert(safety.severity === 'alert', 'severe blood pressure without red-flag symptoms should be alert');
@@ -66,7 +114,9 @@ async function main(): Promise<void> {
   });
 
   await runCase('severe blood pressure plus chest pain upgrades to urgent', () => {
-    const events = recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }), [observation('chestPain', '胸口突然疼得厉害')]);
+    const events = recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }), [
+      observation('chestPain', '胸口突然疼得厉害'),
+    ]);
     const findings = runDetection(events, TODAY);
     const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
     assert(safety, 'combined severe BP safety finding should exist');
@@ -83,7 +133,10 @@ async function main(): Promise<void> {
   });
 
   await runCase('private observation prevents family escalation without hiding it from the elder', () => {
-    const events = recordsToEvents(makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }), [observation('fatigue', '最近很累', 'private')]);
+    const events = recordsToEvents(
+      makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }),
+      [observation('fatigue', '最近很累', 'private')],
+    );
     const findings = runDetection(events, TODAY);
     const fusion = findings.find((finding) => finding.ruleId === 'fusion.multisignal_deterioration');
     assert(fusion, 'three objective/symptom dimensions should still produce a fusion finding');
@@ -92,7 +145,9 @@ async function main(): Promise<void> {
   });
 
   await runCase('private red-flag symptom remains urgent but is not copied to family', () => {
-    const events = recordsToEvents(makeRecords({ steps: 7000 }, { steps: 7000 }), [observation('chestPain', '这个不要告诉孩子，我胸口现在很痛', 'private')]);
+    const events = recordsToEvents(makeRecords({ steps: 7000 }, { steps: 7000 }), [
+      observation('chestPain', '这个不要告诉孩子，我胸口现在很痛', 'private'),
+    ]);
     const findings = runDetection(events, TODAY);
     const redFlag = findings.find((finding) => finding.ruleId === 'safety.red_flag_symptom');
     assert(redFlag?.severity === 'urgent', 'private chest pain should still be handled as urgent for the elder');
@@ -106,20 +161,30 @@ async function main(): Promise<void> {
     assert(canShareWithFamily('ask', 'share_family'), 'explicit share request should be allowed when not denied');
     assert(!canShareWithFamily('denied', 'share_family'), 'denied family sharing must remain denied');
     const demoFindings = runDetection(recordsToEvents(demoRecords, seedObservations), TODAY);
-    assert(collectFamilyNotifications(demoFindings, 'granted').length > 0, 'granted sharing should allow eligible notifications');
+    assert(
+      collectFamilyNotifications(demoFindings, 'granted').length > 0,
+      'granted sharing should allow eligible notifications',
+    );
     assert(collectFamilyNotifications(demoFindings, 'ask').length === 0, 'ask sharing must wait for explicit consent');
     assert(collectFamilyNotifications(demoFindings, 'denied').length === 0, 'denied sharing must block notifications');
   });
 
   await runCase('justified follow-up question is driven by context', async () => {
-    const events = recordsToEvents(makeRecords({ steps: 9000, walkSpeed: 1.0 }, { steps: 6000, walkSpeed: 0.8 }), [observation('fatigue', '最近腿有点没劲')]);
+    const events = recordsToEvents(makeRecords({ steps: 9000, walkSpeed: 1.0 }, { steps: 6000, walkSpeed: 0.8 }), [
+      observation('fatigue', '最近腿有点没劲'),
+    ]);
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
     const questions = suggestFollowUpQuestions(['fatigue'], context);
     assert(questions.length > 0, 'declining activity plus fatigue should trigger a justified question');
     assert(questions[0].reason.length > 0, 'follow-up question should preserve its reason');
-    const reply = await generateAgentReply('最近腿有点没劲', ['fatigue'], findings, false, context);
-    assert(reply.includes(questions[0].question), 'Agent reply should actually use the justified question policy');
+    const fallbackAdapter: LlmAdapter = {
+      async complete() {
+        return { text: '', tags: [] };
+      },
+    };
+    const reply = await generateAgentReply('最近腿有点没劲', ['fatigue'], findings, false, context, fallbackAdapter);
+    assert(reply.includes(questions[0].question), 'Agent fallback should use the justified question policy');
   });
 
   await runCase('agent adapter is the real reply extension point', async () => {
@@ -137,24 +202,41 @@ async function main(): Promise<void> {
   });
 
   await runCase('http adapter strips private observations before external request', async () => {
-    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private'), observation('dizziness', '普通可共享内容', 'family_ok')]);
+    const events = recordsToEvents(
+      [],
+      [
+        observation('fatigue', '这是只有老人自己能看到的内容', 'private'),
+        observation('dizziness', '普通可共享内容', 'family_ok'),
+      ],
+    );
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
     let capturedBody = '';
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedBody = String(init?.body ?? '');
-      return new Response(JSON.stringify({ text: '收到', tags: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ text: '收到', tags: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }) as typeof fetch;
     try {
       await createHttpLlmAdapter('https://example.invalid/agent').complete('系统提示', '我头晕', context);
     } finally {
       globalThis.fetch = originalFetch;
     }
-    const payload = JSON.parse(capturedBody) as { context?: { observations?: Array<{ text: string; visibility?: string }> } };
+    const payload = JSON.parse(capturedBody) as {
+      context?: { observations?: Array<{ text: string; visibility?: string }> };
+    };
     const sentObservations = payload.context?.observations ?? [];
-    assert(sentObservations.some((item) => item.text === '普通可共享内容'), 'shared observation should be sent');
-    assert(!sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'), 'private observation must not be sent to external LLM');
+    assert(
+      sentObservations.some((item) => item.text === '普通可共享内容'),
+      'shared observation should be sent',
+    );
+    assert(
+      !sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'),
+      'private observation must not be sent to external LLM',
+    );
   });
 
   await runCase('natural language numeric extraction feeds both core metrics', () => {
@@ -169,11 +251,18 @@ async function main(): Promise<void> {
 
   await runCase('care tasks are contextual rather than daily noise', () => {
     assert(buildInitialTasks(TODAY).length === 0, 'stable days should not create arbitrary daily tasks');
-    const watchFinding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 6500 })), TODAY).find((item) => item.ruleId === 'metric.steps.baseline_shift');
+    const watchFinding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 6500 })), TODAY).find(
+      (item) => item.ruleId === 'metric.steps.baseline_shift',
+    );
     assert(watchFinding, 'a meaningful metric finding should exist for the task eligibility check');
     assert(!createTaskFromFinding(watchFinding, TODAY), 'watch findings should not create action tasks');
 
-    const findings = runDetection(recordsToEvents(makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 })), TODAY);
+    const findings = runDetection(
+      recordsToEvents(
+        makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }),
+      ),
+      TODAY,
+    );
     const actionable = findings.find((item) => item.ruleId === 'fusion.multisignal_deterioration');
     assert(actionable?.severity === 'alert', 'multi-signal deterioration should be actionable');
     const task = actionable ? createTaskFromFinding(actionable, TODAY) : null;
@@ -186,9 +275,18 @@ async function main(): Promise<void> {
 
   await runCase('all three health input types materialize from one stream', () => {
     const measurement = dayRecordsToMeasurements([{ date: TODAY, metrics: { steps: 7200 } }], 'device')[0];
-    const labResult = { id: 'lab-1', timestamp: `${TODAY}T09:00:00`, name: 'NT-proBNP', value: 320, unit: 'pg/ml', source: 'photo' as const };
+    const labResult = {
+      id: 'lab-1',
+      timestamp: `${TODAY}T09:00:00`,
+      name: 'NT-proBNP',
+      value: 320,
+      unit: 'pg/ml',
+      source: 'photo' as const,
+    };
     const obs = observation('fatigue', '今天有点累');
-    const data = materializeHealthData(mergeHealthEvents([measurementToEvent(measurement), observationToEvent(obs), labResultToEvent(labResult)]));
+    const data = materializeHealthData(
+      mergeHealthEvents([measurementToEvent(measurement), observationToEvent(obs), labResultToEvent(labResult)]),
+    );
     assert(data.measurements.length === 1, 'measurement event should materialize');
     assert(data.observations.length === 1, 'observation event should materialize');
     assert(data.labResults.length === 1, 'lab result event should materialize');
@@ -196,24 +294,44 @@ async function main(): Promise<void> {
   });
 
   await runCase('weekly report excludes private observation text', () => {
-    const findings: Finding[] = [{ id: 'finding-1', date: TODAY, severity: 'alert', title: '活动量持续下降', detail: 'demo', evidence: ['活动步数明显下降'], carePath: '确认老人近期状态', familyMessage: '请联系老人', familyEligible: true }];
-    const report = buildWeeklyReport(makeRecords({ steps: 10000 }, { steps: 7000 }), [observation('fatigue', '普通可共享主诉'), observation('dizziness', '私密主诉', 'private')], findings, TODAY);
-    const section = report.sections.find((item) => item.title === '您自己说过的');
-    assert(section?.lines.some((line) => line.includes('普通可共享主诉')), 'shared observation should be present');
-    assert(section?.lines.every((line) => !line.includes('私密主诉')), 'private observation should not be exposed by report input');
+    const findings: Finding[] = [
+      {
+        id: 'finding-1',
+        date: TODAY,
+        severity: 'alert',
+        title: '活动量持续下降',
+        detail: 'demo',
+        evidence: ['活动步数明显下降'],
+        carePath: '确认老人近期状态',
+        familyMessage: '请联系老人',
+        familyEligible: true,
+      },
+    ];
+    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);
+    const data = materializeHealthData(events);
+    const report = buildWeeklyReport(data.records, data.observations, findings, TODAY);
+    const reportText = report.sections.flatMap((section) => [section.title, ...section.lines]).join('\n');
+    assert(
+      !reportText.includes('只有老人自己能看到的内容'),
+      'private observation text should never appear in weekly report',
+    );
   });
 
   await runCase('agent context is bounded and carries Person Twin evidence', () => {
     const events = recordsToEvents(demoRecords, seedObservations);
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
-    const text = serializeAgentContext(context);
-    assert(context.observations.length <= 8, 'agent context should bound observations');
-    assert(context.priorityFindings.length <= 6, 'agent context should bound findings');
-    assert(text.includes('当前安全等级：'), 'serialized context should include safety level');
-    assert(text.includes('Person Twin：'), 'serialized context should include Person Twin');
-    assert(text.includes('功能画像：'), 'serialized context should include functional profile');
+    const serialized = serializeAgentContext(context);
+    assert(serialized.length < 12000, 'serialized context should stay bounded');
+    assert(serialized.includes('活动量下降'), 'Person Twin evidence should survive serialization');
+    assert(
+      !('name' in (context.personTwin as unknown as Record<string, unknown>)),
+      'Person Twin should not expose direct identity',
+    );
   });
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

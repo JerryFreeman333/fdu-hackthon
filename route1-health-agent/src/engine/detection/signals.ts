@@ -3,10 +3,17 @@ import { METRICS } from '../../types';
 import { computeBaseline, deviationSigma, diffDays, recentMean } from '../baseline';
 import type { DetectionConfig, MetricSignal } from './types';
 
-export function hadTag(observations: Observation[], tag: SymptomTag, endDate: string, days: number): Observation | null {
-  return observations.find(
-    (o) => o.tags.includes(tag) && diffDays(o.date, endDate) >= 0 && diffDays(o.date, endDate) < days,
-  ) ?? null;
+export function hadTag(
+  observations: Observation[],
+  tag: SymptomTag,
+  endDate: string,
+  days: number,
+): Observation | null {
+  return (
+    observations.find(
+      (o) => o.tags.includes(tag) && diffDays(o.date, endDate) >= 0 && diffDays(o.date, endDate) < days,
+    ) ?? null
+  );
 }
 
 export function countRecentPoints(records: DayRecord[], metric: MetricKey, endDate: string, days: number): number {

@@ -44,9 +44,10 @@ export const weightRiseRule: DetectionRule = {
         `最近${context.config.recentDays}天中有 ${signal.recentN} 天数据，平均体重 ${fmt('weight', signal.recentMean)}，比个人基线高 ${delta.toFixed(1)} kg`,
         ...(edema && familyEligible ? [`主诉：${edema.date} 说“${edema.text}”`] : []),
       ],
-      familyMessage: withEdema && familyEligible
-        ? `【建议关注】${context.today}：近几天体重较个人基线高 ${delta.toFixed(1)} kg，同时老人提到水肿，建议今天联系老人确认状态，并考虑咨询医生。`
-        : undefined,
+      familyMessage:
+        withEdema && familyEligible
+          ? `【建议关注】${context.today}：近几天体重较个人基线高 ${delta.toFixed(1)} kg，同时老人提到水肿，建议今天联系老人确认状态，并考虑咨询医生。`
+          : undefined,
       carePath: withEdema ? '今天联系老人确认状态；如症状继续加重，联系社区/随访医生。' : undefined,
       ruleId: 'weight.short_term_rise',
       score: withEdema ? 3 : 1,
