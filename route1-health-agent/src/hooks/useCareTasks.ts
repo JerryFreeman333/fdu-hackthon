@@ -32,7 +32,9 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
   }, [tasks]);
 
   useEffect(() => {
-    const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
+    const actionable = findings.filter(
+      (finding) => finding.severity === 'alert' || finding.severity === 'urgent',
+    );
     if (actionable.length === 0) return;
     setTasks((current) => {
       const next = [...current];
@@ -45,12 +47,18 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
   }, [findings]);
 
   function updateStatus(taskId: string, status: CareTask['status']) {
-    setTasks((current) => current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)));
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)),
+    );
   }
 
   function ensureMedicationCheck(createdAt: string) {
     setTasks((current) => {
-      if (current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')) {
+      if (
+        current.some(
+          (task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending',
+        )
+      ) {
         return current;
       }
       return [
