@@ -57,6 +57,32 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Normalize stale weekly report regression test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/detection.test.ts')
+          text = path.read_text()
+          old = """    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);\n    const report = buildWeeklyReport(profile, events, findings, TODAY);\n    assert(!report.some((section) => section.includes('只有老人自己能看到的内容')), 'private observation text should never appear in weekly report');"""
+          new = """    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);\n    const data = materializeHealthData(events);\n    const report = buildWeeklyReport(data.records, data.observations, findings, TODAY);\n    const reportText = report.sections.flatMap((section) => [section.title, ...section.lines]).join('\\n');\n    assert(!reportText.includes('只有老人自己能看到的内容'), 'private observation text should never appear in weekly report');"""
+          if old in text:
+              path.write_text(text.replace(old, new))
+          PY
+
+      - name: Commit regression test migration
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cd ..
+          if git diff --quiet -- route1-health-agent/tests/detection.test.ts; then
+            echo "Weekly report regression test is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent/tests/detection.test.ts
+          git commit -m "test(route1): update weekly report regression"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
       - name: Batch format Route 1
         run: npm run format
 
