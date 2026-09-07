@@ -5,7 +5,16 @@
  */
 import type { ChatMessage, DayRecord, ElderProfile, Observation } from '../types';
 
-export const TODAY = '2026-09-06';
+function localToday(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+}
+
+export const TODAY = localToday();
+
+function dateOffset(offset: number): string {
+  return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10);
+}
 
 export const profile: ElderProfile = {
   name: '王秀兰奶奶',
@@ -22,7 +31,7 @@ export const profile: ElderProfile = {
 
 function buildRecords(): DayRecord[] {
   const records: DayRecord[] = [];
-  const start = Date.parse('2026-08-17');
+  const start = Date.parse(TODAY) - 20 * 86400000;
   for (let i = 0; i < 21; i += 1) {
     const date = new Date(start + i * 86400000).toISOString().slice(0, 10);
     const declining = i >= 16;
@@ -58,10 +67,10 @@ export const records: DayRecord[] = buildRecords();
 
 const shareable = { visibility: 'family_ok' as const };
 export const seedObservations: Observation[] = [
-  { id: 'obs-1', date: '2026-09-03', source: 'chat', text: '今天很累，什么都不想干', tags: ['fatigue'], ...shareable },
+  { id: 'obs-1', date: dateOffset(-3), source: 'chat', text: '今天很累，什么都不想干', tags: ['fatigue'], ...shareable },
   {
     id: 'obs-2',
-    date: '2026-09-04',
+    date: dateOffset(-2),
     source: 'chat',
     text: '最近走路有点喘，走两步就想歇',
     tags: ['dyspnea'],
@@ -69,19 +78,19 @@ export const seedObservations: Observation[] = [
   },
   {
     id: 'obs-3',
-    date: '2026-09-05',
+    date: dateOffset(-1),
     source: 'chat',
     text: '这两天睡不好，一晚上要起来好几趟',
     tags: ['poorSleep'],
     ...shareable,
   },
-  { id: 'obs-4', date: '2026-09-06', source: 'chat', text: '早上脚踝有点肿，鞋都紧了', tags: ['edema'], ...shareable },
+  { id: 'obs-4', date: dateOffset(0), source: 'chat', text: '早上脚踝有点肿，鞋都紧了', tags: ['edema'], ...shareable },
 ];
 
 export const seedPhotoObservations: Observation[] = [
-  { id: 'photo-1', date: '2026-09-01', source: 'photo', text: '拍照录入：血压 138/84 mmHg', tags: [] },
-  { id: 'photo-2', date: '2026-09-04', source: 'photo', text: '拍照录入：体重 63.4 kg', tags: [] },
-  { id: 'photo-3', date: '2026-09-06', source: 'photo', text: '拍照录入：血压 148/88 mmHg', tags: ['bpHigh'] },
+  { id: 'photo-1', date: dateOffset(-5), source: 'photo', text: '拍照录入：血压 138/84 mmHg', tags: [], visibility: 'family_ok' },
+  { id: 'photo-2', date: dateOffset(-2), source: 'photo', text: '拍照录入：体重 63.4 kg', tags: [], visibility: 'family_ok' },
+  { id: 'photo-3', date: dateOffset(0), source: 'photo', text: '拍照录入：血压 148/88 mmHg', tags: ['bpHigh'], visibility: 'family_ok' },
 ];
 
 export const seedChat: ChatMessage[] = [
