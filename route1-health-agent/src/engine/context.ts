@@ -1,5 +1,5 @@
 /** Agent Context：把近期事件与 Person Twin 压缩成 Agent 可消费、可解释的上下文。 */
-import type { ElderProfile, Finding, MetricKey, SymptomTag } from '../types';
+import type { ElderProfile, Finding, MetricKey, SymptomTag, PrivacyScope } from '../types';
 import { METRICS } from '../types';
 import { diffDays, computeBaseline, recentMean } from './baseline';
 import { materializeHealthData, type HealthEvent } from '../pipeline/events';
@@ -15,6 +15,7 @@ export interface AgentMetricContext {
   baselineMean: number | null;
   changeRatio: number | null;
   direction: 'higher' | 'lower' | 'stable' | 'unknown';
+  visibility?: PrivacyScope;
 }
 export interface AgentObservationContext {
   date: string;
@@ -108,6 +109,7 @@ function buildMetricContexts(
       baselineMean: baseline?.mean ?? null,
       changeRatio,
       direction: directionFor(changeRatio),
+      visibility: latest.visibility,
     });
   }
   return output;
@@ -163,15 +165,20 @@ export function buildAgentContext(
 
 export function serializeAgentContext(context: AgentContext): string {
   const metrics = context.metrics
+    .filter((m) => m.visibility !== 'private')
     .map((m) => {
       const change =
         m.changeRatio === null ? '无足够基线' : `${m.changeRatio >= 0 ? '+' : ''}${Math.round(m.changeRatio * 100)}%`;
       return `${m.label}=${m.latestValue}${m.unit}；近${context.windowDays}天均值=${m.recentMean ?? '无'}；较个人基线=${change}`;
     })
     .join('\n');
-  const observations = context.observations.map((o) => `${o.date}：${o.text} [${o.tags.join('、')}]`).join('\n');
+  const observations = context.observations
+    .filter((o) => o.visibility !== 'private')
+    .map((o) => `${o.date}：${o.text} [${o.tags.join('、')}]`)
+    .join('\n');
   const labs = context.labs.map((l) => `${l.name}=${l.value}${l.unit} (${l.timestamp.slice(0, 10)})`).join('\n');
   const findings = context.priorityFindings
+    .filter((f) => f.familyEligible !== false)
     .map((f) => `${f.severity}：${f.title}；证据：${f.evidence.join('；')}`)
     .join('\n');
   const functionProfile = [
