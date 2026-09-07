@@ -84,11 +84,9 @@ async function main(): Promise<void> {
   });
 
   await runCase('sparse recent data does not create a trend', () => {
-    const findings = runDetection(
-      recordsToEvents(makeSparseRecords({ steps: 10000 }, { steps: 6000 })),
-      TODAY,
-      { minRecentPoints: 2 },
-    );
+    const findings = runDetection(recordsToEvents(makeSparseRecords({ steps: 10000 }, { steps: 6000 })), TODAY, {
+      minRecentPoints: 2,
+    });
     assert(
       !findings.some((finding) => finding.ruleId === 'metric.steps.baseline_shift'),
       'one recent point must not create a trend finding',
@@ -96,10 +94,9 @@ async function main(): Promise<void> {
   });
 
   await runCase('single weak metric stays at watch', () => {
-    const finding = runDetection(
-      recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })),
-      TODAY,
-    ).find((item) => item.ruleId === 'metric.steps.baseline_shift');
+    const finding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })), TODAY).find(
+      (item) => item.ruleId === 'metric.steps.baseline_shift',
+    );
     assert(finding, 'step reduction should produce a metric finding');
     assert(finding.severity === 'watch', 'single metric change should remain watch');
     assert(!finding.familyMessage, 'watch findings should not directly notify family');
@@ -117,10 +114,9 @@ async function main(): Promise<void> {
   });
 
   await runCase('severe blood pressure plus chest pain upgrades to urgent', () => {
-    const events = recordsToEvents(
-      makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }),
-      [observation('chestPain', '胸口突然疼得厉害')],
-    );
+    const events = recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }), [
+      observation('chestPain', '胸口突然疼得厉害'),
+    ]);
     const findings = runDetection(events, TODAY);
     const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
     assert(safety, 'combined severe BP safety finding should exist');
@@ -165,7 +161,10 @@ async function main(): Promise<void> {
     assert(canShareWithFamily('ask', 'share_family'), 'explicit share request should be allowed when not denied');
     assert(!canShareWithFamily('denied', 'share_family'), 'denied family sharing must remain denied');
     const demoFindings = runDetection(recordsToEvents(demoRecords, seedObservations), TODAY);
-    assert(collectFamilyNotifications(demoFindings, 'granted').length > 0, 'granted sharing should allow eligible notifications');
+    assert(
+      collectFamilyNotifications(demoFindings, 'granted').length > 0,
+      'granted sharing should allow eligible notifications',
+    );
     assert(collectFamilyNotifications(demoFindings, 'ask').length === 0, 'ask sharing must wait for explicit consent');
     assert(collectFamilyNotifications(demoFindings, 'denied').length === 0, 'denied sharing must block notifications');
   });
@@ -184,14 +183,7 @@ async function main(): Promise<void> {
         return { text: '', tags: [] };
       },
     };
-    const reply = await generateAgentReply(
-      '最近腿有点没劲',
-      ['fatigue'],
-      findings,
-      false,
-      context,
-      fallbackAdapter,
-    );
+    const reply = await generateAgentReply('最近腿有点没劲', ['fatigue'], findings, false, context, fallbackAdapter);
     assert(reply.includes(questions[0].question), 'Agent fallback should use the justified question policy');
   });
 
@@ -210,10 +202,13 @@ async function main(): Promise<void> {
   });
 
   await runCase('http adapter strips private observations before external request', async () => {
-    const events = recordsToEvents([], [
-      observation('fatigue', '这是只有老人自己能看到的内容', 'private'),
-      observation('dizziness', '普通可共享内容', 'family_ok'),
-    ]);
+    const events = recordsToEvents(
+      [],
+      [
+        observation('fatigue', '这是只有老人自己能看到的内容', 'private'),
+        observation('dizziness', '普通可共享内容', 'family_ok'),
+      ],
+    );
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
     let capturedBody = '';
@@ -234,8 +229,14 @@ async function main(): Promise<void> {
       context?: { observations?: Array<{ text: string; visibility?: string }> };
     };
     const sentObservations = payload.context?.observations ?? [];
-    assert(sentObservations.some((item) => item.text === '普通可共享内容'), 'shared observation should be sent');
-    assert(!sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'), 'private observation must not be sent to external LLM');
+    assert(
+      sentObservations.some((item) => item.text === '普通可共享内容'),
+      'shared observation should be sent',
+    );
+    assert(
+      !sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'),
+      'private observation must not be sent to external LLM',
+    );
   });
 
   await runCase('natural language numeric extraction feeds both core metrics', () => {
@@ -258,10 +259,7 @@ async function main(): Promise<void> {
 
     const findings = runDetection(
       recordsToEvents(
-        makeRecords(
-          { steps: 10000, weight: 60, restingHr: 65 },
-          { steps: 7000, weight: 61.5, restingHr: 72 },
-        ),
+        makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }),
       ),
       TODAY,
     );
@@ -311,7 +309,10 @@ async function main(): Promise<void> {
     ];
     const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);
     const report = buildWeeklyReport(profile, events, findings, TODAY);
-    assert(!report.some((section) => section.includes('只有老人自己能看到的内容')), 'private observation text should never appear in weekly report');
+    assert(
+      !report.some((section) => section.includes('只有老人自己能看到的内容')),
+      'private observation text should never appear in weekly report',
+    );
   });
 
   await runCase('agent context is bounded and carries Person Twin evidence', () => {
@@ -321,7 +322,10 @@ async function main(): Promise<void> {
     const serialized = serializeAgentContext(context);
     assert(serialized.length < 12000, 'serialized context should stay bounded');
     assert(serialized.includes('活动量下降'), 'Person Twin evidence should survive serialization');
-    assert(!('name' in (context.personTwin as unknown as Record<string, unknown>)), 'Person Twin should not expose direct identity');
+    assert(
+      !('name' in (context.personTwin as unknown as Record<string, unknown>)),
+      'Person Twin should not expose direct identity',
+    );
   });
 }
 
