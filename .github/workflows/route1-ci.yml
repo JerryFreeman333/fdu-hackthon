@@ -46,6 +46,17 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Format workspace for review artifact
+        run: npx --yes prettier@3.5.3 --write .
+
+      - name: Upload Prettier-normalized source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: route1-formatted-source
+          path: route1-health-agent
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify formatting
         run: npm run format:check
 
