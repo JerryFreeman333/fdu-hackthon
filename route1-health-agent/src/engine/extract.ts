@@ -9,7 +9,7 @@ export interface ExtractedValue {
 }
 
 const SIMPLE_DIGIT = '零〇一二两三四五六七八九';
-const NUMBER = `(\\d+(?:\\.\\d+)?|[${SIMPLE_DIGIT}十百]+)`;
+const NUMBER = `(\\d+(?:\\.\\d+)?|[${SIMPLE_DIGIT}十百千万]+)`;
 const RANGE = `(${NUMBER}(?:\\s*(?:到|至|~|-)\\s*${NUMBER})?)`;
 const DIGITS: Record<string, number> = {
   零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
@@ -17,10 +17,11 @@ const DIGITS: Record<string, number> = {
 
 function parseChineseNumber(input: string): number | null {
   if (/^\\d/.test(input)) return Number(input);
-  if (/^[零〇一二两三四五六七八九]{2}$/.test(input) && !input.includes('十')) {
+  if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) {
     return (DIGITS[input[0]] + DIGITS[input[1]]) / 2;
   }
   if (input in DIGITS) return DIGITS[input];
+
   let total = 0;
   let current = 0;
   for (const ch of input) {
@@ -29,6 +30,12 @@ function parseChineseNumber(input: string): number | null {
       current = 0;
     } else if (ch === '百') {
       total += (current || 1) * 100;
+      current = 0;
+    } else if (ch === '千') {
+      total += (current || 1) * 1000;
+      current = 0;
+    } else if (ch === '万') {
+      total = (total + current) * 10000;
       current = 0;
     } else if (ch in DIGITS) {
       current = DIGITS[ch];
