@@ -46,15 +46,21 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         <div className="card privacy-card">
           <h3>当前未共享详细健康资料</h3>
           <p>老人尚未授权家属查看详细健康资料。需要了解情况，请直接联系老人。</p>
-          <button className="btn-primary" onClick={props.onContactElder}>联系老人</button>
+          <button className="btn-primary" onClick={props.onContactElder}>
+            联系老人
+          </button>
         </div>
       );
     }
     return (
       <div className="family-detail">
         <div className="family-back">
-          <button className="btn-secondary" onClick={() => props.onViewChange('home')}>← 返回</button>
-          <button className="btn-secondary" onClick={() => props.onViewChange('report')}>查看周报</button>
+          <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+            ← 返回
+          </button>
+          <button className="btn-secondary" onClick={() => props.onViewChange('report')}>
+            查看周报
+          </button>
         </div>
         <ProfileView records={props.records} observations={familyObservations} findings={familyFindings} today={props.today} />
       </div>
@@ -67,14 +73,18 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         <div className="card privacy-card">
           <h3>当前未共享周报</h3>
           <p>老人尚未授权家属查看周报。需要了解情况，请直接联系老人。</p>
-          <button className="btn-primary" onClick={props.onContactElder}>联系老人</button>
+          <button className="btn-primary" onClick={props.onContactElder}>
+            联系老人
+          </button>
         </div>
       );
     }
     return (
       <div className="family-detail">
         <div className="family-back">
-          <button className="btn-secondary" onClick={() => props.onViewChange('home')}>← 返回</button>
+          <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+            ← 返回
+          </button>
         </div>
         <ReportView records={props.records} observations={familyObservations} findings={familyFindings} today={props.today} />
       </div>
@@ -88,6 +98,36 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     setBindError(ok ? null : '邀请码无效或已失效，请让老人重新生成。');
   }
 
+  if (props.familyLink?.status !== 'active') {
+    return (
+      <div className="family-dashboard">
+        <section className="card privacy-card">
+          <div className="eyebrow">家属端</div>
+          <h2>先完成家庭绑定</h2>
+          <p>在本地 Demo 中，未绑定前不会展示老人的健康变化或家属通知。</p>
+          {props.familyLink?.inviteCode && (
+            <p>
+              老人当前邀请码：<strong>{props.familyLink.inviteCode}</strong>
+            </p>
+          )}
+          <div className="chat-input-row">
+            <input
+              className="chat-input"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              placeholder="例如 AN-2026-AB12CD"
+            />
+            <button className="btn-primary" onClick={bind}>
+              绑定
+            </button>
+          </div>
+          {bindError && <p className="muted">{bindError}</p>}
+          <p className="muted">这是演示访问控制；真实产品必须由服务端账号、授权与会话共同校验。</p>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="family-dashboard">
       <section className={`family-status card status-${state.tone}`}>
@@ -95,8 +135,12 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         <h2>{state.title}</h2>
         <p>{state.detail}</p>
         <div className="family-actions">
-          <button className="btn-primary" onClick={props.onContactElder}>📞 联系老人</button>
-          <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>查看详细变化</button>
+          <button className="btn-primary" onClick={props.onContactElder}>
+            📞 联系老人
+          </button>
+          <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
+            查看详细变化
+          </button>
         </div>
       </section>
 
@@ -122,7 +166,12 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                   </div>
                   <p>{notification.message}</p>
                   <span className="muted">为什么现在告诉您：{notification.reason}</span>
-                  {notification.actionPath && <div className="care-path"><b>建议行动：</b>{notification.actionPath}</div>}
+                  {notification.actionPath && (
+                    <div className="care-path">
+                      <b>建议行动：</b>
+                      {notification.actionPath}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -142,42 +191,25 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         ) : (
           activeTasks.map((task) => (
             <div className="family-task" key={task.id}>
-              <div><strong>{task.title}</strong><p>{task.description}</p></div>
-              <button className="btn-secondary" onClick={() => props.onTaskStatus(task.id, 'completed')}>标记已完成</button>
+              <div>
+                <strong>{task.title}</strong>
+                <p>{task.description}</p>
+              </div>
+              <button className="btn-secondary" onClick={() => props.onTaskStatus(task.id, 'completed')}>
+                标记已完成
+              </button>
             </div>
           ))
         )}
       </section>
 
-      <section className="card privacy-card">
-        <div>
-          <h3>家庭绑定</h3>
-          {props.familyLink?.status === 'active' ? (
-            <>
-              <p className="muted">当前绑定：{props.familyLink.relation} · {props.familyLink.displayName} · {props.familyLink.maskedContact}</p>
-              <p className="muted">状态：已绑定</p>
-            </>
-          ) : (
-            <>
-              {props.familyLink?.inviteCode && <p>老人当前邀请码：<strong>{props.familyLink.inviteCode}</strong></p>}
-              <p className="muted">请输入邀请码完成本地演示绑定。</p>
-              <div className="chat-input-row">
-                <input className="chat-input" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="例如 AN-2026-1234" />
-                <button className="btn-primary" onClick={bind}>绑定</button>
-              </div>
-              {bindError && <p className="muted">{bindError}</p>}
-            </>
-          )}
-          <p className="muted">当前授权：{props.profile.familySharing === 'granted' ? '已同意在必要时共享' : props.profile.familySharing === 'ask' ? '每次需要先征得同意' : '暂不共享'}</p>
-        </div>
-        {props.familyLink && props.profile.familySharing !== 'denied' && (
-          <button className="btn-secondary" onClick={props.onRevokeSharing}>暂停共享</button>
-        )}
-      </section>
-
       <div className="family-secondary-nav">
-        <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>健康详细变化</button>
-        <button className="btn-secondary" onClick={() => props.onViewChange('report')}>这一周发生了什么</button>
+        <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
+          健康详细变化
+        </button>
+        <button className="btn-secondary" onClick={() => props.onViewChange('report')}>
+          这一周发生了什么
+        </button>
       </div>
     </div>
   );
