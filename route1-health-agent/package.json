@@ -9,23 +9,22 @@
     "typecheck": "tsc -b",
     "test": "tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && node --test .test-build/tests/detection.test.js",
     "build": "npm run typecheck && vite build",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "npx --yes prettier@3.5.3 --write .",
+    "format:check": "npx --yes prettier@3.5.3 --check .",
     "security:check": "node scripts/security-check.mjs",
     "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "18.3.31",
-    "@types/react-dom": "18.3.7",
-    "@vitejs/plugin-react": "4.7.0",
-    "prettier": "3.5.3",
-    "typescript": "5.6.3",
-    "vite": "5.4.21"
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
   },
   "engines": {
     "node": ">=22.0.0",
