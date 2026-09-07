@@ -13,13 +13,14 @@ type SpeechRecognitionResultEvent = Event & {
     [index: number]: { [index: number]: { transcript: string } };
   };
 };
+type SpeechRecognitionErrorEvent = Event & { error?: string };
 type SpeechRecognitionLike = {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
   onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -32,27 +33,42 @@ declare global {
   }
 }
 
+type VoiceState = 'ready' | 'unsupported' | 'listening' | 'permission' | 'error';
+
+function voiceMessage(state: VoiceState): string {
+  switch (state) {
+    case 'unsupported':
+      return '当前浏览器没有提供网页语音输入，可以使用键盘上的麦克风听写，再检查文字后发送。';
+    case 'permission':
+      return '麦克风权限未通过。请在浏览器权限设置中允许麦克风；也可以直接使用键盘听写。';
+    case 'error':
+      return '网页语音输入没有成功启动。可以检查麦克风权限、网络和浏览器支持情况，或改用键盘听写。';
+    default:
+      return '';
+  }
+}
+
 export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
   const [text, setText] = useState('');
-  const [listening, setListening] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chat.length]);
-
-  useEffect(() => {
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    setVoiceSupported(Boolean(Recognition));
+    setVoiceState(Recognition ? 'ready' : 'unsupported');
     setTtsSupported(typeof window !== 'undefined' && 'speechSynthesis' in window);
     return () => {
       recognitionRef.current?.stop();
       window.speechSynthesis?.cancel();
     };
   }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chat.length]);
 
   function send(t: string) {
     const trimmed = t.trim();
@@ -63,8 +79,11 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
 
   function toggleVoice() {
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!Recognition) return;
-    if (listening) {
+    if (!Recognition) {
+      setVoiceState('unsupported');
+      return;
+    }
+    if (voiceState === 'listening') {
       recognitionRef.current?.stop();
       return;
     }
@@ -78,13 +97,26 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
         { length: event.results.length },
         (_, index) => event.results[index]?.[0]?.transcript ?? '',
       ).join('');
-      if (transcript.trim()) send(transcript);
+      if (transcript.trim()) {
+        setText(transcript.trim());
+        inputRef.current?.focus();
+        setVoiceState('ready');
+      }
     };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
+    recognition.onend = () => {
+      setVoiceState((current) => (current === 'listening' ? 'ready' : current));
+    };
+    recognition.onerror = (event) => {
+      const error = event.error ?? 'unknown';
+      setVoiceState(error === 'not-allowed' || error === 'service-not-allowed' ? 'permission' : 'error');
+    };
     recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
+    setVoiceState('listening');
+    try {
+      recognition.start();
+    } catch {
+      setVoiceState('error');
+    }
   }
 
   function speak(textToRead: string) {
@@ -96,12 +128,14 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
     window.speechSynthesis.speak(utterance);
   }
 
+  const voiceHint = voiceMessage(voiceState);
+
   return (
     <div className="chat-view">
       <div className="chat-intro">
         <div className="agent-greeting">
           我是<b>阿安</b>，您的健康小助手。身体有什么不舒服、心里有什么话，都可以跟我说。
-          我会把它们和您的手表、血压数据放在一起看，发现“和平时不一样”的地方，帮您盯着。
+          目前页面里的手表、血压等设备数据是演示接口，真实硬件尚未接入；我不会把演示数据当成您当前真实测量。
         </div>
       </div>
 
@@ -133,21 +167,19 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
         ))}
       </div>
 
-      {!voiceSupported && (
-        <div className="muted voice-fallback">当前浏览器不支持语音输入，可以直接打字，或让家人帮忙操作。</div>
-      )}
+      {voiceState !== 'listening' && voiceHint && <div className="muted voice-fallback">{voiceHint}</div>}
 
       <div className="chat-input-row">
-        {voiceSupported && (
-          <button
-            className={`btn-secondary ${listening ? 'is-listening' : ''}`}
-            onClick={toggleVoice}
-            aria-label="语音输入"
-          >
-            {listening ? '停止' : '🎙️ 说话'}
-          </button>
-        )}
+        <button
+          className={`btn-secondary ${voiceState === 'listening' ? 'is-listening' : ''}`}
+          onClick={toggleVoice}
+          aria-label={voiceState === 'unsupported' ? '网页语音输入不可用' : '语音输入'}
+          disabled={voiceState === 'unsupported'}
+        >
+          {voiceState === 'listening' ? '停止录音' : voiceState === 'unsupported' ? '🎙️ 语音不可用' : '🎙️ 说话'}
+        </button>
         <input
+          ref={inputRef}
           className="chat-input"
           placeholder="像平时聊天一样，说说今天怎么样……"
           value={text}
@@ -158,6 +190,7 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
           发送
         </button>
       </div>
+      {text.trim() && voiceState !== 'listening' && <div className="muted">语音转写已放进输入框，请确认文字无误后再发送。</div>}
     </div>
   );
 }
