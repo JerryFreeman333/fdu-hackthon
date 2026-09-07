@@ -37,7 +37,7 @@ export function buildWeeklyReport(records: DayRecord[], observations: Observatio
   }
   sections.push({ title: '身体数据这一周', lines: metricLines.length ? metricLines : ['这一周暂无足够的结构化指标数据。'] });
 
-  const weekObs = observations.filter((o) => inWeek(o.date));
+  const weekObs = observations.filter((o) => inWeek(o.date) && o.visibility !== 'private');
   sections.push({ title: '您自己说过的', lines: weekObs.length ? weekObs.map((o) => `${o.date}：${o.text}`) : ['这一周没记录到明显不舒服的主诉。'] });
 
   const weekFindings = findings.filter((f) => inWeek(f.date) && (f.severity === 'alert' || f.severity === 'watch' || f.severity === 'urgent'));
