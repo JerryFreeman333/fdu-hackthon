@@ -61,17 +61,16 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           path = Path('tests/detection.test.ts')
           text = path.read_text()
-          pattern = re.compile(r"(?ms)(  await runCase\('weekly report excludes private observation text', \(\) => \{.*?\n)(  \}\);\n\n  await runCase\('agent context is bounded and carries Person Twin evidence'")
-          replacement = r"\1    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);\n    const data = materializeHealthData(events);\n    const report = buildWeeklyReport(data.records, data.observations, findings, TODAY);\n    const reportText = report.sections.flatMap((section) => [section.title, ...section.lines]).join('\\n');\n    assert(!reportText.includes('只有老人自己能看到的内容'), 'private observation text should never appear in weekly report');\n  });\n\n  await runCase('agent context is bounded and carries Person Twin evidence'"
-          new_text, count = pattern.subn(replacement, text)
-          if count:
-              path.write_text(new_text)
-              print(f'Updated weekly report regression block: {count}')
-          else:
-              print('Weekly report regression block already current or not found; leaving file unchanged.')
+          start_marker = "  await runCase('weekly report excludes private observation text', () => {"
+          end_marker = "  await runCase('agent context is bounded and carries Person Twin evidence'"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('weekly report regression markers not found')
+          replacement = """  await runCase('weekly report excludes private observation text', () => {\n    const findings: Finding[] = [\n      {\n        id: 'finding-1',\n        date: TODAY,\n        severity: 'alert',\n        title: '活动量持续下降',\n        detail: 'demo',\n        evidence: ['活动步数明显下降'],\n        carePath: '确认老人近期状态',\n        familyMessage: '请联系老人',\n        familyEligible: true,\n      },\n    ];\n    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private')]);\n    const data = materializeHealthData(events);\n    const report = buildWeeklyReport(data.records, data.observations, findings, TODAY);\n    const reportText = report.sections.flatMap((section) => [section.title, ...section.lines]).join('\\n');\n    assert(!reportText.includes('只有老人自己能看到的内容'), 'private observation text should never appear in weekly report');\n  });\n\n"""
+          path.write_text(text[:start] + replacement + text[end:])
           PY
 
       - name: Commit regression test migration
