@@ -1,5 +1,5 @@
 /** 每周健康周报 —— 把一周的数据与此前稳定窗口分开比较。 */
-import type { DayRecord, Finding, Observation } from '../types';
+import type { CareTask, DayRecord, Finding, Observation } from '../types';
 import { METRICS, type MetricKey } from '../types';
 import { computeBaseline, recentMean, diffDays } from './baseline';
 
@@ -35,6 +35,7 @@ export function buildWeeklyReport(
   observations: Observation[],
   findings: Finding[],
   weekEnd: string,
+  tasks: CareTask[] = [],
 ): WeeklyReport {
   const weekStart = new Date(Date.parse(weekEnd) - 6 * 86400000).toISOString().slice(0, 10);
   const baselineEnd = previousDay(weekStart);
@@ -59,7 +60,7 @@ export function buildWeeklyReport(
         ? `（较此前个人平时${delta > 0 ? '高' : '低'} ${Math.abs(Math.round((delta / base.mean) * 100))}%）`
         : '';
     const badDelta = meta.higherIsBad ? delta : -delta;
-    const note = badDelta > 0 && Math.abs(delta / (base.sd || 1)) >= 1 ? ' ← 变化比较明显' : '';
+    const note = badDelta > 0 && Math.abs(delta / Math.max(base.sd, 1e-9)) >= 1 ? ' ← 变化比较明显' : '';
     metricLines.push(
       `${meta.label}：本周平均 ${weekAvg.toFixed(meta.decimals)} ${meta.unit}，此前平时约 ${base.mean.toFixed(meta.decimals)} ${meta.unit}${pctText}${note}`,
     );
@@ -85,7 +86,22 @@ export function buildWeeklyReport(
       : ['这一周没有发现持续异常，继续保持。'],
   });
 
+  if (tasks.length > 0) {
+    const completed = tasks.filter((task) => task.status === 'completed').length;
+    const pending = tasks.filter((task) => task.status === 'pending' || task.status === 'in_progress').length;
+    const dismissed = tasks.filter((task) => task.status === 'dismissed').length;
+    sections.push({
+      title: '这周处理过的事情',
+      lines: [
+        `已完成 ${completed} 项，待处理 ${pending} 项，已忽略 ${dismissed} 项。`,
+        ...tasks.map((task) => `${task.status === 'completed' ? '已完成' : task.status === 'dismissed' ? '已忽略' : '待处理'}：${task.title}`),
+      ],
+    });
+  }
+
   const hasAlert = findings.some((f) => inWeek(f.date) && (f.severity === 'alert' || f.severity === 'urgent'));
+  const completedCount = tasks.filter((task) => task.status === 'completed').length;
+  const pendingCount = tasks.filter((task) => task.status === 'pending' || task.status === 'in_progress').length;
   return {
     rangeText: `${weekStart} ~ ${weekEnd}`,
     sections,
@@ -95,7 +111,7 @@ export function buildWeeklyReport(
     forFamily:
       `${weekStart} ~ ${weekEnd} 周报：` +
       (hasAlert
-        ? '本周检测到持续偏离此前个人基线的变化（详见“需要留意的变化”），建议近期多联系老人，必要时陪同就医。'
-        : '各项指标基本在此前个人基线范围内，无持续异常，暂不需要特别关注。'),
+        ? `本周检测到持续偏离此前个人基线的变化（详见“需要留意的变化”），建议近期多联系老人，必要时陪同就医。${completedCount || pendingCount ? ` 已完成 ${completedCount} 项照护任务，仍有 ${pendingCount} 项待处理。` : ''}`
+        : `各项指标基本在此前个人基线范围内，无持续异常，暂不需要特别关注。${completedCount || pendingCount ? ` 本周已完成 ${completedCount} 项照护任务，仍有 ${pendingCount} 项待处理。` : ''}`),
   };
 }
