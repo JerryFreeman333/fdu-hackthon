@@ -1,6 +1,13 @@
 name: route1-health-agent-ci
 
 on:
+  push:
+    branches:
+      - main
+      - 'route1/**'
+    paths:
+      - 'route1-health-agent/**'
+      - '.github/workflows/route1-ci.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
@@ -24,10 +31,9 @@ jobs:
         working-directory: route1-health-agent
 
     steps:
-      - name: Checkout PR head branch
+      - name: Checkout pushed or PR revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 1
 
       - name: Setup Node
