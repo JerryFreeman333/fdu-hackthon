@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
 import { TODAY, profile } from '../data/demo';
 
@@ -64,21 +64,32 @@ interface UseFamilyBindingOptions {
 }
 
 export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
-  const initialConsent = loadFamilySharing();
+  const [initialConsent] = useState(loadFamilySharing);
   const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>(initialConsent.familySharing);
   const [consentUpdatedAt, setConsentUpdatedAt] = useState(initialConsent.updatedAt);
   const [familyLink, setFamilyLink] = useState<FamilyLink | null>(() => loadFamilyLink());
   const [sharedFindingIds, setSharedFindingIds] = useState<string[]>(() => loadSharedFindingIds());
 
+  useEffect(() => {
+    window.localStorage.setItem(
+      CONSENT_KEY,
+      JSON.stringify({ familySharing, updatedAt: consentUpdatedAt || localIsoTimestamp() }),
+    );
+    if (familyLink) window.localStorage.setItem(FAMILY_LINK_KEY, JSON.stringify(familyLink));
+    else window.localStorage.removeItem(FAMILY_LINK_KEY);
+    window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify(sharedFindingIds.slice(-50)));
+  }, [familySharing, consentUpdatedAt, familyLink, sharedFindingIds]);
+
   function updatePersistentFamilySharing(next: ElderProfile['familySharing']) {
-    setFamilySharing(next);
     const updatedAt = localIsoTimestamp();
+    setFamilySharing(next);
     setConsentUpdatedAt(updatedAt);
+    return updatedAt;
   }
 
   function requestFamilyShare() {
-    updatePersistentFamilySharing('granted');
-    showToast(`已同意在必要时与家属共享。${consentUpdatedAt ? `授权记录时间：${consentUpdatedAt.slice(0, 10)}` : ''}`);
+    const updatedAt = updatePersistentFamilySharing('granted');
+    showToast(`已同意在必要时与家属共享。授权记录时间：${updatedAt.slice(0, 10)}`);
   }
 
   function keepFamilyPrivate() {
@@ -142,7 +153,6 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     consentUpdatedAt,
     familyLink,
     sharedFindingIds,
-    setSharedFindingIds,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
@@ -151,5 +161,3 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     shareFindingIds,
   };
 }
-
-export { CONSENT_KEY, FAMILY_LINK_KEY, SHARED_FINDING_IDS_KEY };
