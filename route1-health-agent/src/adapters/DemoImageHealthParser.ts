@@ -6,6 +6,7 @@ export type DemoImageKind = 'bloodPressure' | 'weight' | 'report';
 /**
  * Demo-only image parser. It intentionally does not inspect pixels or pretend to perform OCR.
  * The selected image kind maps to deterministic sample data so the ImageHealthParser seam is exercised end to end.
+ * Privacy is assigned by the caller, not by the parser.
  */
 export class DemoImageHealthParser implements ImageHealthParser {
   async parse(_image: Blob, context?: ImageParseContext & { kind?: DemoImageKind }): Promise<ParsedHealthData> {
@@ -26,7 +27,6 @@ export class DemoImageHealthParser implements ImageHealthParser {
       source: base.source,
       confidence: base.confidence,
       metadata: base.metadata,
-      visibility: 'family_ok' as const,
     });
 
     switch (kind) {
