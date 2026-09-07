@@ -6,7 +6,7 @@ import { materializeHealthData, type HealthEvent } from '../pipeline/events';
 import { buildPersonTwin, type PersonTwin } from './personTwin';
 
 export interface AgentMetricContext { metric: MetricKey; label: string; unit: string; latestValue: number; latestTimestamp: string; recentMean: number | null; baselineMean: number | null; changeRatio: number | null; direction: 'higher' | 'lower' | 'stable' | 'unknown'; }
-export interface AgentObservationContext { date: string; text: string; tags: SymptomTag[]; }
+export interface AgentObservationContext { date: string; text: string; tags: SymptomTag[]; visibility?: 'private' | 'family_ok'; }
 export interface AgentLabContext { name: string; value: number; unit: string; timestamp: string; }
 export interface AgentFindingContext { severity: Finding['severity']; title: string; detail: string; evidence: string[]; ruleId?: string; familyEligible?: boolean; }
 
@@ -52,7 +52,7 @@ export function buildAgentContext(profile: ElderProfile, events: HealthEvent[], 
   const observations = materialized.observations
     .filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) < windowDays)
     .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
-    .map((o) => ({ date: o.date, text: o.text, tags: o.tags }));
+    .map((o) => ({ date: o.date, text: o.text, tags: o.tags, visibility: o.visibility }));
   const labs = materialized.labResults
     .filter((lab) => diffDays(lab.timestamp.slice(0, 10), today) >= 0 && diffDays(lab.timestamp.slice(0, 10), today) < 30)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8)
