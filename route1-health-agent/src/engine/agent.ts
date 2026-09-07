@@ -115,8 +115,7 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('neuroChange')) {
     return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ??
-      '先别走动，立即联系家里人并寻求急救。'
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
     );
   }
   if (newTags.includes('fall')) {
