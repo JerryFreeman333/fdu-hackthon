@@ -28,6 +28,7 @@ export interface AgentLabContext {
   value: number;
   unit: string;
   timestamp: string;
+  visibility?: PrivacyScope;
 }
 export interface AgentFindingContext {
   severity: Finding['severity'];
@@ -134,7 +135,7 @@ export function buildAgentContext(
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 8)
-    .map((lab) => ({ name: lab.name, value: lab.value, unit: lab.unit, timestamp: lab.timestamp }));
+    .map((lab) => ({ name: lab.name, value: lab.value, unit: lab.unit, timestamp: lab.timestamp, visibility: lab.visibility }));
   const priorityFindings = [...findings]
     .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || (b.score ?? 0) - (a.score ?? 0))
     .slice(0, 6)
@@ -176,7 +177,10 @@ export function serializeAgentContext(context: AgentContext): string {
     .filter((o) => o.visibility !== 'private')
     .map((o) => `${o.date}：${o.text} [${o.tags.join('、')}]`)
     .join('\n');
-  const labs = context.labs.map((l) => `${l.name}=${l.value}${l.unit} (${l.timestamp.slice(0, 10)})`).join('\n');
+  const labs = context.labs
+    .filter((lab) => lab.visibility !== 'private')
+    .map((l) => `${l.name}=${l.value}${l.unit} (${l.timestamp.slice(0, 10)})`)
+    .join('\n');
   const findings = context.priorityFindings
     .filter((f) => f.familyEligible !== false)
     .map((f) => `${f.severity}：${f.title}；证据：${f.evidence.join('；')}`)
