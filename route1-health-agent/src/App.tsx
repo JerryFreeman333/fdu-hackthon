@@ -188,7 +188,9 @@ export default function App() {
         <div>
           <div className="persona-name">{activeProfile.name} · 家属端</div>
           <div className="persona-sub">
-            {familyLink?.status === 'active' ? `绑定关系：${familyLink.relation} ${familyLink.displayName}` : '尚未绑定老人'}
+            {familyLink?.status === 'active'
+              ? `绑定关系：${familyLink.relation} ${familyLink.displayName}`
+              : '尚未绑定老人'}
           </div>
         </div>
         <div className="header-actions">
