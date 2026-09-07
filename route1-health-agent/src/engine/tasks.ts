@@ -11,15 +11,28 @@ export function buildInitialTasks(_today: string): CareTask[] {
 export function createTaskFromFinding(finding: Finding, today: string): CareTask | null {
   if (!finding.carePath) return null;
   const stableKey = finding.ruleId ?? finding.id;
+  const shouldContactFamily = finding.familyEligible !== false && Boolean(finding.familyMessage);
+  const kind: CareTask['kind'] = shouldContactFamily
+    ? 'contact_family'
+    : finding.severity === 'urgent'
+      ? 'safety_check'
+      : 'observation';
+
   return {
     id: `task-finding-${stableKey}`,
-    title: finding.severity === 'urgent' ? '立即确认当前安全情况' : '今天确认一次当前状态',
-    description: finding.carePath,
+    title: shouldContactFamily
+      ? finding.severity === 'urgent'
+        ? '立即联系家属确认安全'
+        : '今天和家属同步这项变化'
+      : finding.severity === 'urgent'
+        ? '立即确认当前安全情况'
+        : '今天确认一次当前状态',
+    description: shouldContactFamily ? finding.familyMessage ?? finding.carePath : finding.carePath,
     dueDate: today,
     status: 'pending',
     createdAt: `${today}T12:00:00`,
     sourceFindingId: finding.id,
-    kind: finding.severity === 'urgent' ? 'safety_check' : 'observation',
+    kind,
   };
 }
 
