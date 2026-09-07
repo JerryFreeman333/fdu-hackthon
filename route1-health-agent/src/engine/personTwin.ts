@@ -7,7 +7,6 @@ import { materializeHealthData, type HealthEvent } from '../pipeline/events';
 export type TrendState = 'stable' | 'declining' | 'improving' | 'unknown';
 
 export interface PersonTwin {
-  profile: ElderProfile;
   asOf: string;
   activity: TrendState;
   mobility: TrendState;
@@ -27,7 +26,11 @@ export interface PersonTwin {
 const RELEVANT_METRICS = ['steps', 'walkSpeed', 'sleepHours', 'nightWakes'] as const;
 type RelevantMetric = (typeof RELEVANT_METRICS)[number];
 
-function trendFor(metric: RelevantMetric, records: ReturnType<typeof materializeHealthData>['records'], today: string): TrendState {
+function trendFor(
+  metric: RelevantMetric,
+  records: ReturnType<typeof materializeHealthData>['records'],
+  today: string,
+): TrendState {
   const baseline = computeBaseline(records, metric, { endDate: today, excludeDays: 3, windowDays: 14, minPoints: 5 });
   const recent = recentMean(records, metric, today, 3);
   if (!baseline || recent === null || Math.abs(baseline.mean) < 1e-9) return 'unknown';
@@ -42,7 +45,12 @@ function uniqueTags(tags: SymptomTag[]): SymptomTag[] {
   return tags.filter((tag, index) => tags.indexOf(tag) === index);
 }
 
-export function buildPersonTwin(profile: ElderProfile, events: HealthEvent[], findings: Finding[], today: string): PersonTwin {
+export function buildPersonTwin(
+  profile: ElderProfile,
+  events: HealthEvent[],
+  findings: Finding[],
+  today: string,
+): PersonTwin {
   const data = materializeHealthData(events);
   const recentSymptoms = uniqueTags(
     data.observations
@@ -72,7 +80,6 @@ export function buildPersonTwin(profile: ElderProfile, events: HealthEvent[], fi
     .map((f) => f.title);
 
   return {
-    profile,
     asOf: today,
     activity,
     mobility: mobilityTrend,
