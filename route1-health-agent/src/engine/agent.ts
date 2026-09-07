@@ -165,6 +165,38 @@ export const ruleBasedAdapter: LlmAdapter = {
   },
 };
 
+function sanitizeExternalContext(context: AgentContext): AgentContext {
+  const publicFindings = context.priorityFindings.filter((finding) => finding.familyEligible !== false);
+  const safetyRank: Record<Finding['severity'], number> = { urgent: 0, alert: 1, watch: 2, info: 3 };
+  const publicSafety = publicFindings.reduce<Finding['severity']>(
+    (highest, finding) => (safetyRank[finding.severity] < safetyRank[highest] ? finding.severity : highest),
+    'info',
+  );
+  const publicSymptoms = context.observations
+    .filter((observation) => observation.visibility !== 'private')
+    .flatMap((observation) => observation.tags)
+    .filter((tag, index, tags) => tags.indexOf(tag) === index);
+  return {
+    ...context,
+    safetyLevel: publicSafety,
+    personTwin: {
+      ...context.personTwin,
+      activity: 'unknown',
+      mobility: 'unknown',
+      sleep: 'unknown',
+      nightActivity: 'unknown',
+      recentSymptoms: publicSymptoms,
+      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
+      safetyRelevantChanges: [],
+    },
+    metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
+    observations: context.observations.filter((observation) => observation.visibility !== 'private'),
+    labs: context.labs.filter((lab) => lab.visibility !== 'private'),
+    priorityFindings: publicFindings,
+    suggestedAction: publicFindings.find((finding) => finding.detail)?.detail,
+  };
+}
+
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost')) {
@@ -172,12 +204,7 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   }
   return {
     async complete(systemPrompt, userText, context) {
-      const safeContext = context
-        ? {
-            ...context,
-            observations: context.observations.filter((observation) => observation.visibility !== 'private'),
-          }
-        : undefined;
+      const safeContext = context ? sanitizeExternalContext(context) : undefined;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
