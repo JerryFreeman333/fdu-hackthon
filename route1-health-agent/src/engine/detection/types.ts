@@ -16,7 +16,7 @@ export interface MetricSignal {
   baselineSd: number;
   baselineN: number;
   badRatio: number;
-  sigma: number | null;
+  sigma: number;
 }
 
 export interface DetectionContext {
