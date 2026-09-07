@@ -1,4 +1,4 @@
-import type { ImageHealthParser } from './ImageHealthParser';
+import type { ImageHealthParser, ImageParseContext, ParsedHealthData } from './ImageHealthParser';
 import type { MetricKey } from '../types';
 
 export type DemoImageKind = 'bloodPressure' | 'weight' | 'report';
@@ -8,7 +8,7 @@ export type DemoImageKind = 'bloodPressure' | 'weight' | 'report';
  * The selected image kind maps to deterministic sample data so the ImageHealthParser seam is exercised end to end.
  */
 export class DemoImageHealthParser implements ImageHealthParser {
-  async parse(_image: Blob, context?: { userId?: string; capturedAt?: string; kind?: DemoImageKind }) {
+  async parse(_image: Blob, context?: ImageParseContext & { kind?: DemoImageKind }): Promise<ParsedHealthData> {
     const capturedAt = context?.capturedAt ?? new Date().toISOString();
     const kind = context?.kind ?? 'bloodPressure';
     const base = {
