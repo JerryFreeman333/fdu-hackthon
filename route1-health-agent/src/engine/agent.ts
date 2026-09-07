@@ -63,11 +63,27 @@ export const ruleBasedAdapter: LlmAdapter = {
   },
 };
 
+function sanitizeContextForExternalLlm(context: AgentContext): AgentContext {
+  const observations = context.observations.filter((observation) => observation.visibility !== 'private');
+  const priorityFindings = context.priorityFindings.filter((finding) => finding.familyEligible !== false);
+  return {
+    ...context,
+    observations,
+    priorityFindings,
+    personTwin: {
+      ...context.personTwin,
+      recentSymptoms: [],
+      activeConcerns: context.personTwin.activeConcerns.filter((title) => priorityFindings.some((finding) => finding.title === title)),
+      safetyRelevantChanges: context.personTwin.safetyRelevantChanges.filter((change) => !change.includes('主诉')),
+    },
+  };
+}
+
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   return {
     async complete(systemPrompt, userText, context) {
-      const safeContext = context ? { ...context, observations: context.observations.filter((observation) => observation.visibility !== 'private') } : undefined;
+      const safeContext = context ? sanitizeContextForExternalLlm(context) : undefined;
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt, userText, context: safeContext }) });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = await response.json() as { text?: string; tags?: SymptomTag[] };
