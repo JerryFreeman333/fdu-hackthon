@@ -46,7 +46,12 @@ function recallSummary(chat: ChatMessage[]): string {
 }
 
 function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): boolean {
-  return claim.subject === 'self' && claim.status === 'occurred' && claim.eventDate !== null && claim.tags.length > 0;
+  return (
+    claim.subject === 'self' &&
+    claim.status === 'occurred' &&
+    claim.eventDate !== null &&
+    (claim.tags.length > 0 || claim.hasHealthValue)
+  );
 }
 
 function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
@@ -61,6 +66,10 @@ function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: strin
     return true;
   });
   return next.reverse();
+}
+
+function isCurrentReassurance(text: string): boolean {
+  return /^(?:我)?(?:现在)?(?:感觉)?(?:没事|没什么事|没什么事情|还好|挺好的)[。！!,.，]*$/.test(text.trim());
 }
 
 export function useElderChat({
@@ -92,7 +101,12 @@ export function useElderChat({
       agentText = understanding.clarificationQuestion;
     } else if (hasDeathReport(understanding)) {
       agentText = '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
-    } else if (acceptedTags.length === 0 && understanding.claims.length > 0) {
+    } else if (isCurrentReassurance(text)) {
+      const unresolved = findings.find((finding) => finding.severity === 'urgent' || finding.severity === 'alert');
+      agentText = unresolved
+        ? '知道了，您现在感觉还好。我会把您的当前感受和之前的记录分开看；之前还有需要确认的事情，我会单独提醒您。'
+        : '知道了，您现在感觉还好。今天有什么变化，随时告诉我就行。';
+    } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && understanding.claims.length > 0) {
       agentText = '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
     } else {
       const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
