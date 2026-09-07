@@ -152,14 +152,15 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
       <section className="card privacy-card">
         <div>
           <h3>家庭绑定</h3>
-          {props.familyLink ? (
+          {props.familyLink?.status === 'active' ? (
             <>
               <p className="muted">当前绑定：{props.familyLink.relation} · {props.familyLink.displayName} · {props.familyLink.maskedContact}</p>
-              <p className="muted">状态：{props.familyLink.status === 'active' ? '已绑定' : '等待家属确认邀请码'}</p>
+              <p className="muted">状态：已绑定</p>
             </>
           ) : (
             <>
-              <p className="muted">请输入老人端生成的邀请码完成本地演示绑定。</p>
+              {props.familyLink?.inviteCode && <p>老人当前邀请码：<strong>{props.familyLink.inviteCode}</strong></p>}
+              <p className="muted">请输入邀请码完成本地演示绑定。</p>
               <div className="chat-input-row">
                 <input className="chat-input" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="例如 AN-2026-1234" />
                 <button className="btn-primary" onClick={bind}>绑定</button>
