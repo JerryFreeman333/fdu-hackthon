@@ -7,8 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && node --test .test-build/tests/detection.test.js",
-    "preview": "vite preview"
+    "test": "tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && node --test .test-build/tests/detection.test.js .test-build/tests/numeric-extraction.test.js",
+    "preview": "vite preview",
+    "format": "npx --yes prettier@3.6.2 --write \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\"",
+    "format:check": "npx --yes prettier@3.6.2 --check \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\""
   },
   "dependencies": {
     "react": "^18.3.1",

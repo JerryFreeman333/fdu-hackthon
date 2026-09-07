@@ -26,7 +26,7 @@ export interface CareTask {
   status: TaskStatus;
   createdAt: string;
   sourceFindingId?: string;
-  kind: 'medication_check' | 'safety_check' | 'contact_family' | 'observation';
+  kind: 'medication_check' | 'safety_check' | 'observation';
   completionNote?: string;
 }
 
