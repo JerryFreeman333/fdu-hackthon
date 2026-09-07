@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
-import { appendHealthEvents, measurementToEvent, observationToEvent, runDetection, type HealthEvent } from '../pipeline/events';
+import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
 import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
 import {
   createHttpLlmAdapter,
@@ -15,6 +15,7 @@ import {
 } from '../engine/agent';
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
+import { runDetection } from '../engine/detect';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -144,9 +145,7 @@ export function useElderChat({
       const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
       const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
       const incomingEvents: HealthEvent[] = [
-        ...parsed.measurements.map((measurement) =>
-          measurementToEvent({ ...measurement, visibility }),
-        ),
+        ...parsed.measurements.map((measurement) => measurementToEvent({ ...measurement, visibility })),
         ...parsed.labResults.map((result) => ({
           id: `labResult:${result.id}`,
           type: 'labResult' as const,
