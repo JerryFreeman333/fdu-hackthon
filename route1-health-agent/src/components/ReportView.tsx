@@ -35,7 +35,9 @@ export default function ReportView({ records, observations, findings, today }: R
       <div className="card family-card">
         <h3>给家属的版本</h3>
         <p>{report.forFamily}</p>
-        <p className="muted">当前 Demo 只负责生成内容，不执行真实的定时发送或消息推送；后续可在不改变 Report Engine 的前提下接入通知服务。</p>
+        <p className="muted">
+          当前 Demo 只负责生成内容，不执行真实的定时发送或消息推送；后续可在不改变 Report Engine 的前提下接入通知服务。
+        </p>
       </div>
     </div>
   );

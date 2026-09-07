@@ -12,7 +12,9 @@ function walk(dir) {
       walk(path);
     } else if (/\.(ts|tsx|js|mjs|json|html|css|md)$/.test(name)) {
       const text = readFileSync(path, 'utf8');
-      if (/\b(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)\b/.test(text)) {
+      if (
+        /\b(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)\b/.test(text)
+      ) {
         findings.push(path);
       }
     }

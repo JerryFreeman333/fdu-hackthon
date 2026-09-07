@@ -48,15 +48,33 @@ export interface LegacyHealthRecordSnapshot {
 }
 
 export function measurementToEvent(measurement: HealthMeasurement): MeasurementEvent {
-  return { id: `measurement:${measurement.id}`, type: 'measurement', timestamp: measurement.timestamp, source: measurement.source, measurement };
+  return {
+    id: `measurement:${measurement.id}`,
+    type: 'measurement',
+    timestamp: measurement.timestamp,
+    source: measurement.source,
+    measurement,
+  };
 }
 
 export function observationToEvent(observation: Observation): ObservationEvent {
-  return { id: `observation:${observation.id}`, type: 'observation', timestamp: `${observation.date}T12:00:00`, source: observation.source, observation };
+  return {
+    id: `observation:${observation.id}`,
+    type: 'observation',
+    timestamp: `${observation.date}T12:00:00`,
+    source: observation.source,
+    observation,
+  };
 }
 
 export function labResultToEvent(labResult: LabResult): LabResultEvent {
-  return { id: `labResult:${labResult.id}`, type: 'labResult', timestamp: labResult.timestamp, source: labResult.source, labResult };
+  return {
+    id: `labResult:${labResult.id}`,
+    type: 'labResult',
+    timestamp: labResult.timestamp,
+    source: labResult.source,
+    labResult,
+  };
 }
 
 export function mergeHealthEvents(...sets: HealthEvent[][]): HealthEvent[] {

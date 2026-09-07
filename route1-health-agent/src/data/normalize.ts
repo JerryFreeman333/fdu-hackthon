@@ -10,16 +10,18 @@ export function dayRecordsToMeasurements(records: DayRecord[], source: DataSourc
     Object.entries(record.metrics).flatMap(([metric, value]) => {
       if (typeof value !== 'number' || !Number.isFinite(value)) return [];
       const key = metric as MetricKey;
-      return [{
-        id: `normalized-${source}-${record.date}-${metric}`,
-        timestamp: `${record.date}T12:00:00`,
-        metric: key,
-        value,
-        unit: METRICS[key].unit,
-        source,
-        confidence: 1,
-        metadata: { normalizedFrom: 'DayRecord' },
-      }];
+      return [
+        {
+          id: `normalized-${source}-${record.date}-${metric}`,
+          timestamp: `${record.date}T12:00:00`,
+          metric: key,
+          value,
+          unit: METRICS[key].unit,
+          source,
+          confidence: 1,
+          metadata: { normalizedFrom: 'DayRecord' },
+        },
+      ];
     }),
   );
 }

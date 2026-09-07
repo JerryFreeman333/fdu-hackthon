@@ -69,7 +69,10 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
     recognition.interimResults = false;
     recognition.continuous = false;
     recognition.onresult = (event) => {
-      const transcript = Array.from({ length: event.results.length }, (_, index) => event.results[index]?.[0]?.transcript ?? '').join('');
+      const transcript = Array.from(
+        { length: event.results.length },
+        (_, index) => event.results[index]?.[0]?.transcript ?? '',
+      ).join('');
       if (transcript.trim()) send(transcript);
     };
     recognition.onend = () => setListening(false);
@@ -93,7 +96,9 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
           <div key={m.id} className={`chat-row ${m.role === 'elder' ? 'row-elder' : 'row-agent'}`}>
             {m.role === 'agent' && <div className="chat-avatar">安</div>}
             <div className="chat-bubble">
-              {m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+              {m.text.split('\n').map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
               <div className="chat-time">{m.time}</div>
             </div>
           </div>
@@ -103,13 +108,19 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
 
       <div className="chat-quick">
         {quickInputs.map((q) => (
-          <button key={q} className="chip" onClick={() => send(q)}>{q}</button>
+          <button key={q} className="chip" onClick={() => send(q)}>
+            {q}
+          </button>
         ))}
       </div>
 
       <div className="chat-input-row">
         {voiceSupported && (
-          <button className={`btn-secondary ${listening ? 'is-listening' : ''}`} onClick={toggleVoice} aria-label="语音输入">
+          <button
+            className={`btn-secondary ${listening ? 'is-listening' : ''}`}
+            onClick={toggleVoice}
+            aria-label="语音输入"
+          >
             {listening ? '停止' : '🎙️ 说话'}
           </button>
         )}
@@ -120,7 +131,9 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send(text)}
         />
-        <button className="btn-primary" onClick={() => send(text)}>发送</button>
+        <button className="btn-primary" onClick={() => send(text)}>
+          发送
+        </button>
       </div>
     </div>
   );

@@ -100,7 +100,12 @@ export function parseElderInput(text: string): ParsedInput {
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
 }
 
-function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFall: boolean, context?: AgentContext): string {
+function buildRuleBasedReply(
+  newTags: SymptomTag[],
+  findings: Finding[],
+  isNewFall: boolean,
+  context?: AgentContext,
+): string {
   const urgent = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
   if (urgent && newTags.some((tag) => ['chestPain', 'neuroChange', 'fall'].includes(tag))) {
     return `先别做别的：${urgent.title}。${urgent.detail}`;
@@ -131,7 +136,11 @@ function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFa
 }
 
 export interface LlmAdapter {
-  complete(systemPrompt: string, userText: string, context?: AgentContext): Promise<{ text: string; tags: SymptomTag[] }>;
+  complete(
+    systemPrompt: string,
+    userText: string,
+    context?: AgentContext,
+  ): Promise<{ text: string; tags: SymptomTag[] }>;
 }
 
 export const ruleBasedAdapter: LlmAdapter = {
@@ -149,7 +158,10 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   return {
     async complete(systemPrompt, userText, context) {
       const safeContext = context
-        ? { ...context, observations: context.observations.filter((observation) => observation.visibility !== 'private') }
+        ? {
+            ...context,
+            observations: context.observations.filter((observation) => observation.visibility !== 'private'),
+          }
         : undefined;
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -189,7 +201,14 @@ export async function generateAgentReply(
   }
 }
 
-export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+export const QUICK_INPUTS = [
+  '最近腿有点没劲',
+  '最近走路有点喘',
+  '这两天睡不好',
+  '我有点头晕',
+  '药忘记吃了',
+  '刚才摔了一跤',
+];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };

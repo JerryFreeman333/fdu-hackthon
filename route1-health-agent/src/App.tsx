@@ -123,10 +123,7 @@ export default function App() {
     () => buildAgentContext(activeProfile, events, TODAY, findings),
     [activeProfile, events, findings],
   );
-  const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing),
-    [findings, familySharing],
-  );
+  const familyNotifs = useMemo(() => collectFamilyNotifications(findings, familySharing), [findings, familySharing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,7 +298,10 @@ export default function App() {
       inviteCode: code,
       status: 'pending',
     };
-    window.localStorage.setItem(`${INVITE_PREFIX}${code}`, JSON.stringify({ elderId: DEMO_ELDER_ID, relation: '家属' }));
+    window.localStorage.setItem(
+      `${INVITE_PREFIX}${code}`,
+      JSON.stringify({ elderId: DEMO_ELDER_ID, relation: '家属' }),
+    );
     setFamilyLink(link);
     showToast(`邀请码已生成：${code}`);
   }
@@ -380,7 +380,9 @@ export default function App() {
         <div>
           <div className="persona-name">{activeProfile.name} · 家属端</div>
           <div className="persona-sub">
-            {familyLink?.status === 'active' ? `绑定关系：${familyLink.relation} ${familyLink.displayName}` : '尚未绑定老人'}
+            {familyLink?.status === 'active'
+              ? `绑定关系：${familyLink.relation} ${familyLink.displayName}`
+              : '尚未绑定老人'}
           </div>
         </div>
         <button className="btn-secondary" onClick={resetRole}>
@@ -407,7 +409,8 @@ export default function App() {
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。当前硬件与 OCR 仍通过 Adapter/本地能力预留；LLM 默认本地规则，可通过服务端 Endpoint 接入真实模型。
+        第一阶段 MVP：先认识老人。当前硬件与 OCR 仍通过 Adapter/本地能力预留；LLM 默认本地规则，可通过服务端 Endpoint
+        接入真实模型。
       </footer>
     </div>
   );

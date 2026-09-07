@@ -15,8 +15,8 @@ export default function FamilyView({ notifications, findings }: FamilyViewProps)
       <div className="card">
         <h3>通知原则</h3>
         <p className="muted">
-          平时不打扰：<b>小提示 / 持续观察</b> 级别的变化只留在老人的应用里；
-          只有<b>建议关注 / 紧急</b>级别才通知家属，并且附上具体证据和该做什么。
+          平时不打扰：<b>小提示 / 持续观察</b> 级别的变化只留在老人的应用里； 只有<b>建议关注 / 紧急</b>
+          级别才通知家属，并且附上具体证据和该做什么。
         </p>
       </div>
 
@@ -25,7 +25,10 @@ export default function FamilyView({ notifications, findings }: FamilyViewProps)
       {notifications.map((n) => {
         const badge = severityBadge(n.finding.severity);
         return (
-          <div key={n.finding.id} className={`card notif-card ${n.finding.severity === 'urgent' ? 'notif-urgent' : ''}`}>
+          <div
+            key={n.finding.id}
+            className={`card notif-card ${n.finding.severity === 'urgent' ? 'notif-urgent' : ''}`}
+          >
             <div className="finding-head">
               <span className={`badge ${badge.className}`}>{badge.text}</span>
               <b>{n.finding.title}</b>

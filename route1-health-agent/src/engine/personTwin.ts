@@ -53,9 +53,7 @@ export function buildPersonTwin(
 ): PersonTwin {
   const data = materializeHealthData(events);
   const recentSymptoms = uniqueTags(
-    data.observations
-      .filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) < 7)
-      .flatMap((o) => o.tags),
+    data.observations.filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) < 7).flatMap((o) => o.tags),
   );
 
   const activity = trendFor('steps', data.records, today);

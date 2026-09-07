@@ -24,12 +24,24 @@ interface FamilyDashboardProps {
 
 function overallMessage(notifications: FamilyNotification[]) {
   if (notifications.some((n) => n.finding.severity === 'urgent')) {
-    return { title: '今天需要立即介入', detail: '出现需要马上确认安全情况的信号。请先联系老人并按提示的安全路径处理。', tone: 'danger' };
+    return {
+      title: '今天需要立即介入',
+      detail: '出现需要马上确认安全情况的信号。请先联系老人并按提示的安全路径处理。',
+      tone: 'danger',
+    };
   }
   if (notifications.some((n) => n.finding.severity === 'alert')) {
-    return { title: '今天有一件事值得关注', detail: '系统把多项近期变化放在一起看后，建议今天主动联系老人确认状态。', tone: 'warn' };
+    return {
+      title: '今天有一件事值得关注',
+      detail: '系统把多项近期变化放在一起看后，建议今天主动联系老人确认状态。',
+      tone: 'warn',
+    };
   }
-  return { title: '今天总体正常', detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。', tone: 'ok' };
+  return {
+    title: '今天总体正常',
+    detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。',
+    tone: 'ok',
+  };
 }
 
 export default function FamilyDashboard(props: FamilyDashboardProps) {
@@ -62,7 +74,12 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             查看周报
           </button>
         </div>
-        <ProfileView records={props.records} observations={familyObservations} findings={familyFindings} today={props.today} />
+        <ProfileView
+          records={props.records}
+          observations={familyObservations}
+          findings={familyFindings}
+          today={props.today}
+        />
       </div>
     );
   }
@@ -86,12 +103,19 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             ← 返回
           </button>
         </div>
-        <ReportView records={props.records} observations={familyObservations} findings={familyFindings} today={props.today} />
+        <ReportView
+          records={props.records}
+          observations={familyObservations}
+          findings={familyFindings}
+          today={props.today}
+        />
       </div>
     );
   }
 
-  const activeTasks = props.tasks.filter((task) => task.status !== 'completed' && task.status !== 'dismissed').slice(0, 3);
+  const activeTasks = props.tasks
+    .filter((task) => task.status !== 'completed' && task.status !== 'dismissed')
+    .slice(0, 3);
 
   function bind() {
     const ok = props.onBindFamily(inviteCode.trim());
@@ -158,7 +182,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             {props.notifications.slice(0, 3).map((notification) => {
               const badge = severityBadge(notification.finding.severity);
               return (
-                <div key={notification.finding.id} className={`family-item family-item-${notification.finding.severity}`}>
+                <div
+                  key={notification.finding.id}
+                  className={`family-item family-item-${notification.finding.severity}`}
+                >
                   <div className="finding-head">
                     <span className={`badge ${badge.className}`}>{badge.text}</span>
                     <b>{notification.finding.title}</b>

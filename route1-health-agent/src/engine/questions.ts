@@ -25,7 +25,10 @@ export function suggestFollowUpQuestions(tags: SymptomTag[], context: AgentConte
     });
   }
 
-  if ((hasTag('poorSleep') || context.personTwin.recentSymptoms.includes('poorSleep')) && context.personTwin.nightActivity === 'declining') {
+  if (
+    (hasTag('poorSleep') || context.personTwin.recentSymptoms.includes('poorSleep')) &&
+    context.personTwin.nightActivity === 'declining'
+  ) {
     questions.push({
       id: 'night-wake-frequency',
       reason: '最近夜间活动已经增加，又出现睡眠相关主诉。',

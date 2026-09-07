@@ -18,10 +18,32 @@ export interface DetectionOptions {
 }
 
 const DEFAULT_CONFIG: DetectionConfig = { recentDays: 3, baselineDays: 14, minBaselinePoints: 5, minRecentPoints: 2 };
-const RULES: DetectionRule[] = [...metricBaselineRules, ...contextualRules, multiSignalRule, bloodPressureSafetyRule, redFlagSymptomRule, fallSafetyRule];
+const RULES: DetectionRule[] = [
+  ...metricBaselineRules,
+  ...contextualRules,
+  multiSignalRule,
+  bloodPressureSafetyRule,
+  redFlagSymptomRule,
+  fallSafetyRule,
+];
 
-function buildSignals(records: DetectionContext['records'], today: string, config: DetectionConfig): DetectionContext['signals'] {
-  const metrics: MetricKey[] = ['steps', 'walkSpeed', 'sleepHours', 'nightWakes', 'restingHr', 'weight', 'spo2', 'systolic', 'diastolic', 'bloodGlucose'];
+function buildSignals(
+  records: DetectionContext['records'],
+  today: string,
+  config: DetectionConfig,
+): DetectionContext['signals'] {
+  const metrics: MetricKey[] = [
+    'steps',
+    'walkSpeed',
+    'sleepHours',
+    'nightWakes',
+    'restingHr',
+    'weight',
+    'spo2',
+    'systolic',
+    'diastolic',
+    'bloodGlucose',
+  ];
   const signals = new Map<MetricKey, NonNullable<ReturnType<typeof getMetricSignal>>>();
   for (const metric of metrics) {
     const signal = getMetricSignal(records, metric, today, config);
@@ -85,7 +107,10 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
 }
 
 export function todayTags(events: HealthEvent[], today: string): SymptomTag[] {
-  return materializeHealthData(events).observations.filter((observation) => observation.date === today).flatMap((observation) => observation.tags).filter((tag, index, array) => array.indexOf(tag) === index);
+  return materializeHealthData(events)
+    .observations.filter((observation) => observation.date === today)
+    .flatMap((observation) => observation.tags)
+    .filter((tag, index, array) => array.indexOf(tag) === index);
 }
 
 export function recentTag(events: HealthEvent[], tag: SymptomTag, endDate: string, days: number) {

@@ -11,7 +11,16 @@ interface ProfileViewProps {
   today: string;
 }
 
-const DISPLAY_METRICS: MetricKey[] = ['steps', 'walkSpeed', 'restingHr', 'nightWakes', 'weight', 'spo2', 'systolic', 'bloodGlucose'];
+const DISPLAY_METRICS: MetricKey[] = [
+  'steps',
+  'walkSpeed',
+  'restingHr',
+  'nightWakes',
+  'weight',
+  'spo2',
+  'systolic',
+  'bloodGlucose',
+];
 
 export default function ProfileView({ records, observations, findings, today }: ProfileViewProps) {
   const profileFindings = findings.filter((f) => f.severity === 'alert' || f.severity === 'urgent');
@@ -24,13 +33,28 @@ export default function ProfileView({ records, observations, findings, today }: 
         <p className="muted">系统重点关注活动、行动能力、睡眠和近期主诉是否偏离本人平时状态。</p>
       </div>
 
-      {profileFindings.length > 0 && <div className="card highlight-card">
-        <h3>值得留意的变化</h3>
-        {profileFindings.map((finding) => {
-          const badge = severityBadge(finding.severity);
-          return <div key={finding.id} className="finding"><div className="finding-head"><span className={`badge ${badge.className}`}>{badge.text}</span><b>{finding.title}</b></div><p>{finding.detail}</p><ul className="evidence">{finding.evidence.slice(0, 3).map((evidence, i) => <li key={i}>{evidence}</li>)}</ul></div>;
-        })}
-      </div>}
+      {profileFindings.length > 0 && (
+        <div className="card highlight-card">
+          <h3>值得留意的变化</h3>
+          {profileFindings.map((finding) => {
+            const badge = severityBadge(finding.severity);
+            return (
+              <div key={finding.id} className="finding">
+                <div className="finding-head">
+                  <span className={`badge ${badge.className}`}>{badge.text}</span>
+                  <b>{finding.title}</b>
+                </div>
+                <p>{finding.detail}</p>
+                <ul className="evidence">
+                  {finding.evidence.slice(0, 3).map((evidence, i) => (
+                    <li key={i}>{evidence}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="card">
         <h3>个人变化趋势</h3>
@@ -43,9 +67,21 @@ export default function ProfileView({ records, observations, findings, today }: 
             let deltaText: string | null = null;
             if (baseline && recent !== null && Math.abs(baseline.mean) > 1e-9) {
               const delta = (recent - baseline.mean) / Math.abs(baseline.mean);
-              if (Math.abs(delta) >= 0.05) deltaText = `最近3天比平时${delta > 0 ? '高' : '低'} ${Math.abs(Math.round(delta * 100))}%`;
+              if (Math.abs(delta) >= 0.05)
+                deltaText = `最近3天比平时${delta > 0 ? '高' : '低'} ${Math.abs(Math.round(delta * 100))}%`;
             }
-            return <div key={key} className="metric-card"><div className="metric-title">{meta.label}{deltaText && <span className="metric-delta">{deltaText}</span>}</div><Sparkline values={values} baseline={baseline?.mean} decimals={meta.decimals} /><div className="metric-unit">单位：{meta.unit} · 基线约 {baseline ? baseline.mean.toFixed(meta.decimals) : '—'} {meta.unit}</div></div>;
+            return (
+              <div key={key} className="metric-card">
+                <div className="metric-title">
+                  {meta.label}
+                  {deltaText && <span className="metric-delta">{deltaText}</span>}
+                </div>
+                <Sparkline values={values} baseline={baseline?.mean} decimals={meta.decimals} />
+                <div className="metric-unit">
+                  单位：{meta.unit} · 基线约 {baseline ? baseline.mean.toFixed(meta.decimals) : '—'} {meta.unit}
+                </div>
+              </div>
+            );
           })}
         </div>
       </div>
@@ -53,9 +89,33 @@ export default function ProfileView({ records, observations, findings, today }: 
       <div className="card">
         <h3>近期记录</h3>
         <ul className="timeline">
-          {[...observations].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map((observation) => <li key={observation.id}><span className={`tl-src tl-${observation.source}`}>{observation.source === 'chat' ? '聊天' : observation.source === 'photo' ? '拍照数据' : observation.source === 'device' ? '设备' : '记录'}</span><span className="tl-date">{observation.date}</span><span className="tl-text">{observation.text}</span></li>)}
+          {[...observations]
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .slice(0, 10)
+            .map((observation) => (
+              <li key={observation.id}>
+                <span className={`tl-src tl-${observation.source}`}>
+                  {observation.source === 'chat'
+                    ? '聊天'
+                    : observation.source === 'photo'
+                      ? '拍照数据'
+                      : observation.source === 'device'
+                        ? '设备'
+                        : '记录'}
+                </span>
+                <span className="tl-date">{observation.date}</span>
+                <span className="tl-text">{observation.text}</span>
+              </li>
+            ))}
         </ul>
-        <p className="muted">最近 7 天记录数：{observations.filter((observation) => diffDays(observation.date, today) >= 0 && diffDays(observation.date, today) < 7).length}</p>
+        <p className="muted">
+          最近 7 天记录数：
+          {
+            observations.filter(
+              (observation) => diffDays(observation.date, today) >= 0 && diffDays(observation.date, today) < 7,
+            ).length
+          }
+        </p>
       </div>
     </div>
   );

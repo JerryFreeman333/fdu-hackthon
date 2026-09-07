@@ -14,12 +14,16 @@ export function collectFamilyNotifications(findings: Finding[], familySharing: F
   // ask = 每次需要时先征求老人同意；因此在明确授权前不向家属展示。
   if (familySharing !== 'granted') return [];
   return findings
-    .filter((finding) => FAMILY_LEVELS.includes(finding.severity) && finding.familyMessage && finding.familyEligible !== false)
+    .filter(
+      (finding) =>
+        FAMILY_LEVELS.includes(finding.severity) && finding.familyMessage && finding.familyEligible !== false,
+    )
     .map((finding) => ({
       finding,
       message: finding.familyMessage as string,
       actionPath: finding.carePath,
-      reason: finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
+      reason:
+        finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
     }));
 }
 
