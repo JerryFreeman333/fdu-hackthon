@@ -111,10 +111,15 @@ function buildRuleBasedReply(
     return `先别做别的：${urgent.title}。${urgent.detail}`;
   }
   if (newTags.includes('chestPain')) {
-    return INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ?? '先停止活动并保持安全姿势，必要时立即寻求急救。';
+    return (
+      INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
+      '先停止活动并保持安全姿势，必要时立即寻求急救。'
+    );
   }
   if (newTags.includes('neuroChange')) {
-    return INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。';
+    return (
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
+    );
   }
   if (newTags.includes('fall')) {
     const reply = INTENT_RULES.find((rule) => rule.tag === 'fall')?.replies[0];
