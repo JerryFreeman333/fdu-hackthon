@@ -4,52 +4,31 @@ import { dayRecordsToMeasurements } from '../src/data/normalize';
 import { mergeHealthEvents, materializeHealthData, measurementToEvent, observationToEvent, labResultToEvent, type HealthEvent } from '../src/pipeline/events';
 import { runDetection } from '../src/engine/detect';
 import { buildAgentContext, serializeAgentContext } from '../src/engine/context';
-import { generateAgentReply, ruleBasedAdapter } from '../src/engine/agent';
+import { generateAgentReply, LlmAdapter } from '../src/engine/agent';
+import { extractHealthValues } from '../src/engine/extract';
 import { suggestFollowUpQuestions } from '../src/engine/questions';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../src/engine/tasks';
 import { canShareWithFamily, parsePrivacyIntent } from '../src/engine/privacy';
 import { collectFamilyNotifications } from '../src/engine/escalate';
-import { extractHealthValues } from '../src/engine/extract';
 import { buildWeeklyReport } from '../src/engine/report';
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(message);
-}
-
-function dateFromToday(offset: number): string {
-  return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10);
-}
-
+function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
+function dateFromToday(offset: number): string { return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10); }
 function makeRecords(metrics: Partial<DayRecord['metrics']>, recentValues?: Partial<DayRecord['metrics']>): DayRecord[] {
   const result: DayRecord[] = [];
   for (let i = -16; i <= -3; i += 1) result.push({ date: dateFromToday(i), metrics: { ...metrics } });
-  result.push(
-    { date: dateFromToday(-2), metrics: { ...metrics, ...recentValues } },
-    { date: dateFromToday(-1), metrics: { ...metrics, ...recentValues } },
-    { date: TODAY, metrics: { ...metrics, ...recentValues } },
-  );
+  result.push({ date: dateFromToday(-2), metrics: { ...metrics, ...recentValues } }, { date: dateFromToday(-1), metrics: { ...metrics, ...recentValues } }, { date: TODAY, metrics: { ...metrics, ...recentValues } });
   return result;
 }
-
 function makeSparseRecords(metrics: Partial<DayRecord['metrics']>, recentValues: Partial<DayRecord['metrics']>): DayRecord[] {
   const result: DayRecord[] = [];
   for (let i = -16; i <= -3; i += 1) result.push({ date: dateFromToday(i), metrics: { ...metrics } });
   result.push({ date: TODAY, metrics: { ...metrics, ...recentValues } });
   return result;
 }
-
-function recordsToEvents(records: DayRecord[], observations: Observation[] = []): HealthEvent[] {
-  return mergeHealthEvents(dayRecordsToMeasurements(records, 'demo').map(measurementToEvent), observations.map(observationToEvent));
-}
-
-function observation(tag: Observation['tags'][number], text: string, visibility?: Observation['visibility']): Observation {
-  return { id: `test-${tag}`, date: TODAY, source: 'chat', text, tags: [tag], visibility };
-}
-
-async function runCase(name: string, fn: () => void | Promise<void>): Promise<void> {
-  await fn();
-  console.log(`PASS: ${name}`);
-}
+function recordsToEvents(records: DayRecord[], observations: Observation[] = []): HealthEvent[] { return mergeHealthEvents(dayRecordsToMeasurements(records, 'demo').map(measurementToEvent), observations.map(observationToEvent)); }
+function observation(tag: Observation['tags'][number], text: string, visibility?: Observation['visibility']): Observation { return { id: `test-${tag}`, date: TODAY, source: 'chat', text, tags: [tag], visibility }; }
+async function runCase(name: string, fn: () => void | Promise<void>): Promise<void> { await fn(); console.log(`PASS: ${name}`); }
 
 async function main(): Promise<void> {
   await runCase('demo event stream produces multisignal alert', () => {
@@ -132,24 +111,39 @@ async function main(): Promise<void> {
     assert(collectFamilyNotifications(demoFindings, 'denied').length === 0, 'denied sharing must block notifications');
   });
 
-  await runCase('chat numeric extraction reaches structured metrics', () => {
-    const night = extractHealthValues('我昨晚起夜三四次');
-    assert(night[0]?.metric === 'nightWakes', 'night waking phrase should map to nightWakes');
-    assert(night[0]?.value === 3.5, '三四次 should become a midpoint numeric value');
-    const steps = extractHealthValues('今天走了六千步');
-    assert(steps[0]?.metric === 'steps', 'walking phrase should map to steps');
-    assert(steps[0]?.value === 6000, '六千步 should become 6000');
-  });
-
-  await runCase('justified follow-up question is driven by context and used by Agent adapter', async () => {
+  await runCase('justified follow-up question is driven by context', async () => {
     const events = recordsToEvents(makeRecords({ steps: 9000, walkSpeed: 1.0 }, { steps: 6000, walkSpeed: 0.8 }), [observation('fatigue', '最近腿有点没劲')]);
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
     const questions = suggestFollowUpQuestions(['fatigue'], context);
     assert(questions.length > 0, 'declining activity plus fatigue should trigger a justified question');
     assert(questions[0].reason.length > 0, 'follow-up question should preserve its reason');
-    const reply = await generateAgentReply('最近腿有点没劲', ['fatigue'], findings, false, context, ruleBasedAdapter);
-    assert(reply.includes(questions[0].question), 'Agent adapter reply should use the justified question policy');
+    const reply = await generateAgentReply('最近腿有点没劲', ['fatigue'], findings, false, context);
+    assert(reply.includes(questions[0].question), 'Agent reply should actually use the justified question policy');
+  });
+
+  await runCase('agent adapter is the real reply extension point', async () => {
+    const calls: string[] = [];
+    const adapter: LlmAdapter = {
+      async complete(systemPrompt, userText) {
+        calls.push(systemPrompt, userText);
+        return { text: '我收到啦，我们慢慢看看。', tags: ['fatigue'] };
+      },
+    };
+    const reply = await generateAgentReply('最近有点累', ['fatigue'], [], false, undefined, adapter);
+    assert(reply === '我收到啦，我们慢慢看看。', 'custom adapter reply should be returned');
+    assert(calls[0]?.includes('安全等级'), 'adapter should receive safety instructions');
+    assert(calls[1] === '最近有点累', 'adapter should receive the original elder text');
+  });
+
+  await runCase('natural language numeric extraction feeds both core metrics', () => {
+    const nightWakes = extractHealthValues('我昨晚起夜三四次');
+    assert(nightWakes.length === 1, 'night wake count should be extracted from conversational Chinese');
+    assert(nightWakes[0].metric === 'nightWakes', 'night wake extraction should map to the correct metric');
+    assert(nightWakes[0].value === 3.5, '三四次 should normalize to the midpoint 3.5');
+    const steps = extractHealthValues('今天走了六千步');
+    assert(steps[0]?.metric === 'steps', 'step count should be extracted from conversational Chinese');
+    assert(steps[0]?.value === 6000, '六千步 should normalize to 6000');
   });
 
   await runCase('care tasks are contextual rather than daily noise', () => {
@@ -157,6 +151,7 @@ async function main(): Promise<void> {
     const watchFinding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 6500 })), TODAY).find((item) => item.ruleId === 'metric.steps.baseline_shift');
     assert(watchFinding, 'a meaningful metric finding should exist for the task eligibility check');
     assert(!createTaskFromFinding(watchFinding, TODAY), 'watch findings should not create action tasks');
+
     const findings = runDetection(recordsToEvents(makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 })), TODAY);
     const actionable = findings.find((item) => item.ruleId === 'fusion.multisignal_deterioration');
     assert(actionable?.severity === 'alert', 'multi-signal deterioration should be actionable');
@@ -180,16 +175,8 @@ async function main(): Promise<void> {
   });
 
   await runCase('weekly report excludes private observation text', () => {
-    const findings: Finding[] = [{
-      id: 'finding-1', date: TODAY, severity: 'alert', title: '活动量持续下降', detail: 'demo', evidence: ['活动步数明显下降'],
-      carePath: '确认老人近期状态', familyMessage: '请联系老人', familyEligible: true,
-    }];
-    const report = buildWeeklyReport(
-      makeRecords({ steps: 10000 }, { steps: 7000 }),
-      [observation('fatigue', '普通可共享主诉'), observation('dizziness', '私密主诉', 'private')],
-      findings,
-      TODAY,
-    );
+    const findings: Finding[] = [{ id: 'finding-1', date: TODAY, severity: 'alert', title: '活动量持续下降', detail: 'demo', evidence: ['活动步数明显下降'], carePath: '确认老人近期状态', familyMessage: '请联系老人', familyEligible: true }];
+    const report = buildWeeklyReport(makeRecords({ steps: 10000 }, { steps: 7000 }), [observation('fatigue', '普通可共享主诉'), observation('dizziness', '私密主诉', 'private')], findings, TODAY);
     const section = report.sections.find((item) => item.title === '您自己说过的');
     assert(section?.lines.some((line) => line.includes('普通可共享主诉')), 'shared observation should be present');
     assert(section?.lines.every((line) => !line.includes('私密主诉')), 'private observation should not be exposed by report input');
@@ -208,7 +195,4 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error) => {
-  console.error(error);
-  throw error;
-});
+main();
