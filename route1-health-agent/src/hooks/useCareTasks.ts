@@ -33,9 +33,12 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
-    if (actionable.length === 0) return;
+    const currentFindingIds = new Set(findings.map((finding) => finding.id));
     setTasks((current) => {
-      const next = [...current];
+      const reconciled = current.filter(
+        (task) => !task.sourceFindingId || currentFindingIds.has(task.sourceFindingId) || task.status === 'completed',
+      );
+      const next = [...reconciled];
       for (const finding of actionable.slice(0, 2)) {
         const task = createTaskFromFinding(finding, TODAY);
         if (task && !next.some((item) => item.id === task.id)) next.push(task);

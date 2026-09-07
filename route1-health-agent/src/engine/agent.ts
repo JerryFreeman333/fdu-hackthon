@@ -15,12 +15,12 @@ const INTENT_RULES: IntentRule[] = [
   {
     tag: 'fatigue',
     patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/],
-    replies: ['先歇一歇，别硬撑。我也看到最近活动量比平时少一些了。'],
+    replies: ['先歇一歇，别硬撑。您如果愿意，可以告诉我这种累是从什么时候开始的。'],
   },
   {
     tag: 'dyspnea',
     patterns: [/喘/, /气(短|不够|促)/, /憋气/, /胸闷/, /上(楼|台阶)(费劲|吃力|喘)/],
-    replies: ['别着急，慢慢说。您提到走路会喘，我会把这个和最近的活动变化放在一起看。'],
+    replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'],
   },
   {
     tag: 'poorSleep',
@@ -75,7 +75,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下)/, /摔倒/],
+    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|过了|了)/, /摔倒/],
     replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
   },
 ];
@@ -107,29 +107,23 @@ function buildRuleBasedReply(
   isNewFall: boolean,
   context?: AgentContext,
 ): string {
-  const urgent = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
-  if (urgent && newTags.some((tag) => ['chestPain', 'neuroChange', 'fall'].includes(tag))) {
-    return `先别做别的：${urgent.title}。${urgent.detail}`;
-  }
-  if (newTags.includes('chestPain')) {
+  if (newTags.includes('chestPain'))
     return (
       INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
       '先停止活动并保持安全姿势，必要时立即寻求急救。'
     );
-  }
-  if (newTags.includes('neuroChange')) {
+  if (newTags.includes('neuroChange'))
     return (
       INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
     );
-  }
   if (newTags.includes('fall')) {
     const reply = INTENT_RULES.find((rule) => rule.tag === 'fall')?.replies[0];
     if (reply) return reply;
   }
   if (newTags.length === 0) {
-    const changes = context?.personTwin.safetyRelevantChanges ?? [];
-    return changes.length
-      ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。`
+    const unresolved = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
+    return unresolved
+      ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。`
       : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
   const parts: string[] = [];
@@ -141,12 +135,9 @@ function buildRuleBasedReply(
     const followUps = suggestFollowUpQuestions(newTags, context);
     if (followUps.length > 0) parts.push(followUps[0].question);
   }
-  const fusion =
-    context?.priorityFindings.find((f) => f.ruleId === 'fusion.multisignal_deterioration') ??
-    findings.find((f) => f.ruleId === 'fusion.multisignal_deterioration');
-  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea')))
-    parts.push(`另外我留意了一下：${fusion.evidence[0]}。我会继续帮您观察变化。`);
-  if (isNewFall) parts.push('我已经把跌倒标成紧急事件了，请先保持电话畅通。');
+  if (isNewFall && !parts.some((part) => part.includes('摔倒')))
+    parts.push('我会把这次情况当作需要优先确认安全的事件处理。');
+  if (findings.some((finding) => finding.severity === 'urgent') && isNewFall) parts.push('请先确认自己现在是否安全。');
   return parts.join('\n');
 }
 
@@ -157,7 +148,6 @@ export interface LlmAdapter {
     context?: AgentContext,
   ): Promise<{ text: string; tags: SymptomTag[] }>;
 }
-
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
@@ -211,12 +201,7 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
       recentSymptoms: publicSymptoms,
       activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
       safetyRelevantChanges: [],
-      functionalProfile: {
-        mobility: 'unknown',
-        usesCane: false,
-        nightVision: 'unknown',
-        cognition: 'unknown',
-      },
+      functionalProfile: { mobility: 'unknown', usesCane: false, nightVision: 'unknown', cognition: 'unknown' },
     },
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
@@ -228,15 +213,13 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
 
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
-  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost')) {
+  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
-  }
   return {
     async complete(systemPrompt, userText, context) {
       const privacyIntent = parsePrivacyIntent(userText);
-      if (privacyIntent === 'private' || privacyIntent === 'no_record') {
+      if (privacyIntent === 'private' || privacyIntent === 'no_record')
         throw new Error('Private and no-record inputs must stay on the local safety adapter.');
-      }
       const safeContext = context ? sanitizeExternalContext(context) : undefined;
       const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
       const response = await fetch(endpoint, {
@@ -252,8 +235,7 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 }
 
 const SYSTEM_PROMPT =
-  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。';
-
+  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
 const UNSAFE_REPLY_PATTERNS = [
   /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
   /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
@@ -261,13 +243,11 @@ const UNSAFE_REPLY_PATTERNS = [
 ];
 const MAX_AGENT_REPLY_LENGTH = 500;
 const MAX_AGENT_INPUT_LENGTH = 1000;
-
 export function isSafeAgentReply(text: string): boolean {
   const normalized = text.trim();
   if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return false;
   return !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
 }
-
 export async function generateAgentReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -291,7 +271,6 @@ export async function generateAgentReply(
     return buildRuleBasedReply(newTags, findings, isNewFall, context);
   }
 }
-
 export const QUICK_INPUTS = [
   '最近腿有点没劲',
   '最近走路有点喘',
@@ -300,11 +279,9 @@ export const QUICK_INPUTS = [
   '药忘记吃了',
   '刚才摔了一跤',
 ];
-
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
 }
-
 export function tagLabel(tag: SymptomTag): string {
   return SYMPTOM_LABELS[tag];
 }

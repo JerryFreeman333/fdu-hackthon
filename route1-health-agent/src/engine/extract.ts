@@ -84,8 +84,8 @@ const RULES: Rule[] = [
     metric: 'steps',
     unit: '步',
     patterns: [
-      new RegExp(String.raw`(?:走了|走|步数|今天).{0,8}?${RANGE}\s*(?:步|步数|圈)`),
-      new RegExp(String.raw`${RANGE}\s*(?:步|步数|圈)`),
+      new RegExp(String.raw`(?:走了|走|步数|今天).{0,8}?${RANGE}\s*(?:步|步数)`),
+      new RegExp(String.raw`${RANGE}\s*(?:步|步数)`),
     ],
   },
   {

@@ -89,6 +89,7 @@ export default function App() {
   const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
     familySharing,
     events,
+    chat,
     findings,
     agentContext,
     setEvents,
