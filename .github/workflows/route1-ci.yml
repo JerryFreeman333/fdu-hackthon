@@ -13,16 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-route1:
+  format-route1:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
         working-directory: route1-health-agent
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,19 +39,38 @@ jobs:
       - name: Batch format Route 1
         run: npm run format
 
-      - name: Commit formatting changes back to the PR branch
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          cd ..
-          if git diff --quiet -- route1-health-agent; then
-            echo "Route 1 formatting is already clean."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add route1-health-agent
-          git commit -m "style(route1): apply Prettier formatting"
-          git push origin "HEAD:${{ github.head_ref }}"
+      - name: Verify formatting
+        run: npm run format:check
+
+      - name: Package formatted Route 1
+        run: tar -czf route1-formatted.tgz --exclude=.git --exclude=node_modules --exclude=.test-build .
+
+      - name: Upload formatted Route 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: route1-formatted
+          path: route1-health-agent/route1-formatted.tgz
+          if-no-files-found: error
+
+  verify-route1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Verify formatting
         run: npm run format:check
