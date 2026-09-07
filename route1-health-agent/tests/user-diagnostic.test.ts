@@ -44,8 +44,14 @@ async function main() {
   await runCase('mixed self and spouse sentence is split by person', () => {
     const input = understandElderInput('我没摔倒，是我老公摔了', TODAY);
     assert(input.claims.length >= 2, 'mixed statement should produce multiple claims');
-    assert(input.claims[0]?.subject === 'self' && input.claims[0]?.status === 'negated', 'self denial should stay separate');
-    assert(input.claims[1]?.subject === 'spouse' && input.claims[1]?.status === 'occurred', 'spouse event should stay separate');
+    assert(
+      input.claims[0]?.subject === 'self' && input.claims[0]?.status === 'negated',
+      'self denial should stay separate',
+    );
+    assert(
+      input.claims[1]?.subject === 'spouse' && input.claims[1]?.status === 'occurred',
+      'spouse event should stay separate',
+    );
     assert(acceptedSelfClaims(input).length === 0, 'mixed statement must not create self fall fact');
   });
 

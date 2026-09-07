@@ -190,7 +190,9 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
           发送
         </button>
       </div>
-      {text.trim() && voiceState !== 'listening' && <div className="muted">语音转写已放进输入框，请确认文字无误后再发送。</div>}
+      {text.trim() && voiceState !== 'listening' && (
+        <div className="muted">语音转写已放进输入框，请确认文字无误后再发送。</div>
+      )}
     </div>
   );
 }

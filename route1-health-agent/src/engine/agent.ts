@@ -115,8 +115,7 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('neuroChange')) {
     return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ??
-      '先别走动，立即联系家里人并寻求急救。'
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
     );
   }
   if (newTags.includes('fall')) {
@@ -138,7 +137,8 @@ function buildRuleBasedReply(
     const followUps = suggestFollowUpQuestions(newTags, context);
     if (followUps.length > 0) parts.push(followUps[0].question);
   }
-  if (isNewFall && !parts.some((part) => part.includes('摔倒'))) parts.push('我会把这次情况当作需要优先确认安全的事件处理。');
+  if (isNewFall && !parts.some((part) => part.includes('摔倒')))
+    parts.push('我会把这次情况当作需要优先确认安全的事件处理。');
   if (findings.some((finding) => finding.severity === 'urgent') && isNewFall) {
     parts.push('请先确认自己现在是否安全。');
   }

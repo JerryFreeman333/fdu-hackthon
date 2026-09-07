@@ -66,7 +66,11 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
     return 'hypothetical';
   }
-  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) {
+  if (
+    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
+      clause,
+    )
+  ) {
     return 'negated';
   }
   if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
@@ -83,7 +87,11 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
-export function understandElderInput(text: string, today: string, recentMessages: ChatMessage[] = []): StructuredElderInput {
+export function understandElderInput(
+  text: string,
+  today: string,
+  recentMessages: ChatMessage[] = [],
+): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);

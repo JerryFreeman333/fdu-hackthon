@@ -36,8 +36,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
     const currentFindingIds = new Set(findings.map((finding) => finding.id));
     setTasks((current) => {
       const reconciled = current.filter(
-        (task) =>
-          !task.sourceFindingId || currentFindingIds.has(task.sourceFindingId) || task.status === 'completed',
+        (task) => !task.sourceFindingId || currentFindingIds.has(task.sourceFindingId) || task.status === 'completed',
       );
       const next = [...reconciled];
       for (const finding of actionable.slice(0, 2)) {

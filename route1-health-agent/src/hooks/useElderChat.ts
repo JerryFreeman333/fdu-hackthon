@@ -15,7 +15,12 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
-import { acceptedSelfClaims, hasDeathReport, understandElderInput, type StructuredElderInput } from '../engine/understanding';
+import {
+  acceptedSelfClaims,
+  hasDeathReport,
+  understandElderInput,
+  type StructuredElderInput,
+} from '../engine/understanding';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -100,14 +105,16 @@ export function useElderChat({
     } else if (understanding.clarificationQuestion) {
       agentText = understanding.clarificationQuestion;
     } else if (hasDeathReport(understanding)) {
-      agentText = '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
+      agentText =
+        '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
     } else if (isCurrentReassurance(text)) {
       const unresolved = findings.find((finding) => finding.severity === 'urgent' || finding.severity === 'alert');
       agentText = unresolved
         ? '知道了，您现在感觉还好。我会把您的当前感受和之前的记录分开看；之前还有需要确认的事情，我会单独提醒您。'
         : '知道了，您现在感觉还好。今天有什么变化，随时告诉我就行。';
     } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && understanding.claims.length > 0) {
-      agentText = '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
+      agentText =
+        '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
     } else {
       const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
       agentText = await generateAgentReply(
@@ -196,7 +203,9 @@ export function useElderChat({
     const values = acceptedClaims.flatMap((claim) => extractHealthValues(claim.text));
     const labels = acceptedTags.map(tagLabel);
     const valueText = values.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
-    const timeNotice = acceptedClaims.some((claim) => claim.timeScope === 'yesterday' || claim.timeScope === 'lastNight')
+    const timeNotice = acceptedClaims.some(
+      (claim) => claim.timeScope === 'yesterday' || claim.timeScope === 'lastNight',
+    )
       ? '；按您说的时间归到昨晚/昨天，不当作今天新发生'
       : '';
     const sharingNotice =
