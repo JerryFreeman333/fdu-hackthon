@@ -4,7 +4,7 @@ import { dayRecordsToMeasurements } from '../src/data/normalize';
 import { mergeHealthEvents, materializeHealthData, measurementToEvent, observationToEvent, labResultToEvent, type HealthEvent } from '../src/pipeline/events';
 import { runDetection } from '../src/engine/detect';
 import { buildAgentContext, serializeAgentContext } from '../src/engine/context';
-import { generateAgentReply, LlmAdapter } from '../src/engine/agent';
+import { createHttpLlmAdapter, generateAgentReply, LlmAdapter } from '../src/engine/agent';
 import { extractHealthValues } from '../src/engine/extract';
 import { suggestFollowUpQuestions } from '../src/engine/questions';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../src/engine/tasks';
@@ -134,6 +134,27 @@ async function main(): Promise<void> {
     assert(reply === '我收到啦，我们慢慢看看。', 'custom adapter reply should be returned');
     assert(calls[0]?.includes('安全等级'), 'adapter should receive safety instructions');
     assert(calls[1] === '最近有点累', 'adapter should receive the original elder text');
+  });
+
+  await runCase('http adapter strips private observations before external request', async () => {
+    const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private'), observation('dizziness', '普通可共享内容', 'family_ok')]);
+    const findings = runDetection(events, TODAY);
+    const context = buildAgentContext(profile, events, TODAY, findings);
+    let capturedBody = '';
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({ text: '收到', tags: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      await createHttpLlmAdapter('https://example.invalid/agent').complete('系统提示', '我头晕', context);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const payload = JSON.parse(capturedBody) as { context?: { observations?: Array<{ text: string; visibility?: string }> } };
+    const sentObservations = payload.context?.observations ?? [];
+    assert(sentObservations.some((item) => item.text === '普通可共享内容'), 'shared observation should be sent');
+    assert(!sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'), 'private observation must not be sent to external LLM');
   });
 
   await runCase('natural language numeric extraction feeds both core metrics', () => {
