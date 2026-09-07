@@ -4,7 +4,7 @@ import { dayRecordsToMeasurements, measurementsToDayRecords } from '../src/data/
 import { mergeHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../src/pipeline/events';
 import { runDetection } from '../src/engine/detect';
 import { buildAgentContext } from '../src/engine/context';
-import { generateAgentReply, isSafeAgentReply, type LlmAdapter } from '../src/engine/agent';
+import { createHttpLlmAdapter, generateAgentReply, isSafeAgentReply, type LlmAdapter } from '../src/engine/agent';
 import { createTaskFromFinding } from '../src/engine/tasks';
 import { collectFamilyNotifications } from '../src/engine/escalate';
 import { extractHealthValues } from '../src/engine/extract';
@@ -87,6 +87,32 @@ async function main(): Promise<void> {
   );
   assert(collectFamilyNotifications([oneTimeFinding], 'ask').length === 0, 'ask still blocks unshared findings');
 
+  const privateBpEvents: HealthEvent[] = [
+    measurementToEvent({
+      id: 'private-sys',
+      timestamp: `${TODAY}T09:00:00`,
+      metric: 'systolic',
+      value: 185,
+      unit: 'mmHg',
+      source: 'chat',
+      visibility: 'private',
+    }),
+    measurementToEvent({
+      id: 'private-dia',
+      timestamp: `${TODAY}T09:00:00`,
+      metric: 'diastolic',
+      value: 121,
+      unit: 'mmHg',
+      source: 'chat',
+      visibility: 'private',
+    }),
+  ];
+  const privateBpFindings = runDetection(privateBpEvents, TODAY);
+  const privateBpFinding = privateBpFindings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
+  assert(privateBpFinding?.severity === 'alert', 'private severe BP should still alert the elder locally');
+  assert(privateBpFinding?.familyEligible === false, 'private BP should not become a family notification');
+  assert(collectFamilyNotifications(privateBpFindings, 'granted').length === 0, 'private BP must not reach family notifications');
+
   const zeroVariance = makeStableRecords('spo2', 96);
   const changed = [...zeroVariance, { date: TODAY, metrics: { spo2: 94 } }];
   const zeroVarianceFindings = runDetection(eventsFrom(changed), TODAY, { minRecentPoints: 1 });
@@ -140,8 +166,58 @@ async function main(): Promise<void> {
     },
   };
   assert(!isSafeAgentReply('您可能患有心衰。'), 'diagnostic phrasing must be rejected');
+  assert(!isSafeAgentReply('您现在的情况就是心衰。'), 'diagnostic conclusions inside a sentence must be rejected');
   const safeFallback = await generateAgentReply('最近有点累', ['fatigue'], [], false, undefined, unsafeAdapter);
   assert(!safeFallback.includes('可能患有'), 'unsafe LLM output must fall back to a rule-based reply');
+
+  const privateContext = buildAgentContext(
+    profile,
+    eventsFrom(
+      [{ date: TODAY, metrics: { steps: 6500, systolic: 185, diastolic: 121 } }],
+      [observation('fatigue', '这段不要告诉孩子：最近很累', 'private')],
+    ),
+    TODAY,
+    [
+      {
+        id: 'private-finding',
+        date: TODAY,
+        severity: 'urgent',
+        title: '私密紧急发现',
+        detail: '私密详情',
+        evidence: ['私密证据'],
+        familyEligible: false,
+      },
+    ],
+  );
+  let capturedBody = '';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = String(init?.body ?? '');
+    return new Response(JSON.stringify({ text: '收到', tags: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+  try {
+    await createHttpLlmAdapter('https://example.invalid/agent').complete('系统提示', '我头晕', privateContext);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const payload = JSON.parse(capturedBody) as {
+    context?: {
+      observations?: Array<{ text: string; visibility?: string }>;
+      metrics?: Array<{ metric: string; latestValue: number; visibility?: string }>;
+      priorityFindings?: Array<{ title: string; familyEligible?: boolean }>;
+      safetyLevel?: string;
+    };
+  };
+  const safeObservations = payload.context?.observations ?? [];
+  const safeMetrics = payload.context?.metrics ?? [];
+  const safeFindings = payload.context?.priorityFindings ?? [];
+  assert(!safeObservations.some((item) => item.text.includes('不要告诉孩子')), 'private observation must stay out of external context');
+  assert(!safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121), 'private vitals must stay out of external context');
+  assert(!safeFindings.some((item) => item.title === '私密紧急发现'), 'private findings must stay out of external context');
+  assert(payload.context?.safetyLevel !== 'urgent', 'external safety level must not inherit a private-only urgent finding');
 
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
