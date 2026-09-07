@@ -15,12 +15,12 @@ const INTENT_RULES: IntentRule[] = [
   {
     tag: 'fatigue',
     patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/],
-    replies: ['先歇一歇，别硬撑。我也看到最近活动量比平时少一些了。'],
+    replies: ['先歇一歇，别硬撑。您如果愿意，可以告诉我这种累是从什么时候开始的。'],
   },
   {
     tag: 'dyspnea',
     patterns: [/喘/, /气(短|不够|促)/, /憋气/, /胸闷/, /上(楼|台阶)(费劲|吃力|喘)/],
-    replies: ['别着急，慢慢说。您提到走路会喘，我会把这个和最近的活动变化放在一起看。'],
+    replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'],
   },
   {
     tag: 'poorSleep',
@@ -107,10 +107,6 @@ function buildRuleBasedReply(
   isNewFall: boolean,
   context?: AgentContext,
 ): string {
-  const urgent = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
-  if (urgent && newTags.some((tag) => ['chestPain', 'neuroChange', 'fall'].includes(tag))) {
-    return `先别做别的：${urgent.title}。${urgent.detail}`;
-  }
   if (newTags.includes('chestPain')) {
     return (
       INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
@@ -119,7 +115,8 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('neuroChange')) {
     return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ??
+      '先别走动，立即联系家里人并寻求急救。'
     );
   }
   if (newTags.includes('fall')) {
@@ -127,9 +124,9 @@ function buildRuleBasedReply(
     if (reply) return reply;
   }
   if (newTags.length === 0) {
-    const changes = context?.personTwin.safetyRelevantChanges ?? [];
-    return changes.length
-      ? `我在听。我最近也留意到${changes.slice(0, 3).join('、')}。您有什么不舒服，直接告诉我就好。`
+    const unresolved = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
+    return unresolved
+      ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。`
       : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
   const parts: string[] = [];
@@ -141,12 +138,10 @@ function buildRuleBasedReply(
     const followUps = suggestFollowUpQuestions(newTags, context);
     if (followUps.length > 0) parts.push(followUps[0].question);
   }
-  const fusion =
-    context?.priorityFindings.find((f) => f.ruleId === 'fusion.multisignal_deterioration') ??
-    findings.find((f) => f.ruleId === 'fusion.multisignal_deterioration');
-  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea')))
-    parts.push(`另外我留意了一下：${fusion.evidence[0]}。我会继续帮您观察变化。`);
-  if (isNewFall) parts.push('我已经把跌倒标成紧急事件了，请先保持电话畅通。');
+  if (isNewFall && !parts.some((part) => part.includes('摔倒'))) parts.push('我会把这次情况当作需要优先确认安全的事件处理。');
+  if (findings.some((finding) => finding.severity === 'urgent') && isNewFall) {
+    parts.push('请先确认自己现在是否安全。');
+  }
   return parts.join('\n');
 }
 
@@ -252,7 +247,7 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 }
 
 const SYSTEM_PROMPT =
-  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。';
+  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
 
 const UNSAFE_REPLY_PATTERNS = [
   /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
