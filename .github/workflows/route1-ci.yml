@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-route1:
@@ -36,6 +36,23 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Batch format Route 1
+        run: npm run format
+
+      - name: Commit formatting changes back to the PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cd ..
+          if git diff --quiet -- route1-health-agent; then
+            echo "Route 1 formatting is already clean."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent
+          git commit -m "style(route1): apply Prettier formatting"
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Verify formatting
         run: npm run format:check
