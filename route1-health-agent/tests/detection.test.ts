@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     assert(calls[1] === '最近有点累', 'adapter should receive the original elder text');
   });
 
-  await runCase('http adapter strips private observations before external request', async () => {
+  await runCase('http adapter strips private observations and derived symptoms before external request', async () => {
     const events = recordsToEvents([], [observation('fatigue', '这是只有老人自己能看到的内容', 'private'), observation('dizziness', '普通可共享内容', 'family_ok')]);
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
@@ -151,10 +151,17 @@ async function main(): Promise<void> {
     } finally {
       globalThis.fetch = originalFetch;
     }
-    const payload = JSON.parse(capturedBody) as { context?: { observations?: Array<{ text: string; visibility?: string }> } };
+    const payload = JSON.parse(capturedBody) as {
+      context?: {
+        observations?: Array<{ text: string; visibility?: string }>;
+        personTwin?: { recentSymptoms?: string[]; safetyRelevantChanges?: string[]; activeConcerns?: string[] };
+      };
+    };
     const sentObservations = payload.context?.observations ?? [];
     assert(sentObservations.some((item) => item.text === '普通可共享内容'), 'shared observation should be sent');
     assert(!sentObservations.some((item) => item.text === '这是只有老人自己能看到的内容'), 'private observation must not be sent to external LLM');
+    assert((payload.context?.personTwin?.recentSymptoms ?? []).length === 0, 'private-derived recent symptoms must not be sent');
+    assert((payload.context?.personTwin?.safetyRelevantChanges ?? []).every((change) => !change.includes('主诉')), 'private-derived symptom change must not be sent');
   });
 
   await runCase('natural language numeric extraction feeds both core metrics', () => {
