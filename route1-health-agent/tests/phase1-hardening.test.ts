@@ -164,10 +164,7 @@ async function main(): Promise<void> {
 
   const sameFinding = { ...fusion, ruleId: 'fusion.multisignal_deterioration', id: 'fusion-a' };
   const taskA = createTaskFromFinding(sameFinding, TODAY);
-  const taskB = createTaskFromFinding(
-    { ...sameFinding, id: 'fusion-b', date: dateFromToday(1) },
-    dateFromToday(1),
-  );
+  const taskB = createTaskFromFinding({ ...sameFinding, id: 'fusion-b', date: dateFromToday(1) }, dateFromToday(1));
   assert(taskA?.id === taskB?.id, 'the same rule should map to one stable task across days');
 
   const numericCases = [
@@ -239,10 +236,22 @@ async function main(): Promise<void> {
   const safeObservations = payload.context?.observations ?? [];
   const safeMetrics = payload.context?.metrics ?? [];
   const safeFindings = payload.context?.priorityFindings ?? [];
-  assert(!safeObservations.some((item) => item.text.includes('不要告诉孩子')), 'private observation must stay out of external context');
-  assert(!safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121), 'private vitals must stay out of external context');
-  assert(!safeFindings.some((item) => item.title === '私密紧急发现'), 'private findings must stay out of external context');
-  assert(payload.context?.safetyLevel !== 'urgent', 'external safety level must not inherit a private-only urgent finding');
+  assert(
+    !safeObservations.some((item) => item.text.includes('不要告诉孩子')),
+    'private observation must stay out of external context',
+  );
+  assert(
+    !safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121),
+    'private vitals must stay out of external context',
+  );
+  assert(
+    !safeFindings.some((item) => item.title === '私密紧急发现'),
+    'private findings must stay out of external context',
+  );
+  assert(
+    payload.context?.safetyLevel !== 'urgent',
+    'external safety level must not inherit a private-only urgent finding',
+  );
 
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
@@ -286,7 +295,10 @@ async function main(): Promise<void> {
       },
     ],
   );
-  assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'weekly report should include task closure');
+  assert(
+    report.sections.some((section) => section.title === '这周处理过的事情'),
+    'weekly report should include task closure',
+  );
   console.log('PASS: Phase 1 hardening regression suite');
 }
 
