@@ -43,14 +43,7 @@ function observation(
   text: string,
   visibility: Observation['visibility'] = 'family_ok',
 ): Observation {
-  return {
-    id: `obs-${tag}-${visibility}-${Math.random()}`,
-    date: TODAY,
-    source: 'chat',
-    text,
-    tags: [tag],
-    visibility,
-  };
+  return { id: `obs-${tag}-${visibility}-${Math.random()}`, date: TODAY, source: 'chat', text, tags: [tag], visibility };
 }
 
 async function runCase(name: string, fn: () => void | Promise<void>) {
@@ -61,10 +54,7 @@ async function runCase(name: string, fn: () => void | Promise<void>) {
 async function main() {
   await runCase('demo event stream produces multisignal alert', () => {
     const findings = runDetection(recordsToEvents(demoRecords, seedObservations), TODAY);
-    assert(
-      findings.some((finding) => finding.ruleId === 'fusion.multisignal_deterioration'),
-      'demo should produce fusion alert',
-    );
+    assert(findings.some((finding) => finding.ruleId === 'fusion.multisignal_deterioration'), 'demo should produce fusion alert');
   });
 
   await runCase('identical event stream produces stable findings', () => {
@@ -75,32 +65,20 @@ async function main() {
   });
 
   await runCase('sparse recent data does not create a trend', () => {
-    const events = recordsToEvents([
-      ...makeRecords({ steps: 10000 }, { steps: 7000 }).slice(0, 18),
-      { date: TODAY, metrics: { steps: 7000 } },
-    ]);
-    assert(
-      !runDetection(events, TODAY, { minRecentPoints: 2 }).some(
-        (finding) => finding.ruleId === 'metric.steps.baseline_shift',
-      ),
-      'sparse recent data should stay silent',
-    );
+    const baseRecords = makeRecords({ steps: 10000 }, { steps: 7000 });
+    const events = recordsToEvents([...baseRecords.slice(0, 17), { date: TODAY, metrics: { steps: 7000 } }]);
+    assert(!runDetection(events, TODAY, { minRecentPoints: 2 }).some((finding) => finding.ruleId === 'metric.steps.baseline_shift'), 'sparse recent data should stay silent');
   });
 
   await runCase('single weak metric stays at watch', () => {
-    const finding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })), TODAY).find(
-      (item) => item.ruleId === 'metric.steps.baseline_shift',
-    );
+    const finding = runDetection(recordsToEvents(makeRecords({ steps: 10000 }, { steps: 7000 })), TODAY).find((item) => item.ruleId === 'metric.steps.baseline_shift');
     assert(finding, 'step reduction should produce a metric finding');
     assert(finding.severity === 'watch', 'single metric change should remain watch');
     assert(!finding.familyMessage, 'watch findings should not directly notify family');
   });
 
   await runCase('severe blood pressure without red flags stays alert', () => {
-    const findings = runDetection(
-      recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 })),
-      TODAY,
-    );
+    const findings = runDetection(recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 })), TODAY);
     const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
     assert(safety, 'severe blood pressure should create a safety finding');
     assert(safety.severity === 'alert', 'severe blood pressure without red-flag symptoms should be alert');
@@ -108,9 +86,7 @@ async function main() {
   });
 
   await runCase('severe blood pressure plus chest pain upgrades to urgent', () => {
-    const events = recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }), [
-      observation('chestPain', '胸口突然疼得厉害'),
-    ]);
+    const events = recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 }), [observation('chestPain', '胸口突然疼得厉害')]);
     const findings = runDetection(events, TODAY);
     const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
     assert(safety, 'combined severe BP safety finding should exist');
@@ -127,10 +103,7 @@ async function main() {
   });
 
   await runCase('private observation prevents family escalation without hiding it from the elder', () => {
-    const events = recordsToEvents(
-      makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }),
-      [observation('fatigue', '最近很累', 'private')],
-    );
+    const events = recordsToEvents(makeRecords({ steps: 10000, weight: 60, restingHr: 65 }, { steps: 7000, weight: 61.5, restingHr: 72 }), [observation('fatigue', '最近很累', 'private')]);
     const findings = runDetection(events, TODAY);
     const fusion = findings.find((finding) => finding.ruleId === 'fusion.multisignal_deterioration');
     assert(fusion, 'three objective/symptom dimensions should still produce a fusion finding');
@@ -139,9 +112,7 @@ async function main() {
   });
 
   await runCase('private red-flag symptom remains urgent but is not copied to family', () => {
-    const events = recordsToEvents(makeRecords({ steps: 7000 }, { steps: 7000 }), [
-      observation('chestPain', '这个不要告诉孩子，我胸口现在很痛', 'private'),
-    ]);
+    const events = recordsToEvents(makeRecords({ steps: 7000 }, { steps: 7000 }), [observation('chestPain', '这个不要告诉孩子，我胸口现在很痛', 'private')]);
     const findings = runDetection(events, TODAY);
     const redFlag = findings.find((finding) => finding.ruleId === 'safety.red_flag_symptom');
     assert(redFlag?.severity === 'urgent', 'private chest pain should still be handled as urgent for the elder');
@@ -152,30 +123,16 @@ async function main() {
   await runCase('privacy intent is explicit and conservative', () => {
     assert(parsePrivacyIntent('这个不要告诉孩子') === 'private', 'privacy phrase should be recognized');
     assert(parsePrivacyIntent('这个不要记录') === 'no_record', 'no-record phrase should be recognized');
-    assert(
-      canShareWithFamily('ask', 'share_family'),
-      'explicit share is a one-time grant even when persistent sharing is ask',
-    );
-    assert(
-      canShareWithFamily('denied', 'share_family'),
-      'explicit one-time share is separate from persistent sharing state',
-    );
+    assert(canShareWithFamily('ask', 'share_family'), 'explicit share is a one-time grant even when persistent sharing is ask');
+    assert(canShareWithFamily('denied', 'share_family'), 'explicit one-time share is separate from persistent sharing state');
     const demoFindings = runDetection(recordsToEvents(demoRecords, seedObservations), TODAY);
-    assert(
-      collectFamilyNotifications(demoFindings, 'granted').length > 0,
-      'granted sharing should allow eligible notifications',
-    );
+    assert(collectFamilyNotifications(demoFindings, 'granted').length > 0, 'granted sharing should allow eligible notifications');
     assert(collectFamilyNotifications(demoFindings, 'ask').length === 0, 'ask sharing must wait for explicit consent');
-    assert(
-      collectFamilyNotifications(demoFindings, 'denied').length === 0,
-      'denied sharing must block persistent notifications',
-    );
+    assert(collectFamilyNotifications(demoFindings, 'denied').length === 0, 'denied sharing must block persistent notifications');
   });
 
   await runCase('justified follow-up question is driven by context', async () => {
-    const events = recordsToEvents(makeRecords({ steps: 9000, walkSpeed: 1.0 }, { steps: 6000, walkSpeed: 0.8 }), [
-      observation('fatigue', '最近腿有点没劲'),
-    ]);
+    const events = recordsToEvents(makeRecords({ steps: 9000, walkSpeed: 1.0 }, { steps: 6000, walkSpeed: 0.8 }), [observation('fatigue', '最近腿有点没劲')]);
     const findings = runDetection(events, TODAY);
     const context = buildAgentContext(profile, events, TODAY, findings);
     const questions = suggestFollowUpQuestions(['fatigue'], context);
@@ -184,18 +141,8 @@ async function main() {
   });
 
   await runCase('private and no-record prompts stay on the local safety adapter path', async () => {
-    assert(
-      parseElderInput('这件事不要告诉孩子').tags.length === 0 || true,
-      'parser remains independent of privacy policy',
-    );
-    const reply = await generateAgentReply(
-      '刚才摔了一跤，不要告诉孩子',
-      ['fall'],
-      [],
-      true,
-      undefined,
-      ruleBasedAdapter,
-    );
+    assert(parseElderInput('这件事不要告诉孩子').tags.length === 0 || true, 'parser remains independent of privacy policy');
+    const reply = await generateAgentReply('刚才摔了一跤，不要告诉孩子', ['fall'], [], true, undefined, ruleBasedAdapter);
     assert(reply.includes('别急着起身'), 'private safety response should remain locally actionable');
   });
 
@@ -218,10 +165,7 @@ async function main() {
         kind: 'contact_family',
       } satisfies CareTask,
     ]);
-    assert(
-      report.sections.some((section) => section.title === '这周处理过的事情'),
-      'report should expose task state',
-    );
+    assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'report should expose task state');
   });
 }
 
