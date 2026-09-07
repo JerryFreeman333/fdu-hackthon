@@ -9,9 +9,10 @@ export function parsePrivacyIntent(text: string): PrivacyIntent {
   return 'none';
 }
 
+/** A one-time explicit share overrides the persistent default for that statement only. */
 export function canShareWithFamily(sharing: FamilySharing, intent: PrivacyIntent): boolean {
-  if (intent === 'private') return false;
-  if (intent === 'share_family') return sharing !== 'denied';
+  if (intent === 'private' || intent === 'no_record') return false;
+  if (intent === 'share_family') return true;
   return sharing === 'granted';
 }
 
