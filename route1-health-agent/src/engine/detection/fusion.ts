@@ -1,3 +1,5 @@
+import type { MetricKey } from '../../types';
+import { diffDays } from '../baseline';
 import { addFinding } from './helpers';
 import { hadTag, fmt } from './signals';
 import type { DetectionRule } from './types';
@@ -36,10 +38,27 @@ export const multiSignalRule: DetectionRule = {
     const categories = [activity, symptom, volumeSleep, physiologic].filter(Boolean).length;
     if (categories < 3) return null;
 
+    const objectiveSignalKeys: MetricKey[] = [];
+    if (steps && steps.badRatio >= 0.2) objectiveSignalKeys.push('steps');
+    if (speed && speed.badRatio >= 0.1) objectiveSignalKeys.push('walkSpeed');
+    if (weight && weight.badRatio >= 0.015) objectiveSignalKeys.push('weight');
+    if (wakes && wakes.badRatio >= 0.5) objectiveSignalKeys.push('nightWakes');
+    if (sleepHours && sleepHours.badRatio >= 0.15) objectiveSignalKeys.push('sleepHours');
+    if (hr && hr.badRatio >= 0.05) objectiveSignalKeys.push('restingHr');
+    if (spo2 && spo2.badRatio >= 0.02) objectiveSignalKeys.push('spo2');
+
+    const hasPrivateObjectiveEvidence = context.measurements.some(
+      (measurement) =>
+        objectiveSignalKeys.includes(measurement.metric) &&
+        measurement.visibility === 'private' &&
+        diffDays(measurement.timestamp.slice(0, 10), context.today) >= 0 &&
+        diffDays(measurement.timestamp.slice(0, 10), context.today) < context.config.recentDays,
+    );
     const symptomObservations = [fatigue, poorSleep, dyspnea, dizziness, edema].filter(
       (item): item is NonNullable<typeof item> => item !== null,
     );
-    const familyEligible = symptomObservations.every((observation) => observation.visibility !== 'private');
+    const familyEligible =
+      !hasPrivateObjectiveEvidence && symptomObservations.every((observation) => observation.visibility !== 'private');
     const evidence: string[] = [`共 ${categories} 个维度出现变化（活动、主诉、容量/睡眠、生理指标）`];
     const signalKeys: string[] = [];
 
@@ -89,7 +108,7 @@ export const multiSignalRule: DetectionRule = {
     }
     if (sleepHours && sleepHours.badRatio >= 0.15) {
       evidence.push(
-        `睡眠时长：平均 ${fmt('sleepHours', sleepHours.recentMean)} 小时，比基线少约 ${Math.round(sleepHours.badRatio * 100)}%`,
+        `睡眠时长：平均 ${fmt('sleepHours', sleepHours.recentMean)}，比基线少约 ${Math.round(sleepHours.badRatio * 100)}%`,
       );
       signalKeys.push('sleepHours');
     }
