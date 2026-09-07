@@ -46,6 +46,12 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Formatter preview for QA
+        run: |
+          npx --yes prettier@3.5.3 --write src/hooks/useCareTasks.ts
+          git diff -- route1-health-agent/src/hooks/useCareTasks.ts
+          exit 1
+
       - name: Verify formatting
         run: npm run format:check
 
