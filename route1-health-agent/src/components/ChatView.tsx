@@ -36,6 +36,7 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [ttsSupported, setTtsSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -46,7 +47,11 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
   useEffect(() => {
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     setVoiceSupported(Boolean(Recognition));
-    return () => recognitionRef.current?.stop();
+    setTtsSupported(typeof window !== 'undefined' && 'speechSynthesis' in window);
+    return () => {
+      recognitionRef.current?.stop();
+      window.speechSynthesis?.cancel();
+    };
   }, []);
 
   function send(t: string) {
@@ -82,6 +87,15 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
     recognition.start();
   }
 
+  function speak(textToRead: string) {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(textToRead.replace(/\n/g, '。'));
+    utterance.lang = 'zh-CN';
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  }
+
   return (
     <div className="chat-view">
       <div className="chat-intro">
@@ -100,6 +114,11 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
                 <p key={i}>{line}</p>
               ))}
               <div className="chat-time">{m.time}</div>
+              {m.role === 'agent' && ttsSupported && (
+                <button className="btn-secondary" onClick={() => speak(m.text)} aria-label="朗读这条回复">
+                  🔊 朗读
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -113,6 +132,10 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
           </button>
         ))}
       </div>
+
+      {!voiceSupported && (
+        <div className="muted voice-fallback">当前浏览器不支持语音输入，可以直接打字，或让家人帮忙操作。</div>
+      )}
 
       <div className="chat-input-row">
         {voiceSupported && (

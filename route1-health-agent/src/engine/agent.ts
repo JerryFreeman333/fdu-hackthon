@@ -3,6 +3,7 @@ import type { ChatMessage, Finding, SymptomTag } from '../types';
 import type { AgentContext } from './context';
 import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
+import { parsePrivacyIntent } from './privacy';
 
 interface IntentRule {
   tag: SymptomTag;
@@ -143,9 +144,8 @@ function buildRuleBasedReply(
   const fusion =
     context?.priorityFindings.find((f) => f.ruleId === 'fusion.multisignal_deterioration') ??
     findings.find((f) => f.ruleId === 'fusion.multisignal_deterioration');
-  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea'))) {
+  if (fusion && (newTags.includes('fatigue') || newTags.includes('dyspnea')))
     parts.push(`另外我留意了一下：${fusion.evidence[0]}。我会继续帮您观察变化。`);
-  }
   if (isNewFall) parts.push('我已经把跌倒标成紧急事件了，请先保持电话畅通。');
   return parts.join('\n');
 }
@@ -165,6 +165,67 @@ export const ruleBasedAdapter: LlmAdapter = {
   },
 };
 
+interface ExternalAgentContext {
+  today: string;
+  windowDays: number;
+  safetyLevel: Finding['severity'];
+  personTwin: {
+    asOf: string;
+    activity: 'stable' | 'declining' | 'improving' | 'unknown';
+    mobility: 'stable' | 'declining' | 'improving' | 'unknown';
+    sleep: 'stable' | 'declining' | 'improving' | 'unknown';
+    nightActivity: 'stable' | 'declining' | 'improving' | 'unknown';
+    recentSymptoms: SymptomTag[];
+    activeConcerns: string[];
+    safetyRelevantChanges: string[];
+    functionalProfile: AgentContext['personTwin']['functionalProfile'];
+  };
+  metrics: AgentContext['metrics'];
+  observations: AgentContext['observations'];
+  labs: AgentContext['labs'];
+  priorityFindings: AgentContext['priorityFindings'];
+  suggestedAction?: string;
+}
+
+function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
+  const publicFindings = context.priorityFindings.filter((finding) => finding.familyEligible !== false);
+  const safetyRank: Record<Finding['severity'], number> = { urgent: 0, alert: 1, watch: 2, info: 3 };
+  const publicSafety = publicFindings.reduce<Finding['severity']>(
+    (highest, finding) => (safetyRank[finding.severity] < safetyRank[highest] ? finding.severity : highest),
+    'info',
+  );
+  const publicSymptoms = context.observations
+    .filter((observation) => observation.visibility !== 'private')
+    .flatMap((observation) => observation.tags)
+    .filter((tag, index, tags) => tags.indexOf(tag) === index);
+  return {
+    today: context.today,
+    windowDays: context.windowDays,
+    safetyLevel: publicSafety,
+    personTwin: {
+      asOf: context.personTwin.asOf,
+      activity: 'unknown',
+      mobility: 'unknown',
+      sleep: 'unknown',
+      nightActivity: 'unknown',
+      recentSymptoms: publicSymptoms,
+      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
+      safetyRelevantChanges: [],
+      functionalProfile: {
+        mobility: 'unknown',
+        usesCane: false,
+        nightVision: 'unknown',
+        cognition: 'unknown',
+      },
+    },
+    metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
+    observations: context.observations.filter((observation) => observation.visibility !== 'private'),
+    labs: context.labs.filter((lab) => lab.visibility !== 'private'),
+    priorityFindings: publicFindings,
+    suggestedAction: undefined,
+  };
+}
+
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost')) {
@@ -172,16 +233,16 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   }
   return {
     async complete(systemPrompt, userText, context) {
-      const safeContext = context
-        ? {
-            ...context,
-            observations: context.observations.filter((observation) => observation.visibility !== 'private'),
-          }
-        : undefined;
+      const privacyIntent = parsePrivacyIntent(userText);
+      if (privacyIntent === 'private' || privacyIntent === 'no_record') {
+        throw new Error('Private and no-record inputs must stay on the local safety adapter.');
+      }
+      const safeContext = context ? sanitizeExternalContext(context) : undefined;
+      const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText, context: safeContext }),
+        body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
       });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
@@ -193,6 +254,20 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 const SYSTEM_PROMPT =
   '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。';
 
+const UNSAFE_REPLY_PATTERNS = [
+  /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
+  /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
+  /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
+];
+const MAX_AGENT_REPLY_LENGTH = 500;
+const MAX_AGENT_INPUT_LENGTH = 1000;
+
+export function isSafeAgentReply(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return false;
+  return !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export async function generateAgentReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -202,15 +277,16 @@ export async function generateAgentReply(
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
   const safetyFinding = context?.priorityFindings.find(
-    (finding) => finding.severity === 'urgent' || finding.severity === 'alert',
+    (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
   );
   const safetyGuard = safetyFinding
     ? `当前最高风险等级为 ${safetyFinding.severity}，不要自行提高或降低等级。`
-    : '当前没有更高等级安全信号。';
+    : '当前没有可供外部模型使用的更高等级安全信号。';
   const systemPrompt = `${SYSTEM_PROMPT}\n${safetyGuard}\n已识别标签：${newTags.join(', ') || '无'}。`;
   try {
     const completion = await adapter.complete(systemPrompt, elderText, context);
-    return completion.text || buildRuleBasedReply(newTags, findings, isNewFall, context);
+    if (isSafeAgentReply(completion.text)) return completion.text.trim();
+    return buildRuleBasedReply(newTags, findings, isNewFall, context);
   } catch {
     return buildRuleBasedReply(newTags, findings, isNewFall, context);
   }

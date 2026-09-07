@@ -49,7 +49,7 @@ export function getMetricSignal(
     baselineSd: baseline.sd,
     baselineN: baseline.n,
     badRatio: badDelta / Math.abs(baseline.mean),
-    sigma: deviationSigma(recent, baseline, METRICS[metric].higherIsBad),
+    sigma: deviationSigma(recent, baseline, METRICS[metric].higherIsBad, metric),
   };
 }
 

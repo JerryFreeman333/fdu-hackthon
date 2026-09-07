@@ -11,7 +11,9 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
+import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
+import { demoImageHealthParser, type DemoImageKind } from './adapters/DemoImageHealthParser';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
@@ -35,8 +37,9 @@ import RoleGate from './components/RoleGate';
 
 const ROLE_KEY = 'ankang-route1-role-v3';
 const TASK_KEY = 'ankang-route1-tasks-v2';
-const CONSENT_KEY = 'ankang-route1-consent-v1';
+const CONSENT_KEY = 'ankang-route1-consent-v2';
 const FAMILY_LINK_KEY = 'ankang-route1-family-link-v1';
+const SHARED_FINDING_IDS_KEY = 'ankang-route1-shared-findings-v1';
 const INVITE_PREFIX = 'ankang-route1-invite:';
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -73,14 +76,22 @@ function loadTasks(): CareTask[] {
   return buildInitialTasks(TODAY);
 }
 
-function loadFamilySharing(): ElderProfile['familySharing'] {
+function loadFamilySharing(): { familySharing: ElderProfile['familySharing']; updatedAt: string } {
   try {
     const raw = window.localStorage.getItem(CONSENT_KEY);
-    if (raw === 'granted' || raw === 'ask' || raw === 'denied') return raw;
+    if (!raw) return { familySharing: profile.familySharing, updatedAt: '' };
+    if (raw === 'granted' || raw === 'ask' || raw === 'denied') return { familySharing: raw, updatedAt: '' };
+    const parsed = JSON.parse(raw) as { familySharing?: ElderProfile['familySharing']; updatedAt?: string };
+    if (parsed.familySharing === 'granted' || parsed.familySharing === 'ask' || parsed.familySharing === 'denied') {
+      return {
+        familySharing: parsed.familySharing,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      };
+    }
   } catch {
     // fall back to the demo account's initial consent state
   }
-  return profile.familySharing;
+  return { familySharing: profile.familySharing, updatedAt: '' };
 }
 
 function loadFamilyLink(): FamilyLink | null {
@@ -94,12 +105,26 @@ function loadFamilyLink(): FamilyLink | null {
   }
 }
 
+function loadSharedFindingIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(SHARED_FINDING_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string').slice(-50) : [];
+  } catch {
+    return [];
+  }
+}
+
 function createInviteCode(): string {
   const random =
     typeof crypto !== 'undefined' && 'getRandomValues' in crypto
       ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
       : Math.floor(Math.random() * 10000);
   return `AN-${TODAY.slice(0, 4)}-${random.toString().padStart(4, '0')}`;
+}
+
+function localIsoTimestamp(): string {
+  return new Date().toISOString();
 }
 
 export default function App() {
@@ -110,20 +135,30 @@ export default function App() {
     const saved = window.localStorage.getItem(ROLE_KEY);
     return saved === 'elder' || saved === 'family' ? saved : null;
   });
-  const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>(() => loadFamilySharing());
+  const initialConsent = useMemo(() => loadFamilySharing(), []);
+  const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>(initialConsent.familySharing);
+  const [consentUpdatedAt, setConsentUpdatedAt] = useState(initialConsent.updatedAt);
   const [familyLink, setFamilyLink] = useState<FamilyLink | null>(() => loadFamilyLink());
+  const [sharedFindingIds, setSharedFindingIds] = useState<string[]>(() => loadSharedFindingIds());
   const [familyView, setFamilyView] = useState<FamilyView>('home');
   const [toast, setToast] = useState<string | null>(null);
   const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
-  const { records, observations } = healthData;
+  const { records, observations, measurements } = healthData;
+  const familyRecords = useMemo(
+    () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
+    [measurements],
+  );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
     () => buildAgentContext(activeProfile, events, TODAY, findings),
     [activeProfile, events, findings],
   );
-  const familyNotifs = useMemo(() => collectFamilyNotifications(findings, familySharing), [findings, familySharing]);
+  const familyNotifs = useMemo(
+    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds),
+    [findings, familySharing, sharedFindingIds],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -140,10 +175,14 @@ export default function App() {
   useEffect(() => {
     healthRecordStore.save({ events, chat: chat.filter((item) => item.persisted !== false) });
     window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
-    window.localStorage.setItem(CONSENT_KEY, familySharing);
+    window.localStorage.setItem(
+      CONSENT_KEY,
+      JSON.stringify({ familySharing, updatedAt: consentUpdatedAt || localIsoTimestamp() }),
+    );
+    window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify(sharedFindingIds.slice(-50)));
     if (familyLink) window.localStorage.setItem(FAMILY_LINK_KEY, JSON.stringify(familyLink));
     else window.localStorage.removeItem(FAMILY_LINK_KEY);
-  }, [events, chat, tasks, familySharing, familyLink]);
+  }, [events, chat, tasks, familySharing, consentUpdatedAt, familyLink, sharedFindingIds]);
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
@@ -163,6 +202,11 @@ export default function App() {
     window.setTimeout(() => setToast(null), 3200);
   }
 
+  function updatePersistentFamilySharing(next: ElderProfile['familySharing']) {
+    setFamilySharing(next);
+    setConsentUpdatedAt(localIsoTimestamp());
+  }
+
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
     window.localStorage.setItem(ROLE_KEY, nextRole);
@@ -175,12 +219,10 @@ export default function App() {
 
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
-    if (intent === 'share_family' && familySharing !== 'denied') setFamilySharing('granted');
-
     const { tags } = parseElderInput(text);
     const extractedValues = extractHealthValues(text);
-    const effectiveSharing = intent === 'share_family' ? ('granted' as const) : familySharing;
-    const canShare = canShareWithFamily(effectiveSharing, intent);
+    const canShare = canShareWithFamily(familySharing, intent);
+    const visibility = canShare ? 'family_ok' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
     const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
@@ -199,6 +241,7 @@ export default function App() {
       return;
     }
 
+    const eventTimestamp = localIsoTimestamp();
     const incomingEvents: HealthEvent[] = [];
     if (tags.length > 0) {
       incomingEvents.push(
@@ -208,39 +251,58 @@ export default function App() {
           source: 'chat',
           text,
           tags,
-          visibility: canShare ? 'family_ok' : 'private',
+          visibility,
         }),
       );
     }
 
-    const recordedValues = canShare ? extractedValues : [];
-    for (const extracted of recordedValues) {
+    for (const extracted of extractedValues) {
       const measurement: HealthMeasurement = {
         id: `chat-value-${Date.now()}-${extracted.metric}`,
-        timestamp: `${TODAY}T${new Date().toTimeString().slice(0, 8)}`,
+        timestamp: eventTimestamp,
         metric: extracted.metric,
         value: extracted.value,
         unit: extracted.unit,
         source: 'chat',
         confidence: 0.9,
-        metadata: { sourceText: extracted.sourceText, extraction: 'rule' },
+        visibility,
+        metadata: {
+          sourceText: extracted.sourceText,
+          extraction: 'rule',
+          privacy: visibility,
+        },
       };
       incomingEvents.push(measurementToEvent(measurement));
     }
 
     if (incomingEvents.length > 0) {
-      setEvents((current) => appendHealthEvents(current, incomingEvents));
+      const nextEvents = appendHealthEvents(events, incomingEvents);
+      setEvents(nextEvents);
+
+      if (intent === 'share_family') {
+        const nextFindings = runDetection(nextEvents, TODAY);
+        const shareableFindingIds = nextFindings
+          .filter(
+            (finding) =>
+              (finding.severity === 'alert' || finding.severity === 'urgent') &&
+              finding.familyEligible !== false &&
+              Boolean(finding.familyMessage),
+          )
+          .map((finding) => finding.id);
+        if (shareableFindingIds.length > 0) {
+          setSharedFindingIds((current) => [...new Set([...current, ...shareableFindingIds])].slice(-50));
+        }
+      }
+
       const labels = tags.map(tagLabel);
-      const values = recordedValues.map(
-        (item) => `${item.metric === 'nightWakes' ? '夜间醒来' : '活动步数'} ${item.value}${item.unit}`,
-      );
-      showToast(
-        `已记录：${[...labels, ...values].join('、')}${
-          canShare ? '；按当前授权可供家属查看必要变化' : '；仅供您本人使用'
-        }`,
-      );
-    } else if (extractedValues.length > 0) {
-      showToast('这次数值信息先按隐私设置保留在当前对话中，不进入共享健康记录。');
+      const values = extractedValues.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
+      const sharingNotice =
+        intent === 'share_family'
+          ? '；这次明确分享给家属，不会自动修改长期共享设置'
+          : canShare
+            ? '；按当前授权可供家属查看必要变化'
+            : '；仅供您本人使用';
+      showToast(`已记录：${[...labels, ...values].join('、')}${sharingNotice}`);
     }
 
     if (tags.includes('medicationMissed')) {
@@ -255,7 +317,7 @@ export default function App() {
                 description: '不要自行加倍或调整药量，只确认并按原方案处理。',
                 dueDate: TODAY,
                 status: 'pending',
-                createdAt: `${TODAY}T${new Date().toTimeString().slice(0, 8)}`,
+                createdAt: eventTimestamp,
                 kind: 'medication_check',
               },
             ],
@@ -264,23 +326,56 @@ export default function App() {
     if (tags.includes('fall')) showToast('已标记为紧急事件，请先确认安全并保持电话畅通。');
   }
 
+  async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+    try {
+      const capturedAt = localIsoTimestamp();
+      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      const incomingEvents: HealthEvent[] = [
+        ...parsed.measurements.map(measurementToEvent),
+        ...parsed.labResults.map((result) => ({
+          id: `labResult:${result.id}`,
+          type: 'labResult' as const,
+          timestamp: result.timestamp,
+          source: result.source,
+          labResult: result,
+        })),
+      ];
+      if (parsed.tags.length > 0 || parsed.rawText) {
+        incomingEvents.push(
+          observationToEvent({
+            id: `photo-obs-${Date.now()}`,
+            date: TODAY,
+            source: 'photo',
+            text: parsed.rawText ?? '拍照录入（演示）',
+            tags: parsed.tags,
+            visibility: 'family_ok',
+          }),
+        );
+      }
+      setEvents((current) => appendHealthEvents(current, incomingEvents));
+      showToast(`${parsed.rawText ?? '拍照录入完成'}；这是 Demo 示例数据，请人工确认。`);
+    } catch {
+      showToast('这张图片暂时无法处理，请换一张或直接告诉我数据。');
+    }
+  }
+
   function handleTaskStatus(taskId: string, status: CareTask['status']) {
     setTasks((current) => current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)));
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
   }
 
   function requestFamilyShare() {
-    setFamilySharing('granted');
-    showToast('已同意在必要时与家属共享。');
+    updatePersistentFamilySharing('granted');
+    showToast(`已同意在必要时与家属共享。${consentUpdatedAt ? `授权记录时间：${consentUpdatedAt.slice(0, 10)}` : ''}`);
   }
 
   function keepFamilyPrivate() {
-    setFamilySharing('denied');
+    updatePersistentFamilySharing('denied');
     showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
   }
 
   function revokeFamilyShare() {
-    setFamilySharing('denied');
+    updatePersistentFamilySharing('denied');
     showToast('已暂停家属共享。老人本人仍可继续使用助手。');
   }
 
@@ -355,6 +450,7 @@ export default function App() {
             profile={activeProfile}
             chat={chat}
             onSend={handleElderSend}
+            onPhotoImport={handlePhotoImport}
             quickInputs={QUICK_INPUTS}
             tasks={tasks}
             findings={findings}
@@ -396,7 +492,7 @@ export default function App() {
           notifications={familyNotifs}
           findings={findings}
           tasks={tasks}
-          records={records}
+          records={familyRecords}
           observations={observations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
@@ -409,8 +505,8 @@ export default function App() {
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。当前硬件与 OCR 仍通过 Adapter/本地能力预留；LLM 默认本地规则，可通过服务端 Endpoint
-        接入真实模型。
+        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
+        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
       </footer>
     </div>
   );

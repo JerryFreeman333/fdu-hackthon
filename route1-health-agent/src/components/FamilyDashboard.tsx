@@ -107,6 +107,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           records={props.records}
           observations={familyObservations}
           findings={familyFindings}
+          tasks={props.tasks}
           today={props.today}
         />
       </div>
@@ -139,7 +140,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               className="chat-input"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
-              placeholder="例如 AN-2026-AB12CD"
+              placeholder="例如 AN-2026-1234"
             />
             <button className="btn-primary" onClick={bind}>
               绑定

@@ -5,7 +5,20 @@
  */
 import type { ChatMessage, DayRecord, ElderProfile, Observation } from '../types';
 
-export const TODAY = '2026-09-06';
+function localToday(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+}
+
+export const TODAY = localToday();
+
+function dateOffset(offset: number): string {
+  return new Date(Date.parse(TODAY) + offset * 86400000).toISOString().slice(0, 10);
+}
+
+function chatTime(offset: number, time: string): string {
+  return `${dateOffset(offset).slice(5)} ${time}`;
+}
 
 export const profile: ElderProfile = {
   name: '王秀兰奶奶',
@@ -22,7 +35,7 @@ export const profile: ElderProfile = {
 
 function buildRecords(): DayRecord[] {
   const records: DayRecord[] = [];
-  const start = Date.parse('2026-08-17');
+  const start = Date.parse(TODAY) - 20 * 86400000;
   for (let i = 0; i < 21; i += 1) {
     const date = new Date(start + i * 86400000).toISOString().slice(0, 10);
     const declining = i >= 16;
@@ -58,10 +71,17 @@ export const records: DayRecord[] = buildRecords();
 
 const shareable = { visibility: 'family_ok' as const };
 export const seedObservations: Observation[] = [
-  { id: 'obs-1', date: '2026-09-03', source: 'chat', text: '今天很累，什么都不想干', tags: ['fatigue'], ...shareable },
+  {
+    id: 'obs-1',
+    date: dateOffset(-3),
+    source: 'chat',
+    text: '今天很累，什么都不想干',
+    tags: ['fatigue'],
+    ...shareable,
+  },
   {
     id: 'obs-2',
-    date: '2026-09-04',
+    date: dateOffset(-2),
     source: 'chat',
     text: '最近走路有点喘，走两步就想歇',
     tags: ['dyspnea'],
@@ -69,52 +89,73 @@ export const seedObservations: Observation[] = [
   },
   {
     id: 'obs-3',
-    date: '2026-09-05',
+    date: dateOffset(-1),
     source: 'chat',
     text: '这两天睡不好，一晚上要起来好几趟',
     tags: ['poorSleep'],
     ...shareable,
   },
-  { id: 'obs-4', date: '2026-09-06', source: 'chat', text: '早上脚踝有点肿，鞋都紧了', tags: ['edema'], ...shareable },
+  { id: 'obs-4', date: dateOffset(0), source: 'chat', text: '早上脚踝有点肿，鞋都紧了', tags: ['edema'], ...shareable },
 ];
 
 export const seedPhotoObservations: Observation[] = [
-  { id: 'photo-1', date: '2026-09-01', source: 'photo', text: '拍照录入：血压 138/84 mmHg', tags: [] },
-  { id: 'photo-2', date: '2026-09-04', source: 'photo', text: '拍照录入：体重 63.4 kg', tags: [] },
-  { id: 'photo-3', date: '2026-09-06', source: 'photo', text: '拍照录入：血压 148/88 mmHg', tags: ['bpHigh'] },
+  {
+    id: 'photo-1',
+    date: dateOffset(-5),
+    source: 'photo',
+    text: '拍照录入：血压 138/84 mmHg',
+    tags: [],
+    visibility: 'family_ok',
+  },
+  {
+    id: 'photo-2',
+    date: dateOffset(-2),
+    source: 'photo',
+    text: '拍照录入：体重 63.4 kg',
+    tags: [],
+    visibility: 'family_ok',
+  },
+  {
+    id: 'photo-3',
+    date: dateOffset(0),
+    source: 'photo',
+    text: '拍照录入：血压 148/88 mmHg',
+    tags: ['bpHigh'],
+    visibility: 'family_ok',
+  },
 ];
 
 export const seedChat: ChatMessage[] = [
-  { id: 'c1', role: 'elder', text: '今天很累，什么都不想干', time: '09-03 09:12', persisted: true },
+  { id: 'c1', role: 'elder', text: '今天很累，什么都不想干', time: chatTime(-3, '09:12'), persisted: true },
   {
     id: 'c2',
     role: 'agent',
     text: '最近活动量也比平时少一些了。我想多了解一点：这种累大概是最近几天才开始的吗？',
-    time: '09-03 09:12',
+    time: chatTime(-3, '09:12'),
     persisted: true,
   },
-  { id: 'c3', role: 'elder', text: '最近走路有点喘，走两步就想歇', time: '09-04 08:40', persisted: true },
+  { id: 'c3', role: 'elder', text: '最近走路有点喘，走两步就想歇', time: chatTime(-2, '08:40'), persisted: true },
   {
     id: 'c4',
     role: 'agent',
     text: '好，我记下了。是走一点路就喘，还是上楼、快走时更明显？休息后能不能缓过来？',
-    time: '09-04 08:40',
+    time: chatTime(-2, '08:40'),
     persisted: true,
   },
-  { id: 'c5', role: 'elder', text: '这两天睡不好，一晚上要起来好几趟', time: '09-05 07:55', persisted: true },
+  { id: 'c5', role: 'elder', text: '这两天睡不好，一晚上要起来好几趟', time: chatTime(-1, '07:55'), persisted: true },
   {
     id: 'c6',
     role: 'agent',
     text: '我记下了。因为最近夜间活动也增加了，我想确认一下：大概一晚上会起来几次？',
-    time: '09-05 07:55',
+    time: chatTime(-1, '07:55'),
     persisted: true,
   },
-  { id: 'c7', role: 'elder', text: '早上脚踝有点肿，鞋都紧了', time: '09-06 08:05', persisted: true },
+  { id: 'c7', role: 'elder', text: '早上脚踝有点肿，鞋都紧了', time: chatTime(0, '08:05'), persisted: true },
   {
     id: 'c8',
     role: 'agent',
     text: '我先帮您记下来。最近有几项变化叠在一起，我建议今天和女儿联系一下；如果呼吸明显困难或突然不舒服加重，要及时求助。',
-    time: '09-06 08:05',
+    time: chatTime(0, '08:05'),
     persisted: true,
   },
 ];

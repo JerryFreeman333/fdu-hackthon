@@ -77,6 +77,7 @@ export interface HealthMeasurement {
   unit: string;
   source: DataSource;
   confidence?: number;
+  visibility?: PrivacyScope;
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -94,6 +95,7 @@ export interface LabResult {
   unit: string;
   source: DataSource;
   confidence?: number;
+  visibility?: PrivacyScope;
   referenceRange?: { low?: number; high?: number };
 }
 

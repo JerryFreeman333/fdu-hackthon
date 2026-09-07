@@ -1,7 +1,7 @@
 import type { Observation } from '../../types';
 import { addFinding } from './helpers';
 import { hadTag } from './signals';
-import type { DetectionRule } from './types';
+import type { DetectionContext, DetectionRule } from './types';
 
 function tagText(observation: Observation): string {
   return `${observation.date}：${observation.text}`;
@@ -9,6 +9,15 @@ function tagText(observation: Observation): string {
 
 function familyEligible(...observations: Array<Observation | null>): boolean {
   return observations.every((observation) => observation === null || observation.visibility !== 'private');
+}
+
+function hasPrivateTodayMeasurement(context: DetectionContext, metric: 'systolic' | 'diastolic'): boolean {
+  return context.measurements.some(
+    (measurement) =>
+      measurement.metric === metric &&
+      measurement.visibility === 'private' &&
+      measurement.timestamp.slice(0, 10) === context.today,
+  );
 }
 
 export const bloodPressureSafetyRule: DetectionRule = {
@@ -25,7 +34,10 @@ export const bloodPressureSafetyRule: DetectionRule = {
     const neuroChange = hadTag(context.observations, 'neuroChange', context.today, 1);
     const danger = dyspnea ?? chestPain ?? neuroChange;
     const urgent = danger !== null;
-    const shareable = familyEligible(dyspnea, chestPain, neuroChange);
+    const shareableSymptoms = familyEligible(dyspnea, chestPain, neuroChange);
+    const privateBp =
+      hasPrivateTodayMeasurement(context, 'systolic') || hasPrivateTodayMeasurement(context, 'diastolic');
+    const shareable = shareableSymptoms && !privateBp;
 
     return addFinding(context.findings, {
       date: context.today,
@@ -36,9 +48,9 @@ export const bloodPressureSafetyRule: DetectionRule = {
         : '单次高读数不能直接下结论。先安静坐下，至少一分钟后按规范重新测量；如果复测仍很高，应尽快联系医疗专业人员。',
       evidence: [
         `今日血压 ${systolic ?? '—'}/${diastolic ?? '—'} mmHg`,
-        ...(dyspnea && shareable ? [`今日呼吸不适：${tagText(dyspnea)}`] : []),
-        ...(chestPain && shareable ? [`今日胸痛：${tagText(chestPain)}`] : []),
-        ...(neuroChange && shareable ? [`今日突发神经系统异常：${tagText(neuroChange)}`] : []),
+        ...(dyspnea && shareableSymptoms ? [`今日呼吸不适：${tagText(dyspnea)}`] : []),
+        ...(chestPain && shareableSymptoms ? [`今日胸痛：${tagText(chestPain)}`] : []),
+        ...(neuroChange && shareableSymptoms ? [`今日突发神经系统异常：${tagText(neuroChange)}`] : []),
       ],
       familyMessage: shareable
         ? urgent

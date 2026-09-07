@@ -1,12 +1,15 @@
+import { useRef, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, Finding } from '../types';
 import { sharingLabel } from '../engine/privacy';
 import { taskSummary } from '../engine/tasks';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
 
 interface ElderHomeProps {
   profile: ElderProfile;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
+  onPhotoImport: (file: Blob, kind: DemoImageKind) => void | Promise<void>;
   quickInputs: string[];
   tasks: CareTask[];
   findings: Finding[];
@@ -21,6 +24,7 @@ export default function ElderHome({
   profile,
   chat,
   onSend,
+  onPhotoImport,
   quickInputs,
   tasks,
   findings,
@@ -34,6 +38,18 @@ export default function ElderHome({
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
     profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoKind, setPhotoKind] = useState<DemoImageKind>('bloodPressure');
+
+  function choosePhoto() {
+    fileInputRef.current?.click();
+  }
+
+  async function handlePhotoChange(file: File | undefined) {
+    if (!file) return;
+    await onPhotoImport(file, photoKind);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
   return (
     <div className="elder-home">
@@ -105,6 +121,36 @@ export default function ElderHome({
           </div>
         </section>
       )}
+
+      <section className="card photo-card">
+        <div className="section-head">
+          <div>
+            <h3>拍照记录</h3>
+            <span className="muted">当前为 Demo：不会真的读取图片内容，上传后写入明确标注的示例数据。</span>
+          </div>
+        </div>
+        <div className="chat-input-row">
+          <select
+            aria-label="选择拍照数据类型"
+            value={photoKind}
+            onChange={(event) => setPhotoKind(event.target.value as DemoImageKind)}
+          >
+            <option value="bloodPressure">血压计</option>
+            <option value="weight">体重秤</option>
+            <option value="report">体检/报告</option>
+          </select>
+          <button className="btn-primary" onClick={choosePhoto}>
+            选择照片
+          </button>
+          <input
+            ref={fileInputRef}
+            hidden
+            type="file"
+            accept="image/*"
+            onChange={(event) => void handlePhotoChange(event.target.files?.[0])}
+          />
+        </div>
+      </section>
 
       <section className="card privacy-card">
         <div className="section-head">
