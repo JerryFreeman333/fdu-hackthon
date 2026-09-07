@@ -180,7 +180,8 @@ export default function App() {
       }));
     }
 
-    for (const extracted of extractedValues) {
+    const recordedValues = canShare ? extractedValues : [];
+    for (const extracted of recordedValues) {
       const measurement: HealthMeasurement = {
         id: `chat-value-${Date.now()}-${extracted.metric}`,
         timestamp: `${TODAY}T${new Date().toTimeString().slice(0, 8)}`,
@@ -197,8 +198,10 @@ export default function App() {
     if (incomingEvents.length > 0) {
       setEvents((current) => appendHealthEvents(current, incomingEvents));
       const labels = tags.map(tagLabel);
-      const values = extractedValues.map((item) => `${item.metric === 'nightWakes' ? '夜间醒来' : '活动步数'} ${item.value}${item.unit}`);
+      const values = recordedValues.map((item) => `${item.metric === 'nightWakes' ? '夜间醒来' : '活动步数'} ${item.value}${item.unit}`);
       showToast(`已记录：${[...labels, ...values].join('、')}${canShare ? '；按当前授权可供家属查看必要变化' : '；仅供您本人使用'}`);
+    } else if (extractedValues.length > 0) {
+      showToast('这次数值信息先按隐私设置保留在当前对话中，不进入共享健康记录。');
     }
 
     if (tags.includes('medicationMissed')) {
