@@ -126,14 +126,15 @@ async function main(): Promise<void> {
   );
 
   const zeroVariance = makeStableRecords('spo2', 96);
-  const changed = [
-    ...zeroVariance.slice(0, 15),
-    { date: dateFromToday(-3), metrics: { spo2: 94 } },
+  const shifted = [
+    ...zeroVariance.slice(0, 14),
+    { date: dateFromToday(-3), metrics: { spo2: 96 } },
     { date: dateFromToday(-2), metrics: { spo2: 94 } },
     { date: dateFromToday(-1), metrics: { spo2: 94 } },
     { date: TODAY, metrics: { spo2: 94 } },
   ];
-  const zeroVarianceFindings = runDetection(eventsFrom(changed), TODAY);
+  // Baseline excludes the last three days and uses -3..-16, which must all remain exactly 96.
+  const zeroVarianceFindings = runDetection(eventsFrom(shifted), TODAY);
   assert(
     zeroVarianceFindings.some((finding) => finding.ruleId === 'metric.spo2.baseline_shift'),
     'a stable baseline should still detect a meaningful absolute change',
@@ -163,7 +164,10 @@ async function main(): Promise<void> {
 
   const sameFinding = { ...fusion, ruleId: 'fusion.multisignal_deterioration', id: 'fusion-a' };
   const taskA = createTaskFromFinding(sameFinding, TODAY);
-  const taskB = createTaskFromFinding({ ...sameFinding, id: 'fusion-b', date: dateFromToday(1) }, dateFromToday(1));
+  const taskB = createTaskFromFinding(
+    { ...sameFinding, id: 'fusion-b', date: dateFromToday(1) },
+    dateFromToday(1),
+  );
   assert(taskA?.id === taskB?.id, 'the same rule should map to one stable task across days');
 
   const numericCases = [
@@ -235,22 +239,10 @@ async function main(): Promise<void> {
   const safeObservations = payload.context?.observations ?? [];
   const safeMetrics = payload.context?.metrics ?? [];
   const safeFindings = payload.context?.priorityFindings ?? [];
-  assert(
-    !safeObservations.some((item) => item.text.includes('不要告诉孩子')),
-    'private observation must stay out of external context',
-  );
-  assert(
-    !safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121),
-    'private vitals must stay out of external context',
-  );
-  assert(
-    !safeFindings.some((item) => item.title === '私密紧急发现'),
-    'private findings must stay out of external context',
-  );
-  assert(
-    payload.context?.safetyLevel !== 'urgent',
-    'external safety level must not inherit a private-only urgent finding',
-  );
+  assert(!safeObservations.some((item) => item.text.includes('不要告诉孩子')), 'private observation must stay out of external context');
+  assert(!safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121), 'private vitals must stay out of external context');
+  assert(!safeFindings.some((item) => item.title === '私密紧急发现'), 'private findings must stay out of external context');
+  assert(payload.context?.safetyLevel !== 'urgent', 'external safety level must not inherit a private-only urgent finding');
 
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
@@ -294,10 +286,7 @@ async function main(): Promise<void> {
       },
     ],
   );
-  assert(
-    report.sections.some((section) => section.title === '这周处理过的事情'),
-    'weekly report should include task closure',
-  );
+  assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'weekly report should include task closure');
   console.log('PASS: Phase 1 hardening regression suite');
 }
 
