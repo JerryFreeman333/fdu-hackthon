@@ -55,14 +55,11 @@ function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFa
   return parts.join('\n');
 }
 
-export interface LlmAdapter {
-  complete(systemPrompt: string, userText: string, context?: AgentContext): Promise<{ text: string; tags: SymptomTag[] }>;
-}
-
+export interface LlmAdapter { complete(systemPrompt: string, userText: string, context?: AgentContext): Promise<{ text: string; tags: SymptomTag[] }>; }
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
-    return { text: buildRuleBasedReply(parsed.tags, context?.priorityFindings ?? [], parsed.tags.includes('fall'), context), tags: parsed.tags };
+    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context), tags: parsed.tags };
   },
 };
 
@@ -71,11 +68,7 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   return {
     async complete(systemPrompt, userText, context) {
       const safeContext = context ? { ...context, observations: context.observations.filter((observation) => observation.visibility !== 'private') } : undefined;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText, context: safeContext }),
-      });
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt, userText, context: safeContext }) });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = await response.json() as { text?: string; tags?: SymptomTag[] };
       return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
