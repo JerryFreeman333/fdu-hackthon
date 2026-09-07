@@ -311,7 +311,10 @@ async function main(): Promise<void> {
     const data = materializeHealthData(events);
     const report = buildWeeklyReport(data.records, data.observations, findings, TODAY);
     const reportText = report.sections.flatMap((section) => [section.title, ...section.lines]).join('\n');
-    assert(!reportText.includes('只有老人自己能看到的内容'), 'private observation text should never appear in weekly report');
+    assert(
+      !reportText.includes('只有老人自己能看到的内容'),
+      'private observation text should never appear in weekly report',
+    );
   });
 
   await runCase('agent context is bounded and carries Person Twin evidence', () => {
