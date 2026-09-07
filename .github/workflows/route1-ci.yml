@@ -36,5 +36,8 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
-      - name: Detection regression tests
+      - name: Detection and extraction regression tests
         run: npm test
+
+      - name: Formatting gate
+        run: npm run format:check
