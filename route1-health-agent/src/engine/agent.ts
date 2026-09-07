@@ -75,7 +75,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下)/, /摔倒/],
+    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|过)/, /摔倒/],
     replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
   },
 ];
@@ -115,7 +115,8 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('neuroChange')) {
     return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ??
+      '先别走动，立即联系家里人并寻求急救。'
     );
   }
   if (newTags.includes('fall')) {
