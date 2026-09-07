@@ -1,16 +1,17 @@
+import type { Observation } from '../../types';
 import { addFinding } from './helpers';
-import { hadTag, fmt } from './signals';
-import type { DetectionRule } from './types';
+import { hadTag } from './signals';
+import type { DetectionContext, DetectionRule } from './types';
 
-function tagText(observation: import('../../types').Observation): string {
+function tagText(observation: Observation): string {
   return `${observation.date}：${observation.text}`;
 }
 
-function familyEligible(...observations: Array<import('../../types').Observation | null>): boolean {
+function familyEligible(...observations: Array<Observation | null>): boolean {
   return observations.every((observation) => observation === null || observation.visibility !== 'private');
 }
 
-function hasPrivateTodayMeasurement(context: import('./types').DetectionContext, metric: 'systolic' | 'diastolic'): boolean {
+function hasPrivateTodayMeasurement(context: DetectionContext, metric: 'systolic' | 'diastolic'): boolean {
   return context.measurements.some(
     (measurement) =>
       measurement.metric === metric &&
