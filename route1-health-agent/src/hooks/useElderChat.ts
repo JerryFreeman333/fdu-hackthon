@@ -8,7 +8,6 @@ import {
   createHttpLlmAdapter,
   generateAgentReply,
   msg,
-  parseElderInput,
   QUICK_INPUTS,
   ruleBasedAdapter,
   tagLabel,
@@ -16,6 +15,7 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
+import { acceptedSelfClaims, hasDeathReport, understandElderInput, type StructuredElderInput } from '../engine/understanding';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -25,6 +25,7 @@ const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
 interface UseElderChatOptions {
   familySharing: ElderProfile['familySharing'];
   events: HealthEvent[];
+  chat: ChatMessage[];
   findings: Finding[];
   agentContext: Parameters<typeof generateAgentReply>[4];
   setEvents: Dispatch<SetStateAction<HealthEvent[]>>;
@@ -38,9 +39,34 @@ function localIsoTimestamp(): string {
   return new Date().toISOString();
 }
 
+function recallSummary(chat: ChatMessage[]): string {
+  const prior = chat.filter((message) => message.role === 'elder').slice(-4);
+  if (prior.length === 0) return '我这次对话里还没有找到您之前说的话。您可以再告诉我一次，我不会自己编造记忆。';
+  return `我能看到这次对话里您之前说过：\n${prior.map((message) => `“${message.text}”`).join('\n')}`;
+}
+
+function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): boolean {
+  return claim.subject === 'self' && claim.status === 'occurred' && claim.eventDate !== null && claim.tags.length > 0;
+}
+
+function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
+  if (priorTags.length === 0) return events;
+  let removed = false;
+  const next = [...events].reverse().filter((event) => {
+    if (removed || event.source !== 'chat') return true;
+    if (event.type === 'observation' && event.observation.tags.some((tag) => priorTags.includes(tag))) {
+      removed = true;
+      return false;
+    }
+    return true;
+  });
+  return next.reverse();
+}
+
 export function useElderChat({
   familySharing,
   events,
+  chat,
   findings,
   agentContext,
   setEvents,
@@ -51,21 +77,35 @@ export function useElderChat({
 }: UseElderChatOptions) {
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
-    const { tags } = parseElderInput(text);
-    const extractedValues = extractHealthValues(text);
+    const understanding = understandElderInput(text, TODAY, chat);
+    const acceptedClaims = acceptedSelfClaims(understanding);
+    const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
-    const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
-    const agentText = await generateAgentReply(
-      text,
-      tags,
-      findings,
-      tags.includes('fall'),
-      agentContext,
-      selectedAdapter,
-    );
+
+    let agentText: string;
+    if (understanding.recallRequested) {
+      agentText = recallSummary(chat);
+    } else if (understanding.clarificationQuestion) {
+      agentText = understanding.clarificationQuestion;
+    } else if (hasDeathReport(understanding)) {
+      agentText = '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
+    } else if (acceptedTags.length === 0 && understanding.claims.length > 0) {
+      agentText = '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
+    } else {
+      const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
+      agentText = await generateAgentReply(
+        text,
+        acceptedTags,
+        findings,
+        acceptedTags.includes('fall'),
+        agentContext,
+        selectedAdapter,
+      );
+    }
+
     setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
 
     if (intent === 'no_record') {
@@ -73,70 +113,88 @@ export function useElderChat({
       return;
     }
 
-    const eventTimestamp = localIsoTimestamp();
+    if (understanding.correction) {
+      const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
+      const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
+      const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
+      if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
+    }
+
+    if (acceptedClaims.length === 0) return;
+
     const incomingEvents: HealthEvent[] = [];
-    if (tags.length > 0) {
+    const receivedAt = localIsoTimestamp();
+    for (let claimIndex = 0; claimIndex < acceptedClaims.length; claimIndex += 1) {
+      const claim = acceptedClaims[claimIndex];
+      if (!shouldPersistClaim(claim)) continue;
+      const extractedValues = extractHealthValues(claim.text);
+      const eventDate = claim.eventDate ?? TODAY;
       incomingEvents.push(
         observationToEvent({
-          id: `obs-live-${Date.now()}`,
-          date: TODAY,
+          id: `obs-live-${Date.now()}-${claimIndex}`,
+          date: eventDate,
           source: 'chat',
-          text,
-          tags,
+          text: claim.text,
+          tags: claim.tags,
           visibility,
         }),
       );
-    }
-
-    for (const extracted of extractedValues) {
-      const measurement: HealthMeasurement = {
-        id: `chat-value-${Date.now()}-${extracted.metric}`,
-        timestamp: eventTimestamp,
-        metric: extracted.metric,
-        value: extracted.value,
-        unit: extracted.unit,
-        source: 'chat',
-        confidence: 0.9,
-        visibility,
-        metadata: {
-          sourceText: extracted.sourceText,
-          extraction: 'rule',
-          privacy: visibility,
-        },
-      };
-      incomingEvents.push(measurementToEvent(measurement));
-    }
-
-    if (incomingEvents.length > 0) {
-      const nextEvents = appendHealthEvents(events, incomingEvents);
-      setEvents(nextEvents);
-
-      if (intent === 'share_family') {
-        const nextFindings = runDetection(nextEvents, TODAY);
-        const shareableFindingIds = nextFindings
-          .filter(
-            (finding) =>
-              (finding.severity === 'alert' || finding.severity === 'urgent') &&
-              finding.familyEligible !== false &&
-              Boolean(finding.familyMessage),
-          )
-          .map((finding) => finding.id);
-        onShareFindingIds(shareableFindingIds);
+      for (const extracted of extractedValues) {
+        incomingEvents.push(
+          measurementToEvent({
+            id: `chat-value-${Date.now()}-${claimIndex}-${extracted.metric}`,
+            timestamp: `${eventDate}T12:00:00`,
+            metric: extracted.metric,
+            value: extracted.value,
+            unit: extracted.unit,
+            source: 'chat',
+            confidence: 0.9,
+            visibility,
+            metadata: {
+              sourceText: extracted.sourceText,
+              extraction: 'rule',
+              privacy: visibility,
+              receivedAt,
+              eventDate,
+            },
+          }),
+        );
       }
-
-      const labels = tags.map(tagLabel);
-      const values = extractedValues.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
-      const sharingNotice =
-        intent === 'share_family'
-          ? '；这次明确分享给家属，不会自动修改长期共享设置'
-          : canShare
-            ? '；按当前授权可供家属查看必要变化'
-            : '；仅供您本人使用';
-      showToast(`已记录：${[...labels, ...values].join('、')}${sharingNotice}`);
     }
 
-    if (tags.includes('medicationMissed')) onMedicationMissed(eventTimestamp);
-    if (tags.includes('fall')) showToast('已标记为紧急事件，请先确认安全并保持电话畅通。');
+    if (incomingEvents.length === 0) return;
+    const nextEvents = appendHealthEvents(events, incomingEvents);
+    setEvents(nextEvents);
+
+    if (intent === 'share_family') {
+      const nextFindings = runDetection(nextEvents, TODAY);
+      const shareableFindingIds = nextFindings
+        .filter(
+          (finding) =>
+            (finding.severity === 'alert' || finding.severity === 'urgent') &&
+            finding.familyEligible !== false &&
+            Boolean(finding.familyMessage),
+        )
+        .map((finding) => finding.id);
+      onShareFindingIds(shareableFindingIds);
+    }
+
+    const values = acceptedClaims.flatMap((claim) => extractHealthValues(claim.text));
+    const labels = acceptedTags.map(tagLabel);
+    const valueText = values.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
+    const timeNotice = acceptedClaims.some((claim) => claim.timeScope === 'yesterday' || claim.timeScope === 'lastNight')
+      ? '；按您说的时间归到昨晚/昨天，不当作今天新发生'
+      : '';
+    const sharingNotice =
+      intent === 'share_family'
+        ? '；这次明确分享给家属，不会自动修改长期共享设置'
+        : canShare
+          ? '；按当前授权可供家属查看必要变化'
+          : '；仅供您本人使用';
+    showToast(`已记录：${[...labels, ...valueText].join('、')}${timeNotice}${sharingNotice}`);
+
+    if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
+    if (acceptedTags.includes('fall')) showToast('已标记为需要优先确认安全的事件，请先确认现在是否安全。');
   }
 
   async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
