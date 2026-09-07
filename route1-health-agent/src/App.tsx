@@ -11,6 +11,7 @@ import { createHttpLlmAdapter, generateAgentReply, msg, parseElderInput, QUICK_I
 import { extractHealthValues } from './engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from './engine/privacy';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from './engine/tasks';
+import { healthRecordStore } from './store/LocalHealthRecordStore';
 import ElderHome from './components/ElderHome';
 import FamilyDashboard from './components/FamilyDashboard';
 import ProfileView from './components/ProfileView';
@@ -31,7 +32,12 @@ type StoredTask = CareTask;
 function initialSnapshot() {
   const stored = healthRecordStore.load();
   if (stored.events.length || stored.chat.length) return stored;
-  const events = legacySnapshotToEvents({ records: seedRecords, observations: [...seedObservations, ...seedPhotoObservations], measurements: [], labResults: [] });
+  const events = legacySnapshotToEvents({
+    records: seedRecords,
+    observations: [...seedObservations, ...seedPhotoObservations],
+    measurements: [],
+    labResults: [],
+  });
   const snapshot = { events, chat: seedChat };
   healthRecordStore.save(snapshot);
   return snapshot;
@@ -164,15 +170,14 @@ export default function App() {
 
     const incomingEvents: HealthEvent[] = [];
     if (tags.length > 0) {
-      const observation: Observation = {
+      incomingEvents.push(observationToEvent({
         id: `obs-live-${Date.now()}`,
         date: TODAY,
         source: 'chat',
         text,
         tags,
         visibility: canShare ? 'family_ok' : 'private',
-      };
-      incomingEvents.push(observationToEvent(observation));
+      }));
     }
 
     for (const extracted of extractedValues) {
