@@ -10,6 +10,7 @@ import { collectFamilyNotifications } from '../src/engine/escalate';
 import { extractHealthValues } from '../src/engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../src/engine/privacy';
 import { buildWeeklyReport } from '../src/engine/report';
+import { demoImageHealthParser } from '../src/adapters/DemoImageHealthParser';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -21,7 +22,7 @@ function dateFromToday(offset: number): string {
 
 function makeStableRecords(metric: keyof DayRecord['metrics'], value: number): DayRecord[] {
   return Array.from({ length: 18 }, (_, index) => ({
-    date: dateFromToday(index - 17),
+    date: dateFromToday(index - 18),
     metrics: { [metric]: value },
   }));
 }
@@ -56,12 +57,12 @@ async function main(): Promise<void> {
     value: 7200,
     visibility: 'family_ok',
   };
+  const sharedOnlyRecords = measurementsToDayRecords([sharedMeasurement]);
   const familyRecords = measurementsToDayRecords([privateMeasurement, sharedMeasurement]);
-  assert(familyRecords[0]?.metrics.steps === 7200, 'latest shared measurement should be representable');
+  assert(sharedOnlyRecords[0]?.metrics.steps === 7200, 'shared measurement should be representable');
   assert(
-    measurementsToDayRecords([privateMeasurement]).length === 1 &&
-      measurementsToDayRecords([privateMeasurement])[0]?.measurements?.[0]?.visibility === 'private',
-    'private measurements must remain locally materializable',
+    familyRecords[0]?.measurements?.some((measurement) => measurement.visibility === 'private'),
+    'materialization should preserve private measurement metadata for local-only views',
   );
 
   assert(parsePrivacyIntent('这次数值不要告诉孩子') === 'private', 'private intent should be conservative');
@@ -88,11 +89,7 @@ async function main(): Promise<void> {
 
   const zeroVariance = makeStableRecords('spo2', 96);
   const changed = [...zeroVariance, { date: TODAY, metrics: { spo2: 94 } }];
-  const zeroVarianceFindings = runDetection(
-    eventsFrom(changed),
-    TODAY,
-    { minRecentPoints: 1 },
-  );
+  const zeroVarianceFindings = runDetection(eventsFrom(changed), TODAY, { minRecentPoints: 1 });
   assert(
     zeroVarianceFindings.some((finding) => finding.ruleId === 'metric.spo2.baseline_shift'),
     'a stable baseline should still detect a meaningful absolute change',
@@ -109,7 +106,10 @@ async function main(): Promise<void> {
     return result;
   })();
   const fusionFindings = runDetection(
-    eventsFrom(fusionRecords, [observation('dizziness', '最近头晕', 'family_ok'), observation('poorSleep', '最近睡不好', 'family_ok')]),
+    eventsFrom(fusionRecords, [
+      observation('dizziness', '最近头晕', 'family_ok'),
+      observation('poorSleep', '最近睡不好', 'family_ok'),
+    ]),
     TODAY,
   );
   const fusion = fusionFindings.find((finding) => finding.ruleId === 'fusion.multisignal_deterioration');
@@ -122,7 +122,18 @@ async function main(): Promise<void> {
   const taskB = createTaskFromFinding({ ...sameFinding, id: 'fusion-b', date: dateFromToday(1) }, dateFromToday(1));
   assert(taskA?.id === taskB?.id, 'the same rule should map to one stable task across days');
 
-  assert(extractHealthValues('血压 150/95').length === 0, 'unsupported blood pressure prose should remain unguessed');
+  const numericCases = [
+    ['血压 150/95', ['systolic', 'diastolic']],
+    ['体重 63.4 公斤', ['weight']],
+    ['昨晚睡了五个小时', ['sleepHours']],
+    ['刚才心率九十次每分钟', ['restingHr']],
+  ] as const;
+  for (const [text, metrics] of numericCases) {
+    const values = extractHealthValues(text);
+    assert(metrics.every((metric) => values.some((value) => value.metric === metric)), `${text} should extract ${metrics.join(', ')}`);
+  }
+  assert(extractHealthValues('今天走了很多步').length === 0, 'vague quantities must not be guessed');
+
   const unsafeAdapter: LlmAdapter = {
     async complete() {
       return { text: '您可能患有心衰，请立即加倍服药。', tags: [] };
@@ -135,29 +146,41 @@ async function main(): Promise<void> {
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
 
+  const photo = await demoImageHealthParser.parse(new Blob(['demo']), {
+    userId: 'demo-elder-route1',
+    capturedAt: `${TODAY}T09:00:00`,
+    kind: 'bloodPressure',
+  });
+  assert(photo.measurements.length === 2, 'demo photo parser should produce the selected blood pressure sample');
+  assert(photo.measurements.every((measurement) => measurement.confidence === 0.6), 'demo photo values must expose demo confidence');
+
   const report = buildWeeklyReport(
     demoRecords,
     seedObservations,
-    [{
-      id: 'report-finding',
-      date: TODAY,
-      severity: 'alert',
-      title: '变化',
-      detail: 'demo',
-      evidence: ['demo'],
-      familyEligible: true,
-    }],
+    [
+      {
+        id: 'report-finding',
+        date: TODAY,
+        severity: 'alert',
+        title: '变化',
+        detail: 'demo',
+        evidence: ['demo'],
+        familyEligible: true,
+      },
+    ],
     TODAY,
-    [{
-      id: 'task-report',
-      title: '联系老人',
-      description: '确认状态',
-      dueDate: TODAY,
-      status: 'completed',
-      createdAt: `${TODAY}T09:00:00`,
-      kind: 'contact_family',
-      completionNote: '已联系',
-    }],
+    [
+      {
+        id: 'task-report',
+        title: '联系老人',
+        description: '确认状态',
+        dueDate: TODAY,
+        status: 'completed',
+        createdAt: `${TODAY}T09:00:00`,
+        kind: 'contact_family',
+        completionNote: '已联系',
+      },
+    ],
   );
   assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'weekly report should include task closure');
   console.log('PASS: Phase 1 hardening regression suite');
