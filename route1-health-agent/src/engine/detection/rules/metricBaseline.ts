@@ -2,6 +2,7 @@ import type { MetricKey } from '../../../types';
 import { METRICS } from '../../../types';
 import { addFinding } from '../helpers';
 import { fmt } from '../signals';
+import { diffDays } from '../../baseline';
 import type { DetectionRule, DetectionContext } from '../types';
 
 const RULES: Array<{ metric: MetricKey; thresholdRatio: number; title: string; detail: string }> = [
@@ -51,6 +52,13 @@ export const metricBaselineRules: DetectionRule[] = RULES.map((rule) => {
       const signal = context.signals.get(rule.metric);
       if (!signal || signal.badRatio < rule.thresholdRatio) return null;
       const metric = METRICS[rule.metric];
+      const privateRecentMeasurement = context.measurements.some(
+        (measurement) =>
+          measurement.metric === rule.metric &&
+          measurement.visibility === 'private' &&
+          diffDays(measurement.timestamp.slice(0, 10), context.today) >= 0 &&
+          diffDays(measurement.timestamp.slice(0, 10), context.today) < context.config.recentDays,
+      );
       return addFinding(context.findings, {
         date: context.today,
         severity: 'watch',
@@ -58,11 +66,12 @@ export const metricBaselineRules: DetectionRule[] = RULES.map((rule) => {
         detail: rule.detail,
         evidence: [
           `最近${context.config.recentDays}天中有 ${signal.recentN} 天数据：${metric.label}平均 ${fmt(rule.metric, signal.recentMean)}，个人基线 ${fmt(rule.metric, signal.baselineMean)}，变差方向约 ${Math.abs(Math.round(signal.badRatio * 100))}%`,
-          `基线窗口：${signal.baselineN} 个日数据点${signal.sigma !== null ? `；相对个人波动约 ${signal.sigma.toFixed(1)} SD` : ''}`,
+          `基线窗口：${signal.baselineN} 个日数据点；相对个人波动约 ${signal.sigma.toFixed(1)} SD`,
         ],
         ruleId,
-        score: Math.max(1, signal.sigma ?? signal.badRatio / rule.thresholdRatio),
+        score: Math.max(1, signal.sigma, signal.badRatio / rule.thresholdRatio),
         signalKeys: [rule.metric],
+        familyEligible: !privateRecentMeasurement,
       });
     },
   };
