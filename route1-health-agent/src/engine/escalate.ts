@@ -10,20 +10,28 @@ export interface FamilyNotification {
 
 export const FAMILY_LEVELS: Severity[] = ['alert', 'urgent'];
 
-export function collectFamilyNotifications(findings: Finding[], familySharing: FamilySharing): FamilyNotification[] {
-  // ask = 每次需要时先征求老人同意；因此在明确授权前不向家属展示。
-  if (familySharing !== 'granted') return [];
+export function collectFamilyNotifications(
+  findings: Finding[],
+  familySharing: FamilySharing,
+  oneTimeSharedFindingIds: string[] = [],
+): FamilyNotification[] {
+  const sharedIds = new Set(oneTimeSharedFindingIds);
   return findings
     .filter(
       (finding) =>
-        FAMILY_LEVELS.includes(finding.severity) && finding.familyMessage && finding.familyEligible !== false,
+        FAMILY_LEVELS.includes(finding.severity) &&
+        finding.familyMessage &&
+        finding.familyEligible !== false &&
+        (familySharing === 'granted' || sharedIds.has(finding.id)),
     )
     .map((finding) => ({
       finding,
       message: finding.familyMessage as string,
       actionPath: finding.carePath,
       reason:
-        finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
+        finding.severity === 'urgent'
+          ? '出现需要立即确认的安全信号。'
+          : '多项变化叠加，系统认为今天值得家属主动确认。',
     }));
 }
 
