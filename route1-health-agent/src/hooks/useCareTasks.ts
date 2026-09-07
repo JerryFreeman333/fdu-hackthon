@@ -50,7 +50,9 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
 
   function ensureMedicationCheck(createdAt: string) {
     setTasks((current) => {
-      if (current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')) {
+      if (
+        current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')
+      ) {
         return current;
       }
       return [
