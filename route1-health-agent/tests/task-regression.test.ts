@@ -20,7 +20,10 @@ async function main(): Promise<void> {
     familyEligible: true,
   };
   const familyTask = createTaskFromFinding(sharedAlert, '2026-09-07');
-  assert(familyTask?.kind === 'contact_family', 'family-eligible findings with a family message must create contact_family tasks');
+  assert(
+    familyTask?.kind === 'contact_family',
+    'family-eligible findings with a family message must create contact_family tasks',
+  );
 
   const privateUrgent: Finding = {
     ...sharedAlert,
@@ -30,7 +33,10 @@ async function main(): Promise<void> {
     familyEligible: false,
   };
   const safetyTask = createTaskFromFinding(privateUrgent, '2026-09-07');
-  assert(safetyTask?.kind === 'safety_check', 'urgent findings without shareable family context must remain safety_check tasks');
+  assert(
+    safetyTask?.kind === 'safety_check',
+    'urgent findings without shareable family context must remain safety_check tasks',
+  );
 
   const parsed = await demoImageHealthParser.parse(new Blob(['demo']), {
     userId: 'demo-elder-route1',
