@@ -14,6 +14,12 @@
   color: var(--ink);
   padding: 7px 10px;
 }
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
 body[data-font-scale='large'] {
   font-size: 20px;
@@ -22,10 +28,46 @@ body[data-font-scale='extraLarge'] {
   font-size: 22px;
 }
 
-body[data-font-scale='large'] :where(p, li, button, input, select, textarea, .chat-bubble, .chip, .muted, .persona-sub, .task-item p, .task-done-note, .metric-unit, .tl-text, .tl-date, .voice-fallback) {
+body[data-font-scale='large']
+  :where(
+    p,
+    li,
+    button,
+    input,
+    select,
+    textarea,
+    .chat-bubble,
+    .chip,
+    .muted,
+    .persona-sub,
+    .task-item p,
+    .task-done-note,
+    .metric-unit,
+    .tl-text,
+    .tl-date,
+    .voice-fallback
+  ) {
   font-size: 1.1em;
 }
-body[data-font-scale='extraLarge'] :where(p, li, button, input, select, textarea, .chat-bubble, .chip, .muted, .persona-sub, .task-item p, .task-done-note, .metric-unit, .tl-text, .tl-date, .voice-fallback) {
+body[data-font-scale='extraLarge']
+  :where(
+    p,
+    li,
+    button,
+    input,
+    select,
+    textarea,
+    .chat-bubble,
+    .chip,
+    .muted,
+    .persona-sub,
+    .task-item p,
+    .task-done-note,
+    .metric-unit,
+    .tl-text,
+    .tl-date,
+    .voice-fallback
+  ) {
   font-size: 1.2em;
 }
 
