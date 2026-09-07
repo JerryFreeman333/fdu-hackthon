@@ -27,11 +27,7 @@ function makeStableRecords(metric: keyof DayRecord['metrics'], value: number): D
   }));
 }
 
-function observation(
-  tag: Observation['tags'][number],
-  text: string,
-  visibility: Observation['visibility'],
-): Observation {
+function observation(tag: Observation['tags'][number], text: string, visibility: Observation['visibility']): Observation {
   return { id: `hardening-${tag}-${visibility}`, date: TODAY, source: 'chat', text, tags: [tag], visibility };
 }
 
@@ -71,10 +67,8 @@ async function main(): Promise<void> {
 
   assert(parsePrivacyIntent('这次数值不要告诉孩子') === 'private', 'private intent should be conservative');
   assert(parsePrivacyIntent('这次告诉女儿') === 'share_family', 'single-share intent should be recognized');
-  assert(
-    canShareWithFamily('denied', 'share_family'),
-    'an explicit one-time share may override the persistent default',
-  );
+  assert(canShareWithFamily('ask', 'share_family'), 'an explicit one-time share may override ask for this statement');
+  assert(canShareWithFamily('denied', 'share_family'), 'an explicit one-time share is separate from persistent sharing state');
   assert(!canShareWithFamily('ask', 'none'), 'ask must not silently become shared');
 
   const oneTimeFinding: Finding = {
@@ -90,7 +84,7 @@ async function main(): Promise<void> {
   };
   assert(
     collectFamilyNotifications([oneTimeFinding], 'ask', ['finding-one-time-share']).length === 1,
-    'explicitly shared finding should notify family once even while persistent sharing remains ask',
+    'explicitly shared finding should notify family once while persistent sharing remains ask',
   );
   assert(collectFamilyNotifications([oneTimeFinding], 'ask').length === 0, 'ask still blocks unshared findings');
 
@@ -115,15 +109,10 @@ async function main(): Promise<void> {
     }),
   ];
   const privateBpFindings = runDetection(privateBpEvents, TODAY);
-  const privateBpFinding = privateBpFindings.find(
-    (finding) => finding.ruleId === 'safety.blood_pressure.severe_reading',
-  );
+  const privateBpFinding = privateBpFindings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
   assert(privateBpFinding?.severity === 'alert', 'private severe BP should still alert the elder locally');
   assert(privateBpFinding?.familyEligible === false, 'private BP should not become a family notification');
-  assert(
-    collectFamilyNotifications(privateBpFindings, 'granted').length === 0,
-    'private BP must not reach family notifications',
-  );
+  assert(collectFamilyNotifications(privateBpFindings, 'granted').length === 0, 'private BP must not reach family notifications');
 
   const zeroVariance = makeStableRecords('spo2', 96);
   const shifted = [
@@ -133,7 +122,6 @@ async function main(): Promise<void> {
     { date: dateFromToday(-1), metrics: { spo2: 94 } },
     { date: TODAY, metrics: { spo2: 94 } },
   ];
-  // Baseline excludes the last three days and uses -3..-16, which must all remain exactly 96.
   const zeroVarianceFindings = runDetection(eventsFrom(shifted), TODAY);
   assert(
     zeroVarianceFindings.some((finding) => finding.ruleId === 'metric.spo2.baseline_shift'),
@@ -164,7 +152,10 @@ async function main(): Promise<void> {
 
   const sameFinding = { ...fusion, ruleId: 'fusion.multisignal_deterioration', id: 'fusion-a' };
   const taskA = createTaskFromFinding(sameFinding, TODAY);
-  const taskB = createTaskFromFinding({ ...sameFinding, id: 'fusion-b', date: dateFromToday(1) }, dateFromToday(1));
+  const taskB = createTaskFromFinding(
+    { ...sameFinding, id: 'fusion-b', date: dateFromToday(1) },
+    dateFromToday(1),
+  );
   assert(taskA?.id === taskB?.id, 'the same rule should map to one stable task across days');
 
   const numericCases = [
@@ -189,15 +180,38 @@ async function main(): Promise<void> {
   };
   assert(!isSafeAgentReply('您可能患有心衰。'), 'diagnostic phrasing must be rejected');
   assert(!isSafeAgentReply('您现在的情况就是心衰。'), 'diagnostic conclusions inside a sentence must be rejected');
+  assert(
+    !isSafeAgentReply('建议您自行加倍药量。'),
+    'unsafe medication changes must be rejected',
+  );
   const safeFallback = await generateAgentReply('最近有点累', ['fatigue'], [], false, undefined, unsafeAdapter);
   assert(!safeFallback.includes('可能患有'), 'unsafe LLM output must fall back to a rule-based reply');
 
+  const privateSys: HealthMeasurement = {
+    id: 'ctx-private-sys',
+    timestamp: `${TODAY}T09:00:00`,
+    metric: 'systolic',
+    value: 185,
+    unit: 'mmHg',
+    source: 'chat',
+    visibility: 'private',
+  };
+  const privateDia: HealthMeasurement = {
+    id: 'ctx-private-dia',
+    timestamp: `${TODAY}T09:00:00`,
+    metric: 'diastolic',
+    value: 121,
+    unit: 'mmHg',
+    source: 'chat',
+    visibility: 'private',
+  };
   const privateContext = buildAgentContext(
     profile,
-    eventsFrom(
-      [{ date: TODAY, metrics: { steps: 6500, systolic: 185, diastolic: 121 } }],
-      [observation('fatigue', '这段不要告诉孩子：最近很累', 'private')],
-    ),
+    [
+      measurementToEvent(privateSys),
+      measurementToEvent(privateDia),
+      observationToEvent(observation('fatigue', '这段不要告诉孩子：最近很累', 'private')),
+    ],
     TODAY,
     [
       {
@@ -236,22 +250,10 @@ async function main(): Promise<void> {
   const safeObservations = payload.context?.observations ?? [];
   const safeMetrics = payload.context?.metrics ?? [];
   const safeFindings = payload.context?.priorityFindings ?? [];
-  assert(
-    !safeObservations.some((item) => item.text.includes('不要告诉孩子')),
-    'private observation must stay out of external context',
-  );
-  assert(
-    !safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121),
-    'private vitals must stay out of external context',
-  );
-  assert(
-    !safeFindings.some((item) => item.title === '私密紧急发现'),
-    'private findings must stay out of external context',
-  );
-  assert(
-    payload.context?.safetyLevel !== 'urgent',
-    'external safety level must not inherit a private-only urgent finding',
-  );
+  assert(!safeObservations.some((item) => item.text.includes('不要告诉孩子')), 'private observation must stay out of external context');
+  assert(!safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121), 'private vitals must stay out of external context');
+  assert(!safeFindings.some((item) => item.title === '私密紧急发现'), 'private findings must stay out of external context');
+  assert(payload.context?.safetyLevel !== 'urgent', 'external safety level must not inherit a private-only urgent finding');
 
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
@@ -295,10 +297,7 @@ async function main(): Promise<void> {
       },
     ],
   );
-  assert(
-    report.sections.some((section) => section.title === '这周处理过的事情'),
-    'weekly report should include task closure',
-  );
+  assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'weekly report should include task closure');
   console.log('PASS: Phase 1 hardening regression suite');
 }
 
