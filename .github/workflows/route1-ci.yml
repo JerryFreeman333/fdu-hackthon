@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-route1:
@@ -29,43 +29,41 @@ jobs:
     defaults:
       run:
         working-directory: route1-health-agent
+
     steps:
       - name: Checkout pushed or PR revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref }}
           fetch-depth: 1
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
+
       - name: Install locked dependencies
         run: npm ci
-      - name: Apply canonical formatting
-        run: |
-          npx --yes prettier@3.5.3 --write .
-          if git diff --quiet --exit-code; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .
-          git commit -m 'style(route1): apply Prettier formatting'
-          git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+
       - name: Verify formatting
         run: npm run format:check
+
       - name: Typecheck
         run: npm run typecheck
+
       - name: Detection regression tests
         run: npm test
+
       - name: Production build
         run: npm run build
+
       - name: Secret hygiene check
         run: npm run security:check
+
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
+
       - name: Full dependency audit (informational)
         continue-on-error: true
         run: npm audit --audit-level=high
