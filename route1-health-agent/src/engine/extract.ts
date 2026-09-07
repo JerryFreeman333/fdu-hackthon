@@ -88,10 +88,42 @@ const RULES: Rule[] = [
       new RegExp(String.raw`${RANGE}\s*(?:步|步数|圈)`),
     ],
   },
+  {
+    metric: 'weight',
+    unit: 'kg',
+    patterns: [new RegExp(String.raw`(?:体重|重量).{0,6}?${RANGE}\s*(?:公斤|千克|kg|KG)`)],
+  },
+  {
+    metric: 'sleepHours',
+    unit: '小时',
+    patterns: [
+      new RegExp(String.raw`(?:睡了|睡眠|睡觉).{0,6}?${RANGE}\s*(?:小时|个小时)`),
+      new RegExp(String.raw`${RANGE}\s*(?:小时|个小时).{0,6}?(?:睡|睡眠)`),
+    ],
+  },
+  {
+    metric: 'restingHr',
+    unit: 'bpm',
+    patterns: [new RegExp(String.raw`(?:静息心率|心率|脉搏).{0,6}?${RANGE}\s*(?:次(?:/分钟|每分钟)?|bpm)?`)],
+  },
 ];
 
+function extractBloodPressure(text: string): ExtractedValue[] {
+  const match = text.match(
+    new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`),
+  );
+  if (!match) return [];
+  const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
+  const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));
+  if (systolic === null || diastolic === null) return [];
+  return [
+    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: match[0] },
+    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: match[0] },
+  ];
+}
+
 export function extractHealthValues(text: string): ExtractedValue[] {
-  const results: ExtractedValue[] = [];
+  const results: ExtractedValue[] = [...extractBloodPressure(text)];
   for (const rule of RULES) {
     for (const pattern of rule.patterns) {
       const match = text.match(pattern);
