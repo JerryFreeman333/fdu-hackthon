@@ -27,7 +27,7 @@ export function createTaskFromFinding(finding: Finding, today: string): CareTask
       : finding.severity === 'urgent'
         ? '立即确认当前安全情况'
         : '今天确认一次当前状态',
-    description: shouldContactFamily ? finding.familyMessage ?? finding.carePath : finding.carePath,
+    description: shouldContactFamily ? (finding.familyMessage ?? finding.carePath) : finding.carePath,
     dueDate: today,
     status: 'pending',
     createdAt: `${today}T12:00:00`,
