@@ -27,7 +27,11 @@ function makeStableRecords(metric: keyof DayRecord['metrics'], value: number): D
   }));
 }
 
-function observation(tag: Observation['tags'][number], text: string, visibility: Observation['visibility']): Observation {
+function observation(
+  tag: Observation['tags'][number],
+  text: string,
+  visibility: Observation['visibility'],
+): Observation {
   return { id: `hardening-${tag}-${visibility}`, date: TODAY, source: 'chat', text, tags: [tag], visibility };
 }
 
@@ -67,7 +71,10 @@ async function main(): Promise<void> {
 
   assert(parsePrivacyIntent('这次数值不要告诉孩子') === 'private', 'private intent should be conservative');
   assert(parsePrivacyIntent('这次告诉女儿') === 'share_family', 'single-share intent should be recognized');
-  assert(canShareWithFamily('denied', 'share_family'), 'an explicit one-time share may override the persistent default');
+  assert(
+    canShareWithFamily('denied', 'share_family'),
+    'an explicit one-time share may override the persistent default',
+  );
   assert(!canShareWithFamily('ask', 'none'), 'ask must not silently become shared');
 
   const oneTimeFinding: Finding = {
@@ -108,10 +115,15 @@ async function main(): Promise<void> {
     }),
   ];
   const privateBpFindings = runDetection(privateBpEvents, TODAY);
-  const privateBpFinding = privateBpFindings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
+  const privateBpFinding = privateBpFindings.find(
+    (finding) => finding.ruleId === 'safety.blood_pressure.severe_reading',
+  );
   assert(privateBpFinding?.severity === 'alert', 'private severe BP should still alert the elder locally');
   assert(privateBpFinding?.familyEligible === false, 'private BP should not become a family notification');
-  assert(collectFamilyNotifications(privateBpFindings, 'granted').length === 0, 'private BP must not reach family notifications');
+  assert(
+    collectFamilyNotifications(privateBpFindings, 'granted').length === 0,
+    'private BP must not reach family notifications',
+  );
 
   const zeroVariance = makeStableRecords('spo2', 96);
   const changed = [...zeroVariance, { date: TODAY, metrics: { spo2: 94 } }];
@@ -156,7 +168,10 @@ async function main(): Promise<void> {
   ] as const;
   for (const [text, metrics] of numericCases) {
     const values = extractHealthValues(text);
-    assert(metrics.every((metric) => values.some((value) => value.metric === metric)), `${text} should extract ${metrics.join(', ')}`);
+    assert(
+      metrics.every((metric) => values.some((value) => value.metric === metric)),
+      `${text} should extract ${metrics.join(', ')}`,
+    );
   }
   assert(extractHealthValues('今天走了很多步').length === 0, 'vague quantities must not be guessed');
 
@@ -214,10 +229,22 @@ async function main(): Promise<void> {
   const safeObservations = payload.context?.observations ?? [];
   const safeMetrics = payload.context?.metrics ?? [];
   const safeFindings = payload.context?.priorityFindings ?? [];
-  assert(!safeObservations.some((item) => item.text.includes('不要告诉孩子')), 'private observation must stay out of external context');
-  assert(!safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121), 'private vitals must stay out of external context');
-  assert(!safeFindings.some((item) => item.title === '私密紧急发现'), 'private findings must stay out of external context');
-  assert(payload.context?.safetyLevel !== 'urgent', 'external safety level must not inherit a private-only urgent finding');
+  assert(
+    !safeObservations.some((item) => item.text.includes('不要告诉孩子')),
+    'private observation must stay out of external context',
+  );
+  assert(
+    !safeMetrics.some((item) => item.latestValue === 185 || item.latestValue === 121),
+    'private vitals must stay out of external context',
+  );
+  assert(
+    !safeFindings.some((item) => item.title === '私密紧急发现'),
+    'private findings must stay out of external context',
+  );
+  assert(
+    payload.context?.safetyLevel !== 'urgent',
+    'external safety level must not inherit a private-only urgent finding',
+  );
 
   const context = buildAgentContext(profile, eventsFrom(demoRecords, seedObservations), TODAY, []);
   assert(context.personTwin.asOf === TODAY, 'Person Twin should use the runtime demo date');
@@ -228,7 +255,10 @@ async function main(): Promise<void> {
     kind: 'bloodPressure',
   });
   assert(photo.measurements.length === 2, 'demo photo parser should produce the selected blood pressure sample');
-  assert(photo.measurements.every((measurement) => measurement.confidence === 0.6), 'demo photo values must expose demo confidence');
+  assert(
+    photo.measurements.every((measurement) => measurement.confidence === 0.6),
+    'demo photo values must expose demo confidence',
+  );
 
   const report = buildWeeklyReport(
     demoRecords,
@@ -258,7 +288,10 @@ async function main(): Promise<void> {
       },
     ],
   );
-  assert(report.sections.some((section) => section.title === '这周处理过的事情'), 'weekly report should include task closure');
+  assert(
+    report.sections.some((section) => section.title === '这周处理过的事情'),
+    'weekly report should include task closure',
+  );
   console.log('PASS: Phase 1 hardening regression suite');
 }
 

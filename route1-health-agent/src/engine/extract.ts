@@ -109,9 +109,7 @@ const RULES: Rule[] = [
 ];
 
 function extractBloodPressure(text: string): ExtractedValue[] {
-  const match = text.match(
-    new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`),
-  );
+  const match = text.match(new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`));
   if (!match) return [];
   const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
   const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));

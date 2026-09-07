@@ -71,7 +71,14 @@ export const records: DayRecord[] = buildRecords();
 
 const shareable = { visibility: 'family_ok' as const };
 export const seedObservations: Observation[] = [
-  { id: 'obs-1', date: dateOffset(-3), source: 'chat', text: '今天很累，什么都不想干', tags: ['fatigue'], ...shareable },
+  {
+    id: 'obs-1',
+    date: dateOffset(-3),
+    source: 'chat',
+    text: '今天很累，什么都不想干',
+    tags: ['fatigue'],
+    ...shareable,
+  },
   {
     id: 'obs-2',
     date: dateOffset(-2),
@@ -92,9 +99,30 @@ export const seedObservations: Observation[] = [
 ];
 
 export const seedPhotoObservations: Observation[] = [
-  { id: 'photo-1', date: dateOffset(-5), source: 'photo', text: '拍照录入：血压 138/84 mmHg', tags: [], visibility: 'family_ok' },
-  { id: 'photo-2', date: dateOffset(-2), source: 'photo', text: '拍照录入：体重 63.4 kg', tags: [], visibility: 'family_ok' },
-  { id: 'photo-3', date: dateOffset(0), source: 'photo', text: '拍照录入：血压 148/88 mmHg', tags: ['bpHigh'], visibility: 'family_ok' },
+  {
+    id: 'photo-1',
+    date: dateOffset(-5),
+    source: 'photo',
+    text: '拍照录入：血压 138/84 mmHg',
+    tags: [],
+    visibility: 'family_ok',
+  },
+  {
+    id: 'photo-2',
+    date: dateOffset(-2),
+    source: 'photo',
+    text: '拍照录入：体重 63.4 kg',
+    tags: [],
+    visibility: 'family_ok',
+  },
+  {
+    id: 'photo-3',
+    date: dateOffset(0),
+    source: 'photo',
+    text: '拍照录入：血压 148/88 mmHg',
+    tags: ['bpHigh'],
+    visibility: 'family_ok',
+  },
 ];
 
 export const seedChat: ChatMessage[] = [

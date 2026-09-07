@@ -83,7 +83,10 @@ function loadFamilySharing(): { familySharing: ElderProfile['familySharing']; up
     if (raw === 'granted' || raw === 'ask' || raw === 'denied') return { familySharing: raw, updatedAt: '' };
     const parsed = JSON.parse(raw) as { familySharing?: ElderProfile['familySharing']; updatedAt?: string };
     if (parsed.familySharing === 'granted' || parsed.familySharing === 'ask' || parsed.familySharing === 'denied') {
-      return { familySharing: parsed.familySharing, updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '' };
+      return {
+        familySharing: parsed.familySharing,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      };
     }
   } catch {
     // fall back to the demo account's initial consent state

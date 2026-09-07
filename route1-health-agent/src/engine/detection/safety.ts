@@ -35,7 +35,8 @@ export const bloodPressureSafetyRule: DetectionRule = {
     const danger = dyspnea ?? chestPain ?? neuroChange;
     const urgent = danger !== null;
     const shareableSymptoms = familyEligible(dyspnea, chestPain, neuroChange);
-    const privateBp = hasPrivateTodayMeasurement(context, 'systolic') || hasPrivateTodayMeasurement(context, 'diastolic');
+    const privateBp =
+      hasPrivateTodayMeasurement(context, 'systolic') || hasPrivateTodayMeasurement(context, 'diastolic');
     const shareable = shareableSymptoms && !privateBp;
 
     return addFinding(context.findings, {

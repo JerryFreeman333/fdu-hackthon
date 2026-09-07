@@ -94,7 +94,10 @@ export function buildWeeklyReport(
       title: '这周处理过的事情',
       lines: [
         `已完成 ${completed} 项，待处理 ${pending} 项，已忽略 ${dismissed} 项。`,
-        ...tasks.map((task) => `${task.status === 'completed' ? '已完成' : task.status === 'dismissed' ? '已忽略' : '待处理'}：${task.title}`),
+        ...tasks.map(
+          (task) =>
+            `${task.status === 'completed' ? '已完成' : task.status === 'dismissed' ? '已忽略' : '待处理'}：${task.title}`,
+        ),
       ],
     });
   }

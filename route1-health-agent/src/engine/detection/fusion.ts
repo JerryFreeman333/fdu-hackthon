@@ -23,8 +23,7 @@ export const multiSignalRule: DetectionRule = {
     const spo2 = context.signals.get('spo2');
 
     // Activity: objective mobility/volume change.
-    const activity =
-      (steps !== undefined && steps.badRatio >= 0.2) || (speed !== undefined && speed.badRatio >= 0.1);
+    const activity = (steps !== undefined && steps.badRatio >= 0.2) || (speed !== undefined && speed.badRatio >= 0.1);
     // Subjective symptoms: all recent symptom observations share one category.
     const symptom = fatigue !== null || dyspnea !== null || dizziness !== null || poorSleep !== null;
     // Volume/sleep: weight, edema, night waking and objectively shorter sleep share one category.

@@ -133,7 +133,9 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
         ))}
       </div>
 
-      {!voiceSupported && <div className="muted voice-fallback">当前浏览器不支持语音输入，可以直接打字，或让家人帮忙操作。</div>}
+      {!voiceSupported && (
+        <div className="muted voice-fallback">当前浏览器不支持语音输入，可以直接打字，或让家人帮忙操作。</div>
+      )}
 
       <div className="chat-input-row">
         {voiceSupported && (

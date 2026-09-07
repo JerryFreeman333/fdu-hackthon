@@ -29,9 +29,7 @@ export function collectFamilyNotifications(
       message: finding.familyMessage as string,
       actionPath: finding.carePath,
       reason:
-        finding.severity === 'urgent'
-          ? '出现需要立即确认的安全信号。'
-          : '多项变化叠加，系统认为今天值得家属主动确认。',
+        finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
     }));
 }
 

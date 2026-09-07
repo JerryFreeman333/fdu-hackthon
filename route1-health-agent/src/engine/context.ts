@@ -135,7 +135,13 @@ export function buildAgentContext(
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 8)
-    .map((lab) => ({ name: lab.name, value: lab.value, unit: lab.unit, timestamp: lab.timestamp, visibility: lab.visibility }));
+    .map((lab) => ({
+      name: lab.name,
+      value: lab.value,
+      unit: lab.unit,
+      timestamp: lab.timestamp,
+      visibility: lab.visibility,
+    }));
   const priorityFindings = [...findings]
     .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || (b.score ?? 0) - (a.score ?? 0))
     .slice(0, 6)

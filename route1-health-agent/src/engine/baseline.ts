@@ -89,12 +89,7 @@ const MIN_SD: Partial<Record<MetricKey, number>> = {
   bloodGlucose: 0.5,
 };
 
-export function deviationSigma(
-  value: number,
-  baseline: Baseline,
-  higherIsBad: boolean,
-  metric?: MetricKey,
-): number {
+export function deviationSigma(value: number, baseline: Baseline, higherIsBad: boolean, metric?: MetricKey): number {
   const sd = Math.max(baseline.sd, metric ? (MIN_SD[metric] ?? 1) : 1e-9);
   const raw = (value - baseline.mean) / sd;
   return higherIsBad ? raw : -raw;
