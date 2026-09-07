@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-route1:
@@ -34,6 +34,7 @@ jobs:
       - name: Checkout pushed or PR revision
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref }}
           fetch-depth: 1
 
       - name: Setup Node
@@ -46,16 +47,18 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Format workspace for review artifact
-        run: npx --yes prettier@3.5.3 --write .
-
-      - name: Upload Prettier-normalized source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: route1-formatted-source
-          path: route1-health-agent
-          if-no-files-found: error
-          retention-days: 1
+      - name: Apply canonical formatting
+        run: |
+          npx --yes prettier@3.5.3 --write .
+          if git diff --quiet --exit-code; then
+            echo 'Already formatted.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add route1-health-agent
+          git commit -m 'style(route1): apply Prettier formatting'
+          git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
       - name: Verify formatting
         run: npm run format:check
