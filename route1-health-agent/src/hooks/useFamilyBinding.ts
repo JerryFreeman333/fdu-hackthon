@@ -45,9 +45,7 @@ function loadSharedFindingIds(): string[] {
   try {
     const raw = window.localStorage.getItem(SHARED_FINDING_IDS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string').slice(-50)
-      : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string').slice(-50) : [];
   } catch {
     return [];
   }
