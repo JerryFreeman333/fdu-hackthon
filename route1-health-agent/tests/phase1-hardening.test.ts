@@ -126,8 +126,14 @@ async function main(): Promise<void> {
   );
 
   const zeroVariance = makeStableRecords('spo2', 96);
-  const changed = [...zeroVariance, { date: TODAY, metrics: { spo2: 94 } }];
-  const zeroVarianceFindings = runDetection(eventsFrom(changed), TODAY, { minRecentPoints: 1 });
+  const changed = [
+    ...zeroVariance.slice(0, 15),
+    { date: dateFromToday(-3), metrics: { spo2: 94 } },
+    { date: dateFromToday(-2), metrics: { spo2: 94 } },
+    { date: dateFromToday(-1), metrics: { spo2: 94 } },
+    { date: TODAY, metrics: { spo2: 94 } },
+  ];
+  const zeroVarianceFindings = runDetection(eventsFrom(changed), TODAY);
   assert(
     zeroVarianceFindings.some((finding) => finding.ruleId === 'metric.spo2.baseline_shift'),
     'a stable baseline should still detect a meaningful absolute change',
