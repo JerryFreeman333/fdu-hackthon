@@ -167,9 +167,7 @@ export function useElderChat({
         );
       }
       setEvents((current) => appendHealthEvents(current, incomingEvents));
-      showToast(
-        `${parsed.rawText ?? '拍照录入完成'}；数据按当前共享设置处理，这是 Demo 示例，请人工确认。`,
-      );
+      showToast(`${parsed.rawText ?? '拍照录入完成'}；数据按当前共享设置处理，这是 Demo 示例，请人工确认。`);
     } catch {
       showToast('这张图片暂时无法处理，请换一张或直接告诉我数据。');
     }
