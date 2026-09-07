@@ -65,15 +65,15 @@ const RULES: Rule[] = [
     metric: 'nightWakes',
     unit: '次',
     patterns: [
-      new RegExp(`(?:起夜|晚上|夜里|夜间).{0,12}${RANGE}\\s*(?:次|遍|趟)`),
-      new RegExp(`${RANGE}\\s*(?:次|遍|趟).{0,12}(?:起夜|夜里|晚上|夜间)`),
+      new RegExp(`(?:起夜|晚上|夜里|夜间).{0,12}?${RANGE}\\s*(?:次|遍|趟)`),
+      new RegExp(`${RANGE}\\s*(?:次|遍|趟).{0,12}?(?:起夜|夜里|晚上|夜间)`),
     ],
   },
   {
     metric: 'steps',
     unit: '步',
     patterns: [
-      new RegExp(`(?:走了|走|步数|今天).{0,8}(${NUMBER})\\s*(?:步|步数|圈)`),
+      new RegExp(`(?:走了|走|步数|今天).{0,8}?(${NUMBER})\\s*(?:步|步数|圈)`),
       new RegExp(`(${NUMBER})\\s*(?:步|步数|圈)`),
     ],
   },
