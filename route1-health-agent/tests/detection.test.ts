@@ -138,6 +138,7 @@ async function main(): Promise<void> {
     assert(night[0]?.value === 3.5, '三四次 should become a midpoint numeric value');
     const steps = extractHealthValues('今天走了六千步');
     assert(steps[0]?.metric === 'steps', 'walking phrase should map to steps');
+    assert(steps[0]?.value === 6000, '六千步 should become 6000');
   });
 
   await runCase('justified follow-up question is driven by context and used by Agent adapter', async () => {
@@ -209,5 +210,5 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   console.error(error);
-  process.exitCode = 1;
+  throw error;
 });
