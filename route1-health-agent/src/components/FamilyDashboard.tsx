@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import type { CareTask, DayRecord, ElderProfile, FamilyLink, Finding, Observation } from '../types';
+import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
+import { SYMPTOM_LABELS } from '../types';
 import { severityBadge } from '../engine/escalate';
 import ProfileView from './ProfileView';
 import ReportView from './ReportView';
@@ -10,6 +11,7 @@ interface FamilyDashboardProps {
   familyLink: FamilyLink | null;
   notifications: FamilyNotification[];
   findings: Finding[];
+  familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
   records: DayRecord[];
   observations: Observation[];
@@ -44,6 +46,32 @@ function overallMessage(notifications: FamilyNotification[]) {
   };
 }
 
+function familySubjectLabel(subject: FamilyHealthEvent['subject']): string {
+  switch (subject) {
+    case 'spouse':
+      return '配偶';
+    case 'father':
+      return '父亲';
+    case 'mother':
+      return '母亲';
+    default:
+      return '家人';
+  }
+}
+
+function familyStatusLabel(status: FamilyHealthEvent['status']): string {
+  switch (status) {
+    case 'occurred':
+      return '已发生';
+    case 'negated':
+      return '未发现';
+    case 'uncertain':
+      return '待确认';
+    default:
+      return '仅作参考';
+  }
+}
+
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
@@ -51,6 +79,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const familyFindings = props.findings.filter((finding) => finding.familyEligible !== false);
   const familyObservations = props.observations.filter((observation) => observation.visibility !== 'private');
   const canViewSharedDetail = props.profile.familySharing === 'granted';
+  const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -80,6 +109,29 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           findings={familyFindings}
           today={props.today}
         />
+        {recentFamilyEvents.length > 0 && (
+          <section className="card">
+            <div className="section-head">
+              <div>
+                <h3>家人近况记录</h3>
+                <span className="muted">这些内容来自老人主动提到的家人情况，不会混入老人的健康档案。</span>
+              </div>
+            </div>
+            <div className="family-feed">
+              {recentFamilyEvents.map((event) => (
+                <div className="family-item" key={event.id}>
+                  <div className="finding-head">
+                    <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
+                    <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
+                    <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                  </div>
+                  <p>{event.text}</p>
+                  <span className="muted">状态：{familyStatusLabel(event.status)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     );
   }
@@ -203,6 +255,32 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>家人近况</h3>
+            <span className="muted">只显示老人主动分享并授权家属查看的家人事实。</span>
+          </div>
+        </div>
+        {recentFamilyEvents.length === 0 ? (
+          <p className="family-empty">目前没有新的家人近况记录。</p>
+        ) : (
+          <div className="family-feed">
+            {recentFamilyEvents.map((event) => (
+              <div className="family-item" key={event.id}>
+                <div className="finding-head">
+                  <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
+                  <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
+                  <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                </div>
+                <p>{event.text}</p>
+                <span className="muted">状态：{familyStatusLabel(event.status)}</span>
+              </div>
+            ))}
           </div>
         )}
       </section>
