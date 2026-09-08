@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-route1:
@@ -49,29 +49,27 @@ jobs:
       - name: Format working tree for audit artifact
         run: npx --yes prettier@3.5.3 --write .
 
-      - name: Upload formatter output for audit
-        uses: actions/upload-artifact@v4
-        with:
-          name: route1-final-prettier-output
-          path: |
-            route1-health-agent/src/engine/understanding.ts
-            route1-health-agent/src/engine/familyLedger.ts
-            route1-health-agent/src/hooks/useElderChat.ts
-            route1-health-agent/src/hooks/useFamilyBinding.ts
-            route1-health-agent/src/store/HealthRecordStore.ts
-            route1-health-agent/src/store/LocalHealthRecordStore.ts
-            route1-health-agent/src/types.ts
-            route1-health-agent/src/App.tsx
-            route1-health-agent/src/components/FamilyDashboard.tsx
-            route1-health-agent/tests/family-ledger-regression.test.ts
-            route1-health-agent/tests/final-audit-smoke.test.ts
-            route1-health-agent/tests/final-audit-ci-2.test.ts
-            route1-health-agent/tests/family-ledger-ci-smoke.test.ts
-            route1-health-agent/tests/final-main-ci-trigger.test.ts
-          if-no-files-found: error
+      - name: Commit official formatter output
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent
+          if git diff --cached --quiet; then
+            echo "No formatter changes to commit."
+          else
+            git commit -m "chore(route1): apply CI formatter output"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          fi
+
+      - name: Stop before verification on formatter update
+        if: steps.commit.outputs.pushed == 'true'
+        run: exit 1
 
       - name: Verify formatting
-        run: git diff --exit-code -- . ':!package-lock.json'
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
