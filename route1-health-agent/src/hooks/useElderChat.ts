@@ -186,9 +186,8 @@ export function useElderChat({
       }
     }
 
-    setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
-
     if (intent === 'no_record') {
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
@@ -225,7 +224,10 @@ export function useElderChat({
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
     }
 
-    if (acceptedClaims.length === 0) return;
+    if (acceptedClaims.length === 0) {
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+      return;
+    }
 
     const incomingEvents: HealthEvent[] = [];
     for (let claimIndex = 0; claimIndex < acceptedClaims.length; claimIndex += 1) {
@@ -266,13 +268,17 @@ export function useElderChat({
       }
     }
 
-    if (incomingEvents.length === 0) return;
+    if (incomingEvents.length === 0) {
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+      return;
+    }
     const nextEvents = appendHealthEvents(events, incomingEvents);
     setEvents(nextEvents);
 
+    let sharedFindingIds: string[] = [];
     if (intent === 'share_family') {
       const nextFindings = runDetection(nextEvents, TODAY);
-      const shareableFindingIds = nextFindings
+      sharedFindingIds = nextFindings
         .filter(
           (finding) =>
             (finding.severity === 'alert' || finding.severity === 'urgent') &&
@@ -280,27 +286,39 @@ export function useElderChat({
             Boolean(finding.familyMessage),
         )
         .map((finding) => finding.id);
-      onShareFindingIds(shareableFindingIds);
+      onShareFindingIds(sharedFindingIds);
     }
 
     const values = acceptedClaims.flatMap((claim) => extractHealthValues(claim.text));
     const labels = acceptedTags.map(tagLabel);
     const valueText = values.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
+    const recordSummary = [...labels, ...valueText].join('、');
     const timeNotice = acceptedClaims.some(
       (claim) => claim.timeScope === 'yesterday' || claim.timeScope === 'lastNight',
     )
-      ? '；按您说的时间归到昨晚/昨天，不当作今天新发生'
+      ? '按您说的时间归到昨晚/昨天，不当作今天新发生。'
       : '';
     const sharingNotice =
       intent === 'share_family'
-        ? '；这次明确分享给家属，不会自动修改长期共享设置'
+        ? '这次只分享给家属一次，不会自动打开长期共享。'
         : canShare
-          ? '；按当前授权可供家属查看必要变化'
-          : '；仅供您本人使用';
-    showToast(`已记录：${[...labels, ...valueText].join('、')}${timeNotice}${sharingNotice}`);
+          ? '按您现在的授权，家属可以看到必要的变化。'
+          : '这部分只供您本人使用。';
+    const safetyNotice = acceptedTags.includes('fall')
+      ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
+      : '';
+    const receipt = recordSummary
+      ? `我已经记下：${recordSummary}。${timeNotice}${safetyNotice ? `\n${safetyNotice}` : ''}\n${sharingNotice}`
+      : `${agentText}\n${sharingNotice}`;
+    if (safetyNotice) {
+      agentText = `${agentText}\n我已经记下这件事。\n${safetyNotice}`;
+    }
+    const finalAgentText = recordSummary ? receipt : agentText;
+    setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalAgentText, now, persisted)]);
+
+    showToast(finalAgentText.replace(/\n/g, ' '));
 
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
-    if (acceptedTags.includes('fall')) showToast('已标记为需要优先确认安全的事件，请先确认现在是否安全。');
   }
 
   async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
