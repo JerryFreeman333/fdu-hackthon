@@ -148,7 +148,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   }
 
   function shareFindingIds(ids: string[]) {
-    if (ids.length === 0 || familySharing === 'denied') return;
+    if (ids.length === 0) return;
     setSharedFindingIds((current) => [...new Set([...current, ...ids])].slice(-50));
   }
 
