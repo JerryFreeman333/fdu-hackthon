@@ -28,7 +28,9 @@ runCase('mixed family and self input still acknowledges the family fact', () => 
   const input = understandElderInput('我爸今天没吃降压药，我也没吃', TODAY);
   const family = input.claims.filter((claim) => claim.subject === 'father');
   const self = acceptedSelfClaims(input);
-  const text = buildFamilyAcknowledgement(family.map((claim) => ({ subject: claim.subject, text: claim.text })));
+  const text = buildFamilyAcknowledgement(
+    family.map((claim) => ({ subject: 'father' as const, text: claim.text })),
+  );
   assert(family.length === 1, 'family claim should survive');
   assert(self.length === 1, 'self claim should survive');
   assert(text.includes('您爸爸'), 'mixed response should explicitly mention father');
