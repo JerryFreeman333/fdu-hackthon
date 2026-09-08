@@ -47,7 +47,7 @@ jobs:
         run: npm ci
 
       - name: Auto-format working tree
-        run: npx prettier@3.5.3 --write .
+        run: npx prettier@3.5.3 --write . # authoritative formatter pass
 
       - name: Commit formatter output
         working-directory: .
