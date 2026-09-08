@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, Finding } from '../types';
 import { sharingLabel } from '../engine/privacy';
-import { taskSummary } from '../engine/tasks';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
 
@@ -36,7 +35,6 @@ export default function ElderHome({
   onRevokeFamilyShare,
   onGenerateInvite,
 }: ElderHomeProps) {
-  const summary = taskSummary(tasks);
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
     profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
@@ -75,6 +73,8 @@ export default function ElderHome({
           <small>点这里说</small>
         </button>
       </section>
+
+      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} />
 
       <section className="card task-card">
         <div className="section-head">
@@ -191,8 +191,6 @@ export default function ElderHome({
           </button>
         )}
       </section>
-
-      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} />
     </div>
   );
 }
