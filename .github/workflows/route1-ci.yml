@@ -16,11 +16,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: route1-health-agent-formatter-${{ github.run_id }}
-  cancel-in-progress: false
+  group: route1-health-agent-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-route1:
@@ -46,14 +46,24 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Auto-format working tree
-        run: npx --yes prettier@3.5.3 --write .
+      - name: Check formatting
+        run: npm run format:check
 
-      - name: Commit formatter output
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add route1-health-agent
-          git diff --cached --quiet && exit 0
-          git commit -m "style(route1): format working tree"
-          git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Security checks
+        run: npm run security:check
+
+      - name: Dependency audit (high severity)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Dependency audit (full, informational)
+        continue-on-error: true
+        run: npm audit --omit=dev
