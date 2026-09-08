@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, Finding, HealthMeasurement } from '../types';
+import type { ChatMessage, ElderProfile, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
@@ -30,10 +30,12 @@ const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
 interface UseElderChatOptions {
   familySharing: ElderProfile['familySharing'];
   events: HealthEvent[];
+  familyEvents: FamilyHealthEvent[];
   chat: ChatMessage[];
   findings: Finding[];
   agentContext: Parameters<typeof generateAgentReply>[4];
   setEvents: Dispatch<SetStateAction<HealthEvent[]>>;
+  setFamilyEvents: Dispatch<SetStateAction<FamilyHealthEvent[]>>;
   setChat: Dispatch<SetStateAction<ChatMessage[]>>;
   showToast: (text: string) => void;
   onMedicationMissed: (createdAt: string) => void;
@@ -59,6 +61,16 @@ function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): bool
   );
 }
 
+function shouldPersistFamilyClaim(claim: StructuredElderInput['claims'][number]): boolean {
+  return (
+    claim.subject !== 'self' &&
+    claim.subject !== 'unknown' &&
+    claim.status !== 'hypothetical' &&
+    claim.eventDate !== null &&
+    claim.tags.length > 0
+  );
+}
+
 function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
   if (priorTags.length === 0) return events;
   let removed = false;
@@ -73,6 +85,14 @@ function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: strin
   return next.reverse();
 }
 
+function removeLatestCorrectedFamilyEvents(events: FamilyHealthEvent[], priorTags: string[]): FamilyHealthEvent[] {
+  if (priorTags.length === 0) return events;
+  const index = [...events].reverse().findIndex((event) => event.tags.some((tag) => priorTags.includes(tag)));
+  if (index === -1) return events;
+  const actualIndex = events.length - 1 - index;
+  return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
+}
+
 function isCurrentReassurance(text: string): boolean {
   return /^(?:我)?(?:现在)?(?:感觉)?(?:没事|没什么事|没什么事情|还好|挺好的)[。！!,.，]*$/.test(text.trim());
 }
@@ -80,10 +100,12 @@ function isCurrentReassurance(text: string): boolean {
 export function useElderChat({
   familySharing,
   events,
+  familyEvents,
   chat,
   findings,
   agentContext,
   setEvents,
+  setFamilyEvents,
   setChat,
   showToast,
   onMedicationMissed,
@@ -94,6 +116,7 @@ export function useElderChat({
     const understanding = understandElderInput(text, TODAY, chat);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
+    const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
     const familyOnlyClaims = understanding.claims.filter(
       (claim) =>
         claim.subject !== 'self' &&
@@ -149,12 +172,28 @@ export function useElderChat({
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
       const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
       if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
+      if (tagsToCorrect.length > 0) setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect));
+    }
+
+    const receivedAt = localIsoTimestamp();
+
+    if (familyClaims.length > 0) {
+      const incomingFamilyEvents = familyClaims.map((claim, claimIndex): FamilyHealthEvent => ({
+        id: `family-live-${Date.now()}-${claimIndex}`,
+        timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
+        source: 'chat',
+        subject: claim.subject as Exclude<StructuredElderInput['claims'][number]['subject'], 'self' | 'unknown'>,
+        text: claim.text,
+        tags: claim.tags,
+        status: claim.status,
+        visibility,
+      }));
+      setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
     }
 
     if (acceptedClaims.length === 0) return;
 
     const incomingEvents: HealthEvent[] = [];
-    const receivedAt = localIsoTimestamp();
     for (let claimIndex = 0; claimIndex < acceptedClaims.length; claimIndex += 1) {
       const claim = acceptedClaims[claimIndex];
       if (!shouldPersistClaim(claim)) continue;
