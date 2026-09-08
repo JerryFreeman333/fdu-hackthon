@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-route1:
@@ -45,6 +45,24 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Format working tree for audit artifact
+        run: npx --yes prettier@3.5.3 --write .
+
+      - name: Commit official formatter output
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "No formatter changes to commit."
+          else
+            git commit -m "chore(route1): apply CI formatter output"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          fi
 
       - name: Verify formatting
         run: npm run format:check
