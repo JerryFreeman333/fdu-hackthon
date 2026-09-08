@@ -16,7 +16,12 @@ import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
 import { buildFamilyAcknowledgement } from '../engine/userFacing';
-import { acceptedSelfClaims, hasDeathReport, understandElderInput, type StructuredElderInput } from '../engine/understanding';
+import {
+  acceptedSelfClaims,
+  hasDeathReport,
+  understandElderInput,
+  type StructuredElderInput,
+} from '../engine/understanding';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -130,7 +135,8 @@ export function useElderChat({
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
     const familyOnlyClaims = understanding.claims.filter(
-      (claim) => claim.subject !== 'self' && claim.subject !== 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
+      (claim) =>
+        claim.subject !== 'self' && claim.subject !== 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
