@@ -46,6 +46,19 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Format working tree
+        run: npx --yes prettier@3.5.3 --write .
+
+      - name: Upload formatter output for verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: route1-prettier-output
+          path: |
+            route1-health-agent/src/engine/understanding.ts
+            route1-health-agent/src/hooks/useElderChat.ts
+            route1-health-agent/tests/user-input-regression.test.ts
+          if-no-files-found: error
+
       - name: Verify formatting
         run: npm run format:check
 
