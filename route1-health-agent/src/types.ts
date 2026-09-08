@@ -150,6 +150,7 @@ export interface FamilyHealthEvent {
   subject: Exclude<ElderSubject, 'self' | 'unknown'>;
   text: string;
   tags: SymptomTag[];
+  hasHealthValue: boolean;
   status: ClaimStatus;
   visibility: PrivacyScope;
   shareMode: FamilyShareMode;
