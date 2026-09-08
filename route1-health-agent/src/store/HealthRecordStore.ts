@@ -1,9 +1,11 @@
-import type { ChatMessage, DayRecord, HealthMeasurement, LabResult, Observation } from '../types';
+import type { ChatMessage, DayRecord, FamilyHealthEvent, HealthMeasurement, LabResult, Observation } from '../types';
 import type { HealthEvent } from '../pipeline/events';
 
 export interface HealthRecordSnapshot {
-  /** 运行时唯一事实来源：统一健康事件流。 */
+  /** 老人本人唯一事实来源：统一健康事件流。 */
   events: HealthEvent[];
+  /** 家庭成员事实账本，与老人事件流隔离，不参与本人检测。 */
+  familyEvents: FamilyHealthEvent[];
   chat: ChatMessage[];
 }
 
@@ -23,5 +25,6 @@ export interface LegacyHealthRecordSnapshot {
   observations?: Observation[];
   labResults?: LabResult[];
   measurements?: HealthMeasurement[];
+  familyEvents?: FamilyHealthEvent[];
   chat?: ChatMessage[];
 }
