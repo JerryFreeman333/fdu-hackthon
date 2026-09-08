@@ -87,9 +87,7 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   const currentComparison =
     hasToday &&
     hasYesterday &&
-    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(
-      clause,
-    );
+    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
 
   if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
   if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
@@ -104,10 +102,7 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
 
   // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏，
   // 虽然表面有否定词，但业务事件本身是“漏服药物”而不是“没有漏服”。
-  if (
-    tags.includes('medicationMissed') &&
-    /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)
-  ) {
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
     return 'occurred';
   }
 
@@ -118,7 +113,11 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     /(像|那么|这么|那样|比)/.test(clause) &&
     /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
   if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
-  if (/(今天|现在|目前)/.test(clause) && /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) && tags.length > 0) {
+  if (
+    /(今天|现在|目前)/.test(clause) &&
+    /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
+    tags.length > 0
+  ) {
     return 'occurred';
   }
 
@@ -179,7 +178,8 @@ export function understandElderInput(
       explicitTags.length === 0 &&
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
-    const tags = explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
+    const tags =
+      explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
     const hasHealthValue =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
