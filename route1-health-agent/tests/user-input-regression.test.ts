@@ -45,10 +45,11 @@ runCase('“我爸……，我也……”拆成两条独立事实', () => {
   assert(input.claims.length === 2, '同一句中的两个主体应形成两条 claim');
   assert(input.claims[0].subject === 'father', '第一条应属于父亲');
   assert(input.claims[0].tags.includes('medicationMissed'), '第一条应识别漏服药物');
+  assert(input.claims[0].status === 'occurred', '“没吃药”应作为已发生的漏服事件处理');
   assert(input.claims[1].subject === 'self', '第二条“我也没吃”应属于本人');
   assert(input.claims[1].tags.includes('medicationMissed'), '第二条也应识别漏服药物');
-  assert(input.claims.every((claim) => claim.status === 'negated'), '“没吃”应保留为已经发生的漏服事实所对应的否定动作表达');
-  assert(acceptedSelfClaims(input).length === 0, '漏服否定表达仍需经过真实发生语义边界，不能直接按 occurred 接纳');
+  assert(input.claims[1].status === 'occurred', '本人的“没吃药”同样应作为已发生的漏服事件');
+  assert(acceptedSelfClaims(input).length === 1, '本人漏服药物事实不能被前面的“我爸”吞掉');
 });
 
 runCase('撤销共享后历史一次性 finding 不再触发家属通知', () => {
