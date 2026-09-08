@@ -72,7 +72,6 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  // 分句自身没有主语时，延续最近一条已确认的主体。
   const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
   if (lastKnownSubject) return lastKnownSubject;
 
@@ -160,13 +159,23 @@ export function understandElderInput(
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
   let subjectsSeen = [...priorSubjects];
+  let lastTags: SymptomTag[] = [];
+  let lastHealthValue = false;
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
-    const tags = parsed.tags;
-    const hasHealthValue = extractHealthValues(clause).length > 0;
-    const time = timeFromText(clause, today);
+    const explicitTags = parsed.tags;
+    const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
     const subject = subjectFromText(clause, subjectsSeen);
+    const tags =
+      explicitTags.length > 0
+        ? explicitTags
+        : /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
+            lastTags.length > 0
+          ? lastTags
+          : explicitTags;
+    const hasHealthValue = hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && /^(?:我|我自己|本人)(?:也|还|同样)/.test(clause));
+    const time = timeFromText(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
@@ -182,14 +191,36 @@ export function understandElderInput(
         outcome: 'death_reported',
       });
       subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
+      continue;
+    }
+
+    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
+    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
+    if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
+      claims.push({
+        text: clause,
+        subject,
+        status,
+        timeScope: time.scope,
+        eventDate: time.eventDate,
+        tags,
+        hasHealthValue,
+      });
+      subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
       continue;
     }
 
     if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') {
-      // 即使本分句还没有健康标签，也保留它确定的主体，供后续“摔了一下/喘得更厉害”等省略主语分句继承。
       subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
       continue;
     }
+
     claims.push({
       text: clause,
       subject,
@@ -200,6 +231,8 @@ export function understandElderInput(
       hasHealthValue,
     });
     subjectsSeen.push(subject);
+    lastTags = tags;
+    lastHealthValue = hasHealthValue;
   }
 
   const hasUnclearFamilyReference = claims.some(
