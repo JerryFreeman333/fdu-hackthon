@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ChatMessage, ElderProfile, UserRole } from './types';
+import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
 import {
@@ -27,16 +27,16 @@ import { useFontScale } from './hooks/useFontScale';
 
 const ROLE_KEY = 'ankang-route1-role-v3';
 
-function initialSnapshot(): { events: HealthEvent[]; chat: ChatMessage[] } {
+function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   const stored = healthRecordStore.load();
-  if (stored.events.length || stored.chat.length) return stored;
+  if (stored.events.length || stored.familyEvents.length || stored.chat.length) return stored;
   const events = legacySnapshotToEvents({
     records: seedRecords,
     observations: [...seedObservations, ...seedPhotoObservations],
     measurements: [],
     labResults: [],
   });
-  const snapshot = { events, chat: seedChat };
+  const snapshot = { events, familyEvents: [], chat: seedChat };
   healthRecordStore.save(snapshot);
   return snapshot;
 }
@@ -44,6 +44,7 @@ function initialSnapshot(): { events: HealthEvent[]; chat: ChatMessage[] } {
 export default function App() {
   const initial = useMemo(() => initialSnapshot(), []);
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
+  const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [role, setRole] = useState<UserRole | null>(() => {
     const saved = window.localStorage.getItem(ROLE_KEY);
@@ -76,6 +77,10 @@ export default function App() {
     () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
     [measurements],
   );
+  const visibleFamilyEvents = useMemo(
+    () => (familySharing === 'denied' ? [] : familyEvents.filter((event) => event.visibility !== 'private')),
+    [familyEvents, familySharing],
+  );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
     () => buildAgentContext(activeProfile, events, TODAY, findings),
@@ -89,10 +94,12 @@ export default function App() {
   const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
     familySharing,
     events,
+    familyEvents,
     chat,
     findings,
     agentContext,
     setEvents,
+    setFamilyEvents,
     setChat,
     showToast,
     onMedicationMissed: ensureMedicationCheck,
@@ -112,8 +119,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    healthRecordStore.save({ events, chat: chat.filter((item) => item.persisted !== false) });
-  }, [events, chat]);
+    healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
+  }, [events, familyEvents, chat]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
@@ -208,6 +215,7 @@ export default function App() {
           familyLink={familyLink}
           notifications={familyNotifs}
           findings={findings}
+          familyEvents={visibleFamilyEvents}
           tasks={tasks}
           records={familyRecords}
           observations={observations}
