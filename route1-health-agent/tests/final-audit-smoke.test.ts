@@ -28,10 +28,7 @@ assert(acceptedSelfClaims(thirdPerson).length === 0, 'family report must stay ou
 
 const mixed = understandElderInput('我爸今天没吃降压药，我也没吃', TODAY);
 assert(mixed.claims.length === 2, 'mixed-person sentence must retain both claims');
-assert(
-  mixed.claims[0]?.subject === 'father' && mixed.claims[1]?.subject === 'self',
-  'claims must keep their subjects',
-);
+assert(mixed.claims[0]?.subject === 'father' && mixed.claims[1]?.subject === 'self', 'claims must keep their subjects');
 assert(acceptedSelfClaims(mixed).length === 1, 'self medication-missed claim must survive');
 
 const improving = understandElderInput('今天没有像昨天那样喘得厉害了', TODAY);
@@ -40,7 +37,10 @@ assert(improving.claims[0]?.eventDate === TODAY, 'current comparison belongs to 
 assert(acceptedSelfClaims(improving).length === 1, 'improving symptom must remain trackable');
 
 assert(visibleFamilyEvents([oneTimeEvent], 'granted').length === 0, 'one-time event must not become persistent');
-assert(visibleFamilyEvents([persistentEvent], 'granted').length === 1, 'persistent event should be visible when granted');
+assert(
+  visibleFamilyEvents([persistentEvent], 'granted').length === 1,
+  'persistent event should be visible when granted',
+);
 assert(visibleFamilyEvents([oneTimeEvent], 'denied').length === 0, 'denied sharing must hide one-time event');
 assert(
   visibleFamilyEvents([oneTimeEvent], 'denied', [oneTimeEvent.id]).length === 1,
