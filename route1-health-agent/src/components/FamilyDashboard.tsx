@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
 import { SYMPTOM_LABELS } from '../types';
+import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
 import ProfileView from './ProfileView';
 import ReportView from './ReportView';
@@ -44,32 +45,6 @@ function overallMessage(notifications: FamilyNotification[]) {
     detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。',
     tone: 'ok',
   };
-}
-
-function familySubjectLabel(subject: FamilyHealthEvent['subject']): string {
-  switch (subject) {
-    case 'spouse':
-      return '配偶';
-    case 'father':
-      return '父亲';
-    case 'mother':
-      return '母亲';
-    default:
-      return '家人';
-  }
-}
-
-function familyStatusLabel(status: FamilyHealthEvent['status']): string {
-  switch (status) {
-    case 'occurred':
-      return '已发生';
-    case 'negated':
-      return '未发现';
-    case 'uncertain':
-      return '待确认';
-    default:
-      return '仅作参考';
-  }
 }
 
 export default function FamilyDashboard(props: FamilyDashboardProps) {
