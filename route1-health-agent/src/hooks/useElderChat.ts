@@ -303,14 +303,20 @@ export function useElderChat({
         : canShare
           ? '按您现在的授权，家属可以看到必要的变化。'
           : '这部分只供您本人使用。';
+    const safetyTags = new Set(['fall', 'medicationMissed', 'chestPain', 'neuroChange', 'dizziness']);
+    const hasSafetyGuidance = acceptedTags.some((tag) => safetyTags.has(tag));
     const safetyNotice = acceptedTags.includes('fall')
       ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
       : '';
+    const guidance = hasSafetyGuidance ? agentText : '';
     const sharingReceipt = familyAcknowledgement || sharingNotice;
-    const receipt = recordSummary
-      ? `我已经记下：${recordSummary}。${timeNotice}${safetyNotice ? `\n${safetyNotice}` : ''}\n${sharingReceipt}`
-      : `${agentText}\n${sharingReceipt}`;
-    const finalAgentText = recordSummary ? receipt : agentText;
+    const receiptParts = [
+      guidance,
+      recordSummary ? `我已经记下：${recordSummary}。${timeNotice}` : '',
+      safetyNotice && !guidance.includes(safetyNotice) ? safetyNotice : '',
+      sharingReceipt,
+    ].filter(Boolean);
+    const finalAgentText = receiptParts.join('\n');
     setChat((current) => [
       ...current,
       msg('elder', text, now, persisted),
