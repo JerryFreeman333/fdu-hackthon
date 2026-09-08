@@ -60,4 +60,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add route1-health-agent
           git commit -m 'style(route1): apply Prettier formatting'
-          git push
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
