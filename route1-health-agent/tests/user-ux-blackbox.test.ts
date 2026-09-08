@@ -18,9 +18,7 @@ function runCase(name: string, fn: () => void) {
 const TODAY = '2026-09-08';
 
 runCase('family-only response names the person and echoes the fact', () => {
-  const text = buildFamilyAcknowledgement([
-    { subject: 'father', text: '我爸今天血压150/95' },
-  ]);
+  const text = buildFamilyAcknowledgement([{ subject: 'father', text: '我爸今天血压150/95' }]);
   assert(text.includes('您爸爸'), 'response should identify father');
   assert(text.includes('150/95'), 'response should echo the concrete value');
   assert(text.includes('不会记到您本人的健康档案'), 'response should explain the privacy boundary');
@@ -30,9 +28,7 @@ runCase('mixed family and self input still acknowledges the family fact', () => 
   const input = understandElderInput('我爸今天没吃降压药，我也没吃', TODAY);
   const family = input.claims.filter((claim) => claim.subject === 'father');
   const self = acceptedSelfClaims(input);
-  const text = buildFamilyAcknowledgement(
-    family.map((claim) => ({ subject: claim.subject, text: claim.text })),
-  );
+  const text = buildFamilyAcknowledgement(family.map((claim) => ({ subject: claim.subject, text: claim.text })));
   assert(family.length === 1, 'family claim should survive');
   assert(self.length === 1, 'self claim should survive');
   assert(text.includes('您爸爸'), 'mixed response should explicitly mention father');
@@ -63,6 +59,9 @@ runCase('user can state two people in one breath', () => {
 
 runCase('user can correct the person without losing the distinction', () => {
   const input = understandElderInput('不是我，是我爸摔了', TODAY);
-  assert(input.claims.some((claim) => claim.subject === 'father'), 'correction should point to father');
+  assert(
+    input.claims.some((claim) => claim.subject === 'father'),
+    'correction should point to father',
+  );
   assert(acceptedSelfClaims(input).length === 0, 'correction should not create a self fall');
 });

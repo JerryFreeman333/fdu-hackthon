@@ -181,10 +181,7 @@ export function useElderChat({
         familyClaims.map((claim) => ({ subject: claim.subject, text: claim.text })),
       );
       if (familyAcknowledgement) {
-        agentText =
-          acceptedClaims.length === 0
-            ? familyAcknowledgement
-            : `${agentText}\n${familyAcknowledgement}`;
+        agentText = acceptedClaims.length === 0 ? familyAcknowledgement : `${agentText}\n${familyAcknowledgement}`;
       }
     }
 
