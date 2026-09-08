@@ -30,7 +30,7 @@ export const profile: ElderProfile = {
   usesCane: true,
   nightVision: 'reduced',
   cognition: 'stable',
-  familySharing: 'granted',
+  familySharing: 'ask',
 };
 
 function buildRecords(): DayRecord[] {
