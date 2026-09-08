@@ -94,12 +94,16 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
 
   function keepFamilyPrivate() {
     updatePersistentFamilySharing('denied');
+    setSharedFindingIds([]);
     showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
   }
 
   function revokeFamilyShare() {
     updatePersistentFamilySharing('denied');
-    showToast('已暂停家属共享。老人本人仍可继续使用助手。');
+    // 一次性分享授权属于当前授权周期；撤销长期共享时一并撤销，
+    // 防止历史 finding 因旧 ID 仍保留而继续出现在家属通知中。
+    setSharedFindingIds([]);
+    showToast('已暂停家属共享。历史的一次性分享也已撤销，老人本人仍可继续使用助手。');
   }
 
   function generateInvite() {
@@ -144,7 +148,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   }
 
   function shareFindingIds(ids: string[]) {
-    if (ids.length === 0) return;
+    if (ids.length === 0 || familySharing === 'denied') return;
     setSharedFindingIds((current) => [...new Set([...current, ...ids])].slice(-50));
   }
 
