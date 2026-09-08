@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-route1:
@@ -46,18 +46,24 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Auto-format working tree
-        run: npx prettier@3.5.3 --write .
+      - name: Verify formatting
+        run: npm run format:check
 
-      - name: Commit formatter output
-        working-directory: .
-        run: |
-          if git diff --quiet; then
-            echo 'Formatter made no changes.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add route1-health-agent
-          git commit -m 'style(route1): apply Prettier formatting'
-          git push
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Detection regression tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Secret hygiene check
+        run: npm run security:check
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full dependency audit (informational)
+        continue-on-error: true
+        run: npm audit --audit-level=high
