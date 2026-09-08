@@ -98,6 +98,11 @@ export function isDuplicateChatHealthEvent(current: HealthEvent, incoming: Healt
   }
 
   if (current.type === 'measurement' && incoming.type === 'measurement') {
+    const currentSourceText = current.measurement.metadata?.sourceText;
+    const incomingSourceText = incoming.measurement.metadata?.sourceText;
+    if (typeof currentSourceText === 'string' && typeof incomingSourceText === 'string') {
+      return normalizedText(currentSourceText) === normalizedText(incomingSourceText);
+    }
     return (
       current.measurement.timestamp === incoming.measurement.timestamp &&
       current.measurement.metric === incoming.measurement.metric &&
