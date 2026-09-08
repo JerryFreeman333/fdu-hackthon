@@ -44,3 +44,15 @@ export function buildFamilyAcknowledgement(
   const parts = usable.map((claim) => `${subjectLabel(claim.subject)}：${claim.text.trim()}`);
   return `我也听到您说的是：${parts.join('；')}。${sharingNotice(shareMode)}不会记到您本人的健康档案。`;
 }
+
+/** 让老人知道一次性或长期共享时，实际对家属开放了哪些本人事实。 */
+export function buildSelfSharingAcknowledgement(
+  recordSummary: string,
+  shareMode: FamilyShareMode,
+): string {
+  const summary = recordSummary.trim();
+  if (!summary) return '';
+  const scope = shareMode === 'one_time' ? '这次分享给家属一次的是' : '按您现在的授权，家属可以看到的是';
+  const duration = shareMode === 'one_time' ? '不会打开长期共享。' : '只限必要的健康变化。';
+  return `${scope}：${summary}。${duration}`;
+}
