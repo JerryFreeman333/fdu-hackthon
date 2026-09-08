@@ -1,5 +1,7 @@
 import type { ElderSubject } from './understanding';
 
+export type FamilyShareMode = 'private' | 'persistent' | 'one_time';
+
 export interface FamilyAcknowledgementClaim {
   subject: Exclude<ElderSubject, 'self' | 'unknown'>;
   text: string;
@@ -18,13 +20,27 @@ function subjectLabel(subject: FamilyAcknowledgementClaim['subject']): string {
   }
 }
 
+function sharingNotice(shareMode: FamilyShareMode): string {
+  switch (shareMode) {
+    case 'one_time':
+      return '这次会分享给家属一次，不会打开长期共享。';
+    case 'persistent':
+      return '按您现在的授权，家属可以看到必要的变化。';
+    default:
+      return '这部分不会共享给家属。';
+  }
+}
+
 /**
- * 让老人明确知道“AI听懂了谁”，避免只说“家里人”造成被听漏的感觉。
+ * 让老人明确知道“AI听懂了谁”，并把本次分享与长期共享明确区分。
  * 原话短句优先回显，不重新编造健康事实。
  */
-export function buildFamilyAcknowledgement(claims: FamilyAcknowledgementClaim[]): string {
+export function buildFamilyAcknowledgement(
+  claims: FamilyAcknowledgementClaim[],
+  shareMode: FamilyShareMode = 'private',
+): string {
   const usable = claims.filter((claim) => claim.text.trim()).slice(0, 2);
   if (usable.length === 0) return '';
   const parts = usable.map((claim) => `${subjectLabel(claim.subject)}：${claim.text.trim()}`);
-  return `我也听到您说的是：${parts.join('；')}。这部分只记在家人近况里，不会记到您本人的健康档案。`;
+  return `我也听到您说的是：${parts.join('；')}。${sharingNotice(shareMode)}不会记到您本人的健康档案。`;
 }
