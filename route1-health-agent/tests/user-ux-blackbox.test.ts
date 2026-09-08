@@ -1,3 +1,4 @@
+import { parsePrivacyIntent } from '../src/engine/privacy';
 import { buildFamilyAcknowledgement } from '../src/engine/userFacing';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
 
@@ -76,4 +77,14 @@ runCase('user can correct the person without losing the distinction', () => {
     'correction should point to father',
   );
   assert(acceptedSelfClaims(input).length === 0, 'correction should not create a self fall');
+});
+
+runCase('natural-language privacy refusal is understood', () => {
+  assert(parsePrivacyIntent('我不想让孩子知道这件事') === 'private', 'user refusal should block family sharing');
+  assert(parsePrivacyIntent('我不希望女儿知道') === 'private', 'user refusal should recognize daughter wording');
+  assert(parsePrivacyIntent('我想告诉女儿') === 'share_family', 'explicit sharing request should remain a share');
+});
+
+runCase('no-record request stays stronger than family sharing', () => {
+  assert(parsePrivacyIntent('这件事不要记录，也别告诉孩子') === 'no_record', 'no-record request should win first');
 });
