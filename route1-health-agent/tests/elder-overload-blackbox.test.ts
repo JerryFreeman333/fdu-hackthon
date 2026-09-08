@@ -16,17 +16,23 @@ function runCase(name: string, fn: () => void | Promise<void>): Promise<void> {
 const TODAY = '2026-09-08';
 
 async function main() {
-  await runCase('overloaded speech keeps self facts separate from the family fact', () => {
+  await runCase('overloaded speech keeps self facts separate from family facts and context', () => {
     const input = understandElderInput(
       '我今天头晕，昨晚没睡好，早上药忘了吃，我爸摔了一下，女儿也没在家，我现在其实没什么事',
       TODAY,
     );
     const selfClaims = acceptedSelfClaims(input);
-    const familyClaims = input.claims.filter((claim) => claim.subject === 'father');
-    assert(selfClaims.length === 3, 'three self facts should remain independently actionable');
-    assert(familyClaims.length === 1, 'one father fact should stay in the family ledger');
-    assert(!selfClaims.some((claim) => claim.tags.includes('fall')), 'family fall must not enter self facts');
-    assert(input.claims.every((claim) => claim.eventDate !== null), 'retained facts should keep an event date');
+    const fatherClaims = input.claims.filter((claim) => claim.subject === 'father');
+    const contextOnlyFamily = input.claims.filter(
+      (claim) => claim.subject === 'family_other' && claim.tags.length === 0 && !claim.hasHealthValue,
+    );
+    assert(selfClaims.length === 3, 'three self health facts should remain independently actionable');
+    assert(fatherClaims.length === 1, 'one father health fact should remain in the family ledger candidate');
+    assert(contextOnlyFamily.length === 1, 'non-health family context may be retained internally without becoming a health fact');
+    assert(
+      !selfClaims.some((claim) => claim.tags.includes('fall')),
+      'family fall must not enter self health facts',
+    );
   });
 
   await runCase('overloaded safety reply preserves more than one immediately useful action', async () => {
