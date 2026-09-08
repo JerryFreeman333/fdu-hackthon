@@ -1,14 +1,15 @@
-import type { ChatMessage, DayRecord, HealthMeasurement, LabResult, Observation } from '../types';
+import type { ChatMessage, DayRecord, FamilyHealthEvent, HealthMeasurement, LabResult, Observation } from '../types';
 import { legacySnapshotToEvents, type HealthEvent } from '../pipeline/events';
 import type { HealthRecordSnapshot, HealthRecordStore } from './HealthRecordStore';
 
 const STORAGE_KEY = 'ankang-route1-health-records-v2';
 const LEGACY_STORAGE_KEY = 'ankang-route1-health-records-v1';
 
-const EMPTY: HealthRecordSnapshot = { events: [], chat: [] };
+const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], chat: [] };
 
 interface PersistedHealthData {
   events?: unknown;
+  familyEvents?: unknown;
   chat?: unknown;
   records?: unknown;
   observations?: unknown;
@@ -23,8 +24,9 @@ export class LocalHealthRecordStore implements HealthRecordStore {
       if (!raw) return EMPTY;
       const parsed = JSON.parse(raw) as PersistedHealthData;
       const chat = Array.isArray(parsed.chat) ? (parsed.chat as ChatMessage[]) : [];
+      const familyEvents = Array.isArray(parsed.familyEvents) ? (parsed.familyEvents as FamilyHealthEvent[]) : [];
 
-      if (Array.isArray(parsed.events)) return { events: parsed.events as HealthEvent[], chat };
+      if (Array.isArray(parsed.events)) return { events: parsed.events as HealthEvent[], familyEvents, chat };
 
       return {
         events: legacySnapshotToEvents({
@@ -33,6 +35,7 @@ export class LocalHealthRecordStore implements HealthRecordStore {
           labResults: Array.isArray(parsed.labResults) ? (parsed.labResults as LabResult[]) : [],
           measurements: Array.isArray(parsed.measurements) ? (parsed.measurements as HealthMeasurement[]) : [],
         }),
+        familyEvents,
         chat,
       };
     } catch {
