@@ -30,7 +30,6 @@ const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
 interface UseElderChatOptions {
   familySharing: ElderProfile['familySharing'];
   events: HealthEvent[];
-  familyEvents: FamilyHealthEvent[];
   chat: ChatMessage[];
   findings: Finding[];
   agentContext: Parameters<typeof generateAgentReply>[4];
@@ -40,6 +39,7 @@ interface UseElderChatOptions {
   showToast: (text: string) => void;
   onMedicationMissed: (createdAt: string) => void;
   onShareFindingIds: (ids: string[]) => void;
+  onShareFamilyEventIds: (ids: string[]) => void;
 }
 
 function localIsoTimestamp(): string {
@@ -100,7 +100,6 @@ function isCurrentReassurance(text: string): boolean {
 export function useElderChat({
   familySharing,
   events,
-  familyEvents,
   chat,
   findings,
   agentContext,
@@ -110,6 +109,7 @@ export function useElderChat({
   showToast,
   onMedicationMissed,
   onShareFindingIds,
+  onShareFamilyEventIds,
 }: UseElderChatOptions) {
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
@@ -189,6 +189,7 @@ export function useElderChat({
         visibility,
       }));
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
+      if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
     }
 
     if (acceptedClaims.length === 0) return;
