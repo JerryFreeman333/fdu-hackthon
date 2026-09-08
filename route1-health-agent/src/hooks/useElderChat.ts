@@ -15,6 +15,7 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
+import { buildFamilyAcknowledgement } from '../engine/userFacing';
 import {
   acceptedSelfClaims,
   hasDeathReport,
@@ -173,6 +174,18 @@ export function useElderChat({
         agentContext,
         selectedAdapter,
       );
+    }
+
+    if (familyClaims.length > 0 && intent !== 'no_record') {
+      const familyAcknowledgement = buildFamilyAcknowledgement(
+        familyClaims.map((claim) => ({ subject: claim.subject, text: claim.text })),
+      );
+      if (familyAcknowledgement) {
+        agentText =
+          acceptedClaims.length === 0
+            ? familyAcknowledgement
+            : `${agentText}\n${familyAcknowledgement}`;
+      }
     }
 
     setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
