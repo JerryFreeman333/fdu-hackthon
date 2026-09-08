@@ -17,6 +17,7 @@ interface ElderHomeProps {
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onRequestFamilyShare: () => void;
   onKeepFamilyPrivate: () => void;
+  onRevokeFamilyShare: () => void;
   onGenerateInvite: () => void;
 }
 
@@ -32,6 +33,7 @@ export default function ElderHome({
   onTaskStatus,
   onRequestFamilyShare,
   onKeepFamilyPrivate,
+  onRevokeFamilyShare,
   onGenerateInvite,
 }: ElderHomeProps) {
   const summary = taskSummary(tasks);
@@ -160,9 +162,16 @@ export default function ElderHome({
           </div>
         </div>
         {familyLink?.status === 'active' ? (
-          <p>
-            已绑定家属：{familyLink.relation} · {familyLink.displayName}
-          </p>
+          <>
+            <p>
+              已绑定家属：{familyLink.relation} · {familyLink.displayName}
+            </p>
+            {profile.familySharing === 'granted' && (
+              <button className="btn-secondary" onClick={onRevokeFamilyShare}>
+                暂停家属共享
+              </button>
+            )}
+          </>
         ) : familyLink ? (
           <p>
             请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
