@@ -224,7 +224,11 @@ export function useElderChat({
 
     if (acceptedClaims.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [
+        ...current,
+        msg('elder', text, now, persisted),
+        msg('agent', finalFamilyText, now, persisted),
+      ]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
@@ -270,7 +274,11 @@ export function useElderChat({
 
     if (incomingEvents.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [
+        ...current,
+        msg('elder', text, now, persisted),
+        msg('agent', finalFamilyText, now, persisted),
+      ]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }

@@ -28,11 +28,11 @@ async function main() {
     );
     assert(selfClaims.length === 3, 'three self health facts should remain independently actionable');
     assert(fatherClaims.length === 1, 'one father health fact should remain in the family ledger candidate');
-    assert(contextOnlyFamily.length === 1, 'non-health family context may be retained internally without becoming a health fact');
     assert(
-      !selfClaims.some((claim) => claim.tags.includes('fall')),
-      'family fall must not enter self health facts',
+      contextOnlyFamily.length === 1,
+      'non-health family context may be retained internally without becoming a health fact',
     );
+    assert(!selfClaims.some((claim) => claim.tags.includes('fall')), 'family fall must not enter self health facts');
   });
 
   await runCase('overloaded safety reply preserves more than one immediately useful action', async () => {
@@ -84,10 +84,7 @@ async function main() {
     const firstTwo = findings.slice(0, 2).map((finding) => createTaskFromFinding(finding, TODAY));
     assert(firstTwo.every(Boolean), 'top two findings should remain actionable');
     assert(firstTwo[0]?.title.includes('立即确认'), 'the urgent action should remain first');
-    assert(
-      firstTwo.length === 2,
-      'the elder-facing overload path should expose at most two first-priority tasks',
-    );
+    assert(firstTwo.length === 2, 'the elder-facing overload path should expose at most two first-priority tasks');
   });
 }
 

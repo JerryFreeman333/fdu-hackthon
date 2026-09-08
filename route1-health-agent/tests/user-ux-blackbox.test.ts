@@ -131,7 +131,10 @@ runCase('revoking persistent sharing hides previously persistent events from the
     shareMode: 'persistent' as const,
   };
   assert(visibleFamilyEvents([event], 'granted').length === 1, 'persistent event should be visible before revocation');
-  assert(visibleFamilyEvents([event], 'denied').length === 0, 'persistent event should disappear from future family view');
+  assert(
+    visibleFamilyEvents([event], 'denied').length === 0,
+    'persistent event should disappear from future family view',
+  );
 });
 
 runCase('clearing one-time share ids stops future access and re-grant does not resurrect them', () => {
