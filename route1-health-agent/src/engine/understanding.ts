@@ -49,12 +49,14 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    return unique.length === 1 ? unique[0] : 'family_other';
+    if (unique.length === 1) return unique[0];
+    return 'family_other';
   }
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    return unique.length === 1 ? unique[0] : 'family_other';
+    if (unique.length === 1) return unique[0];
+    return unique.length > 1 ? 'unknown' : 'family_other';
   }
 
   return null;
