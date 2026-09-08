@@ -186,8 +186,7 @@ export function useElderChat({
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
       const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects =
-        previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
+      const priorFamilySubjects = previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
       if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
       if (tagsToCorrect.length > 0) {
         setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
