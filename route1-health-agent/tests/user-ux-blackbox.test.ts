@@ -1,4 +1,5 @@
 import { parsePrivacyIntent } from '../src/engine/privacy';
+import { visibleFamilyEvents } from '../src/engine/familyLedger';
 import { buildFamilyAcknowledgement } from '../src/engine/userFacing';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
 
@@ -55,6 +56,8 @@ runCase('ambiguous family pronoun asks rather than silently guessing', () => {
   ]);
   assert(input.claims[0]?.subject === 'unknown', 'ambiguous pronoun must remain unknown');
   assert(Boolean(input.clarificationQuestion), 'user should get a clarification question');
+  assert(input.clarificationQuestion?.includes('为什么') || input.clarificationQuestion?.includes('这样'), 'clarification should explain why confirmation is needed');
+  assert(input.clarificationQuestion?.includes('记到您这里'), 'clarification should reassure about privacy');
 });
 
 runCase('current improvement does not sound like a denial of the symptom', () => {
@@ -72,10 +75,7 @@ runCase('user can state two people in one breath', () => {
 
 runCase('user can correct the person without losing the distinction', () => {
   const input = understandElderInput('不是我，是我爸摔了', TODAY);
-  assert(
-    input.claims.some((claim) => claim.subject === 'father'),
-    'correction should point to father',
-  );
+  assert(input.claims.some((claim) => claim.subject === 'father'), 'correction should point to father');
   assert(acceptedSelfClaims(input).length === 0, 'correction should not create a self fall');
 });
 
@@ -87,4 +87,21 @@ runCase('natural-language privacy refusal is understood', () => {
 
 runCase('no-record request stays stronger than family sharing', () => {
   assert(parsePrivacyIntent('这件事不要记录，也别告诉孩子') === 'no_record', 'no-record request should win first');
+});
+
+runCase('one-time family visibility disappears when the shared id is cleared', () => {
+  const event = {
+    id: 'family-live-1',
+    timestamp: '2026-09-08T12:00:00',
+    source: 'chat' as const,
+    subject: 'father' as const,
+    text: '我爸今天摔了一下',
+    tags: ['fall'] as const,
+    hasHealthValue: false,
+    status: 'occurred' as const,
+    visibility: 'family_ok' as const,
+    shareMode: 'one_time' as const,
+  };
+  assert(visibleFamilyEvents([event], 'granted', ['family-live-1']).length === 1, 'shared event should be visible');
+  assert(visibleFamilyEvents([event], 'denied', []).length === 0, 'clearing shared ids should hide the one-time event');
 });
