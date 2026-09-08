@@ -314,7 +314,11 @@ export function useElderChat({
       agentText = `${agentText}\n我已经记下这件事。\n${safetyNotice}`;
     }
     const finalAgentText = recordSummary ? receipt : agentText;
-    setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalAgentText, now, persisted)]);
+    setChat((current) => [
+      ...current,
+      msg('elder', text, now, persisted),
+      msg('agent', finalAgentText, now, persisted),
+    ]);
 
     showToast(finalAgentText.replace(/\n/g, ' '));
 
