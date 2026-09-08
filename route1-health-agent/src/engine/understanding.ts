@@ -34,11 +34,39 @@ function subtractDays(today: string, days: number): string {
   return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
 }
 
+/**
+ * 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。
+ * 先按句号/分号/逗号做候选分句，再由人物归属决定是否应当保留。
+ */
 function splitClauses(text: string): string[] {
   return text
-    .split(/[。！？!?；;\n]+|，(?=(?:是|但|不过|而且|只是|其实))/)
+    .split(/[。！？!?；;，,\n]+/)
     .map((clause) => clause.trim())
     .filter(Boolean);
+}
+
+function hasExplicitFamilySubject(clause: string): boolean {
+  return /(我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(
+    clause,
+  );
+}
+
+function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
+  if (!/(他|她|他们|她们)/.test(clause)) return null;
+
+  // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
+  // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
+  if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
+    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
+    return unique.length === 1 ? unique[0] : 'family_other';
+  }
+
+  if (/^(?:他|她|他们|她们)/.test(clause)) {
+    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
+    return unique.length === 1 ? unique[0] : 'family_other';
+  }
+
+  return null;
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
@@ -46,19 +74,41 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
   if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
+
+  const pronounSubject = inferPronounSubject(clause, priorSubjects);
+  if (pronounSubject) return pronounSubject;
+
+  // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
-  if (/^(他|她|他们|她们)/.test(clause)) {
-    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self'))];
-    return unique.length === 1 ? unique[0] : 'unknown';
-  }
+
+  // 分句自身没有主语时，延续最近一条已确认的主体。例如：
+  // “我看他今天走路不稳，摔了一下” -> 第二句仍然属于同一个“他”。
+  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
+  if (lastKnownSubject) return lastKnownSubject;
+
   return 'self';
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
   if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
-  if (/(昨天|昨日)/.test(clause)) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-  if (/(今天|刚才|刚刚|现在|目前)/.test(clause)) return { scope: 'today', eventDate: today };
+
+  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
+  const hasYesterday = /(昨天|昨日)/.test(clause);
+
+  // “今天没有像昨天那样喘得厉害了”里的“昨天”是比较基准，
+  // 当前健康状态仍然属于今天。这里只要同时存在当前时间词和比较/改善结构，
+  // 就把事件日期绑定到今天，而不是把参照日期误当事件日期。
+  const currentComparison =
+    hasToday &&
+    hasYesterday &&
+    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(
+      clause,
+    );
+
+  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
+  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+
   return { scope: 'today', eventDate: today };
 }
 
@@ -66,6 +116,16 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
     return 'hypothetical';
   }
+
+  // 比较/缓解结构不是“完全没有症状”。例如：
+  // “今天没有像昨天那样喘得厉害了” => 今天仍有喘，只是程度下降。
+  const comparativeImprovement =
+    /(今天|现在|目前)/.test(clause) &&
+    /(没|没有|不再|不那么)/.test(clause) &&
+    /(像|那么|这么|那样|比)/.test(clause) &&
+    /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
+  if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
+
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
       clause,
