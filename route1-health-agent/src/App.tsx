@@ -171,6 +171,7 @@ export default function App() {
             onTaskStatus={handleTaskStatus}
             onRequestFamilyShare={requestFamilyShare}
             onKeepFamilyPrivate={keepFamilyPrivate}
+            onRevokeFamilyShare={revokeFamilyShare}
             onGenerateInvite={generateInvite}
           />
           <details className="advanced-details">
