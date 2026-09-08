@@ -252,7 +252,7 @@ export function understandElderInput(
     claims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
-      ? '您说的“他/她”指的是谁？我先确认清楚，再决定要不要记录。'
+      ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
       : undefined,
     correction,
   };
