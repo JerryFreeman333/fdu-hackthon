@@ -134,7 +134,10 @@ export function useElderChat({
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
     const familyOnlyClaims = understanding.claims.filter(
-      (claim) => claim.subject !== 'self' && claim.subject !== 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
+      (claim) =>
+        claim.subject !== 'self' &&
+        claim.subject !== 'unknown' &&
+        (claim.tags.length > 0 || claim.hasHealthValue),
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
