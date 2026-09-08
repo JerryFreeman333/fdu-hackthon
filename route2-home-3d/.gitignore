@@ -1,0 +1,15 @@
+# 训练数据与产物（体积大/含隐私，不入库）
+pipeline/data/
+pipeline/output/
+pipeline/external/
+pipeline/logs/
+
+# 高斯模型文件（演示前用 05 脚本导出，不提交大二进制）
+web/public/models/*.ply
+web/public/models/*.ksplat
+web/public/models/*.splat
+web/public/models/*.spz
+
+# node
+web/node_modules/
+web/dist/
