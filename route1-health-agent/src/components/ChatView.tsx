@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../types';
 
 interface ChatViewProps {
+  id?: string;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
   quickInputs: string[];
@@ -48,7 +49,7 @@ function voiceMessage(state: VoiceState): string {
   }
 }
 
-export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
+export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProps) {
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -131,7 +132,7 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
   const voiceHint = voiceMessage(voiceState);
 
   return (
-    <div className="chat-view">
+    <div id={id} className="chat-view">
       <div className="chat-intro">
         <div className="agent-greeting">
           我是<b>阿安</b>，您的健康小助手。身体有什么不舒服、心里有什么话，都可以跟我说。
