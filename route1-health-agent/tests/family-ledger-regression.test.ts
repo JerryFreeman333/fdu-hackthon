@@ -108,7 +108,10 @@ runCase('mixed father/self medication report produces two independent claims', (
   assert(input.claims.length === 2, 'two person-specific facts should survive splitting');
   assert(input.claims[0].subject === 'father', 'first claim belongs to father');
   assert(input.claims[1].subject === 'self', 'second claim belongs to self');
-  assert(input.claims.every((claim) => claim.tags.includes('medicationMissed')), 'both claims keep medication-missed tag');
+  assert(
+    input.claims.every((claim) => claim.tags.includes('medicationMissed')),
+    'both claims keep medication-missed tag',
+  );
   assert(acceptedSelfClaims(input).length === 1, 'self medication-missed claim survives independently');
 });
 
@@ -116,5 +119,8 @@ runCase('correction can target the latest family fact without touching elder det
   const original = understandElderInput('我爸摔了一下', TODAY);
   assert(original.claims[0].subject === 'father', 'original family fact should be identified');
   const corrected = understandElderInput('不是我，是我爸', TODAY);
-  assert(corrected.claims.every((claim) => claim.subject !== 'self'), 'correction phrasing must not create a new self health fact');
+  assert(
+    corrected.claims.every((claim) => claim.subject !== 'self'),
+    'correction phrasing must not create a new self health fact',
+  );
 });

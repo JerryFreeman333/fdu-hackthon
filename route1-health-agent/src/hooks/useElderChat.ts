@@ -67,7 +67,9 @@ function isFamilySubject(subject: ElderSubject): subject is FamilySubject {
   return subject !== 'self' && subject !== 'unknown';
 }
 
-function shouldPersistFamilyClaim(claim: StructuredElderInput['claims'][number]): claim is StructuredElderInput['claims'][number] & {
+function shouldPersistFamilyClaim(
+  claim: StructuredElderInput['claims'][number],
+): claim is StructuredElderInput['claims'][number] & {
   subject: FamilySubject;
 } {
   return (
@@ -99,9 +101,9 @@ function removeLatestCorrectedFamilyEvents(
 ): FamilyHealthEvent[] {
   if (priorTags.length === 0 || priorFamilySubjects.length === 0) return events;
   const familySubjects = new Set(priorFamilySubjects);
-  const index = [...events].reverse().findIndex(
-    (event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)),
-  );
+  const index = [...events]
+    .reverse()
+    .findIndex((event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)));
   if (index === -1) return events;
   const actualIndex = events.length - 1 - index;
   return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
@@ -133,9 +135,7 @@ export function useElderChat({
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
     const familyOnlyClaims = understanding.claims.filter(
       (claim) =>
-        claim.subject !== 'self' &&
-        claim.subject !== 'unknown' &&
-        (claim.tags.length > 0 || claim.hasHealthValue),
+        claim.subject !== 'self' && claim.subject !== 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
@@ -186,7 +186,8 @@ export function useElderChat({
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
       const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects = previousInput?.claims.filter((claim) => isFamilySubject(claim.subject)).map((claim) => claim.subject) ?? [];
+      const priorFamilySubjects =
+        previousInput?.claims.filter((claim) => isFamilySubject(claim.subject)).map((claim) => claim.subject) ?? [];
       if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
       if (tagsToCorrect.length > 0) {
         setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
@@ -196,18 +197,20 @@ export function useElderChat({
     const receivedAt = localIsoTimestamp();
 
     if (familyClaims.length > 0) {
-      const incomingFamilyEvents = familyClaims.map((claim, claimIndex): FamilyHealthEvent => ({
-        id: `family-live-${Date.now()}-${claimIndex}`,
-        timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
-        source: 'chat',
-        subject: claim.subject,
-        text: claim.text,
-        tags: claim.tags,
-        hasHealthValue: claim.hasHealthValue,
-        status: claim.status,
-        visibility,
-        shareMode,
-      }));
+      const incomingFamilyEvents = familyClaims.map(
+        (claim, claimIndex): FamilyHealthEvent => ({
+          id: `family-live-${Date.now()}-${claimIndex}`,
+          timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
+          source: 'chat',
+          subject: claim.subject,
+          text: claim.text,
+          tags: claim.tags,
+          hasHealthValue: claim.hasHealthValue,
+          status: claim.status,
+          visibility,
+          shareMode,
+        }),
+      );
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
     }

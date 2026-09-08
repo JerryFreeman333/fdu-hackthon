@@ -37,7 +37,10 @@ assert(improving.claims[0]?.eventDate === TODAY, 'current comparison belongs to 
 assert(acceptedSelfClaims(improving).length === 1, 'improving symptom must remain trackable');
 
 assert(visibleFamilyEvents([oneTimeEvent], 'granted').length === 0, 'one-time event must not become persistent');
-assert(visibleFamilyEvents([persistentEvent], 'granted').length === 1, 'persistent event should be visible when granted');
+assert(
+  visibleFamilyEvents([persistentEvent], 'granted').length === 1,
+  'persistent event should be visible when granted',
+);
 assert(visibleFamilyEvents([oneTimeEvent], 'denied').length === 0, 'denied sharing must hide one-time event');
 assert(
   visibleFamilyEvents([oneTimeEvent], 'denied', [oneTimeEvent.id]).length === 1,
