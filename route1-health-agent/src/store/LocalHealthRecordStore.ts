@@ -17,6 +17,17 @@ interface PersistedHealthData {
   measurements?: unknown;
 }
 
+function normalizeFamilyEvents(raw: unknown): FamilyHealthEvent[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is FamilyHealthEvent => Boolean(item) && typeof item === 'object')
+    .map((event) => ({
+      ...event,
+      // Data written before shareMode existed is treated conservatively as one-time access.
+      shareMode: event.shareMode === 'persistent' || event.shareMode === 'private' ? event.shareMode : 'one_time',
+    }));
+}
+
 export class LocalHealthRecordStore implements HealthRecordStore {
   load(): HealthRecordSnapshot {
     try {
@@ -24,7 +35,7 @@ export class LocalHealthRecordStore implements HealthRecordStore {
       if (!raw) return EMPTY;
       const parsed = JSON.parse(raw) as PersistedHealthData;
       const chat = Array.isArray(parsed.chat) ? (parsed.chat as ChatMessage[]) : [];
-      const familyEvents = Array.isArray(parsed.familyEvents) ? (parsed.familyEvents as FamilyHealthEvent[]) : [];
+      const familyEvents = normalizeFamilyEvents(parsed.familyEvents);
 
       if (Array.isArray(parsed.events)) return { events: parsed.events as HealthEvent[], familyEvents, chat };
 
