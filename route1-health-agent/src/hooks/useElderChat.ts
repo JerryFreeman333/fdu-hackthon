@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
+import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
@@ -26,6 +26,8 @@ const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
+
+type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
 interface UseElderChatOptions {
   familySharing: ElderProfile['familySharing'];
@@ -61,10 +63,15 @@ function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): bool
   );
 }
 
-function shouldPersistFamilyClaim(claim: StructuredElderInput['claims'][number]): boolean {
+function isFamilySubject(subject: ElderSubject): subject is FamilySubject {
+  return subject !== 'self' && subject !== 'unknown';
+}
+
+function shouldPersistFamilyClaim(claim: StructuredElderInput['claims'][number]): claim is StructuredElderInput['claims'][number] & {
+  subject: FamilySubject;
+} {
   return (
-    claim.subject !== 'self' &&
-    claim.subject !== 'unknown' &&
+    isFamilySubject(claim.subject) &&
     claim.status !== 'hypothetical' &&
     claim.eventDate !== null &&
     claim.tags.length > 0
@@ -85,9 +92,16 @@ function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: strin
   return next.reverse();
 }
 
-function removeLatestCorrectedFamilyEvents(events: FamilyHealthEvent[], priorTags: string[]): FamilyHealthEvent[] {
-  if (priorTags.length === 0) return events;
-  const index = [...events].reverse().findIndex((event) => event.tags.some((tag) => priorTags.includes(tag)));
+function removeLatestCorrectedFamilyEvents(
+  events: FamilyHealthEvent[],
+  priorTags: string[],
+  priorFamilySubjects: FamilySubject[],
+): FamilyHealthEvent[] {
+  if (priorTags.length === 0 || priorFamilySubjects.length === 0) return events;
+  const familySubjects = new Set(priorFamilySubjects);
+  const index = [...events].reverse().findIndex(
+    (event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)),
+  );
   if (index === -1) return events;
   const actualIndex = events.length - 1 - index;
   return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
@@ -125,8 +139,7 @@ export function useElderChat({
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
-    const shareMode =
-      intent === 'share_family' ? 'one_time' : canShare ? 'persistent' : 'private';
+    const shareMode = intent === 'share_family' ? 'one_time' : canShare ? 'persistent' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
 
@@ -173,8 +186,11 @@ export function useElderChat({
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
       const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
+      const priorFamilySubjects = previousInput?.claims.filter((claim) => isFamilySubject(claim.subject)).map((claim) => claim.subject) ?? [];
       if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
-      if (tagsToCorrect.length > 0) setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect));
+      if (tagsToCorrect.length > 0) {
+        setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
+      }
     }
 
     const receivedAt = localIsoTimestamp();
@@ -184,7 +200,7 @@ export function useElderChat({
         id: `family-live-${Date.now()}-${claimIndex}`,
         timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
         source: 'chat',
-        subject: claim.subject as Exclude<StructuredElderInput['claims'][number]['subject'], 'self' | 'unknown'>,
+        subject: claim.subject,
         text: claim.text,
         tags: claim.tags,
         status: claim.status,
