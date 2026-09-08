@@ -176,8 +176,9 @@ export function useElderChat({
       );
     }
 
+    let familyAcknowledgement = '';
     if (familyClaims.length > 0 && intent !== 'no_record') {
-      const familyAcknowledgement = buildFamilyAcknowledgement(
+      familyAcknowledgement = buildFamilyAcknowledgement(
         familyClaims.map((claim) => ({ subject: claim.subject, text: claim.text })),
         shareMode,
       );
@@ -275,10 +276,8 @@ export function useElderChat({
     const nextEvents = appendHealthEvents(events, incomingEvents);
     setEvents(nextEvents);
 
-    let sharedFindingIds: string[] = [];
     if (intent === 'share_family') {
-      const nextFindings = runDetection(nextEvents, TODAY);
-      sharedFindingIds = nextFindings
+      const shareableFindingIds = runDetection(nextEvents, TODAY)
         .filter(
           (finding) =>
             (finding.severity === 'alert' || finding.severity === 'urgent') &&
@@ -286,7 +285,7 @@ export function useElderChat({
             Boolean(finding.familyMessage),
         )
         .map((finding) => finding.id);
-      onShareFindingIds(sharedFindingIds);
+      onShareFindingIds(shareableFindingIds);
     }
 
     const values = acceptedClaims.flatMap((claim) => extractHealthValues(claim.text));
@@ -307,12 +306,10 @@ export function useElderChat({
     const safetyNotice = acceptedTags.includes('fall')
       ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
       : '';
+    const sharingReceipt = familyAcknowledgement || sharingNotice;
     const receipt = recordSummary
-      ? `我已经记下：${recordSummary}。${timeNotice}${safetyNotice ? `\n${safetyNotice}` : ''}\n${sharingNotice}`
-      : `${agentText}\n${sharingNotice}`;
-    if (safetyNotice) {
-      agentText = `${agentText}\n我已经记下这件事。\n${safetyNotice}`;
-    }
+      ? `我已经记下：${recordSummary}。${timeNotice}${safetyNotice ? `\n${safetyNotice}` : ''}\n${sharingReceipt}`
+      : `${agentText}\n${sharingReceipt}`;
     const finalAgentText = recordSummary ? receipt : agentText;
     setChat((current) => [
       ...current,
