@@ -182,9 +182,6 @@ export function useElderChat({
         familyClaims.map((claim) => ({ subject: claim.subject, text: claim.text })),
         shareMode,
       );
-      if (familyAcknowledgement) {
-        agentText = acceptedClaims.length === 0 ? familyAcknowledgement : `${agentText}\n${familyAcknowledgement}`;
-      }
     }
 
     if (intent === 'no_record') {
@@ -226,7 +223,9 @@ export function useElderChat({
     }
 
     if (acceptedClaims.length === 0) {
-      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+      const finalFamilyText = familyAcknowledgement || agentText;
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalFamilyText, now, persisted)]);
+      showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
 
@@ -270,7 +269,9 @@ export function useElderChat({
     }
 
     if (incomingEvents.length === 0) {
-      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+      const finalFamilyText = familyAcknowledgement || agentText;
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', finalFamilyText, now, persisted)]);
+      showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
     const nextEvents = appendHealthEvents(events, incomingEvents);
