@@ -62,12 +62,14 @@ export default function App() {
     familySharing,
     familyLink,
     sharedFindingIds,
+    sharedFamilyEventIds,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
     generateInvite,
     bindFamily,
     shareFindingIds,
+    shareFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
@@ -78,8 +80,13 @@ export default function App() {
     [measurements],
   );
   const visibleFamilyEvents = useMemo(
-    () => (familySharing === 'denied' ? [] : familyEvents.filter((event) => event.visibility !== 'private')),
-    [familyEvents, familySharing],
+    () =>
+      familyEvents.filter(
+        (event) =>
+          event.visibility !== 'private' &&
+          (familySharing === 'granted' || sharedFamilyEventIds.includes(event.id)),
+      ),
+    [familyEvents, familySharing, sharedFamilyEventIds],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
@@ -104,6 +111,7 @@ export default function App() {
     showToast,
     onMedicationMissed: ensureMedicationCheck,
     onShareFindingIds: shareFindingIds,
+    onShareFamilyEventIds: shareFamilyEventIds,
   });
 
   useEffect(() => {
