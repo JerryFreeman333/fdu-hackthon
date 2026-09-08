@@ -8,7 +8,11 @@ export function visibleFamilyEvents(
 ): FamilyHealthEvent[] {
   const oneTimeShared = new Set(sharedFamilyEventIds);
   return events.filter(
-    (event) => event.visibility !== 'private' && (familySharing === 'granted' || oneTimeShared.has(event.id)),
+    (event) =>
+      event.visibility !== 'private' &&
+      (event.shareMode === 'persistent'
+        ? familySharing === 'granted'
+        : event.shareMode === 'one_time' && oneTimeShared.has(event.id)),
   );
 }
 
