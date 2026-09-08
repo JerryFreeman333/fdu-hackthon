@@ -78,7 +78,10 @@ async function main() {
     const firstTwo = findings.slice(0, 2).map((finding) => createTaskFromFinding(finding, TODAY));
     assert(firstTwo.every(Boolean), 'top two findings should remain actionable');
     assert(firstTwo[0]?.title.includes('立即确认'), 'the urgent action should remain first');
-    assert(firstTwo.length === 2, 'the elder-facing overload path should expose at most two first-priority tasks');
+    assert(
+      firstTwo.length === 2,
+      'the elder-facing overload path should expose at most two first-priority tasks',
+    );
   });
 }
 
