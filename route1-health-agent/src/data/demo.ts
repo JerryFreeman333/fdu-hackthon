@@ -4,10 +4,10 @@
  * 所有数据均为模拟数据，仅用于产品 Demo。
  */
 import type { ChatMessage, DayRecord, ElderProfile, Observation } from '../types';
+import { localDate } from '../engine/date';
 
 function localToday(): string {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+  return localDate();
 }
 
 export const TODAY = localToday();

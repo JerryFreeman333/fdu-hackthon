@@ -1,0 +1,118 @@
+<!doctype html><meta charset="utf-8" />
+<h1>共享流程隔离测试</h1>
+<pre id="result">运行中</pre>
+<div id="frames"></div>
+<script type="module">
+  import { emptyProfile, PROFILE_KEY } from '/src/engine/profile.ts';
+  import { FAMILY_LINK_KEY, INVITE_PREFIX, bindLocalInvite } from '/src/engine/familyInvite.ts';
+  import { observationToEvent } from '/src/pipeline/events.ts';
+  import { canShareWithFamily } from '/src/engine/privacy.ts';
+  const out = document.getElementById('result');
+  const check = (ok, msg) => {
+    if (!ok) throw Error(msg);
+    out.textContent += '\nPASS ' + msg;
+  };
+  const wait = async (fn) => {
+    for (let i = 0; i < 100; i++) {
+      if (fn()) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw Error('等待页面更新超时');
+  };
+  const text = (f) => f.contentDocument?.body.textContent || '';
+  const click = (f, label) => {
+    const b = [...f.contentDocument.querySelectorAll('button')].find(
+      (b) => b.textContent.trim().replace(/^[◉▤○⌂]/, '') === label,
+    );
+    if (!b) throw Error('未找到按钮 ' + label);
+    b.click();
+  };
+  try {
+    if (location.port !== '5177') throw Error('只允许使用隔离测试端口5177，不会修改正式测试记录');
+    const previous = JSON.parse(localStorage.getItem('ankang-personal-records-v1') || 'null');
+    if (
+      previous &&
+      (previous.chat.length || previous.events.some((e) => !['private-test', 'new-test'].includes(e.observation?.id)))
+    )
+      throw Error('隔离端口已有非测试数据，停止');
+    localStorage.setItem(
+      PROFILE_KEY,
+      JSON.stringify({ ...emptyProfile, name: '共享测试', age: 72, profileInterviewComplete: true }),
+    );
+    localStorage.setItem(
+      INVITE_PREFIX + 'AN-2026-1234',
+      JSON.stringify({ elderId: 'demo-elder-route1', relation: '家属' }),
+    );
+    bindLocalInvite(localStorage, 'AN-2026-1234');
+    localStorage.setItem('ankang-personal-consent-v1', JSON.stringify({ familySharing: 'ask', updatedAt: '' }));
+    const today = new Date().toLocaleDateString('sv-SE');
+    const old = observationToEvent({
+      id: 'private-test',
+      date: today,
+      source: 'chat',
+      text: '历史测试记录',
+      tags: ['pain'],
+      visibility: 'private',
+    });
+    localStorage.setItem('ankang-personal-records-v1', JSON.stringify({ events: [old], chat: [] }));
+    const make = (role) => {
+      const f = document.createElement('iframe');
+      f.src = './sharing-frame.html?role=' + role;
+      document.getElementById('frames').append(f);
+      return f;
+    };
+    const elder = make('elder');
+    await wait(() => text(elder).includes('以后记录也允许共享'));
+    const family = make('family');
+    await wait(() => text(elder).includes('以后记录也允许共享') && text(family).includes('等待老人授权共享'));
+
+    click(elder, '进入聊天');
+    await wait(() => [...elder.contentDocument.querySelectorAll('button')].some((b) => b.textContent.endsWith('报告')));
+    click(elder, '报告');
+    await wait(() => text(elder).includes('仅自己可见'));
+    click(elder, '只共享这条记录');
+    await wait(() => !text(family).includes('已有记录，但尚未授权这些记录'));
+    click(family, '查看健康报告');
+    await wait(() => text(family).includes('历史测试记录'));
+    check(true, '长期授权关闭时，单条历史共享后家属报告实时可见');
+    check(
+      JSON.parse(localStorage.getItem('ankang-personal-consent-v1')).familySharing === 'ask',
+      '单次分享不改变长期授权',
+    );
+    click(elder, '我的');
+    await wait(() => text(elder).includes('暂停全部家属共享'));
+    click(elder, '暂停全部家属共享');
+    await wait(() => text(family).includes('健康报告尚未共享'));
+    check(true, '暂停全部共享撤销单条授权');
+    click(elder, '以后记录也允许共享');
+    await wait(() => !text(family).includes('健康报告尚未共享'));
+    check(!text(family).includes('历史测试记录'), '重新开启长期共享不恢复已撤销的单条记录');
+    click(elder, '报告');
+    await wait(() => text(elder).includes('已保存的健康记录与共享状态'));
+    const consent = JSON.parse(localStorage.getItem('ankang-personal-consent-v1'));
+    const fresh = observationToEvent({
+      id: 'new-test',
+      date: today,
+      source: 'chat',
+      text: '新共享测试记录',
+      tags: ['pain'],
+      visibility: canShareWithFamily(consent.familySharing, 'none') ? 'family_ok' : 'private',
+    });
+    const snapshot = JSON.parse(localStorage.getItem('ankang-personal-records-v1'));
+    localStorage.setItem(
+      'ankang-personal-records-v1',
+      JSON.stringify({ ...snapshot, events: [...snapshot.events, fresh] }),
+    );
+    await wait(() => text(elder).includes('新共享测试记录') && text(family).includes('新共享测试记录'));
+    check(true, '新健康事件同时更新两端报告');
+    click(elder, '我的');
+    await wait(() => text(elder).includes('暂停全部家属共享'));
+    click(elder, '暂停全部家属共享');
+    await wait(() => text(family).includes('健康报告尚未共享'));
+    check(!text(family).includes('新共享测试记录'), '暂停后家属立即隐藏记录');
+    out.textContent += '\n全部通过（仅测试数据）';
+  } catch (e) {
+    out.textContent += '\nFAIL ' + e.message;
+    console.error(e);
+  }
+</script>

@@ -2,6 +2,7 @@
 import type { CareTask, DayRecord, Finding, Observation } from '../types';
 import { METRICS, type MetricKey } from '../types';
 import { computeBaseline, recentMean, diffDays } from './baseline';
+import { localDate } from './date';
 
 export interface ReportSection {
   title: string;
@@ -36,11 +37,18 @@ export function buildWeeklyReport(
   findings: Finding[],
   weekEnd: string,
   tasks: CareTask[] = [],
+  audience: 'elder' | 'family' = 'family',
 ): WeeklyReport {
   const weekStart = new Date(Date.parse(weekEnd) - 6 * 86400000).toISOString().slice(0, 10);
   const baselineEnd = previousDay(weekStart);
   const inWeek = (date: string) => diffDays(date, weekEnd) >= 0 && diffDays(date, weekEnd) < 7;
   const sections: ReportSection[] = [];
+  tasks = tasks.filter((task) => {
+    if (task.status === 'completed') return Boolean(task.completedAt && inWeek(localDate(new Date(task.completedAt))));
+    if (task.status === 'dismissed') return Boolean(task.updatedAt && inWeek(localDate(new Date(task.updatedAt))));
+    return task.createdAt.slice(0, 10) <= weekEnd;
+  });
+  let comparable = false;
 
   const metricLines: string[] = [];
   for (const key of REPORT_METRICS) {
@@ -54,6 +62,7 @@ export function buildWeeklyReport(
       );
       continue;
     }
+    comparable = true;
     const delta = weekAvg - base.mean;
     const pctText =
       base.mean !== 0
@@ -70,10 +79,10 @@ export function buildWeeklyReport(
     lines: metricLines.length ? metricLines : ['这一周暂无足够的结构化指标数据。'],
   });
 
-  const weekObs = observations.filter((o) => inWeek(o.date) && o.visibility !== 'private');
+  const weekObs = observations.filter((o) => inWeek(o.date) && (audience === 'elder' || o.visibility !== 'private'));
   sections.push({
     title: '您自己说过的',
-    lines: weekObs.length ? weekObs.map((o) => `${o.date}：${o.text}`) : ['这一周没记录到明显不舒服的主诉。'],
+    lines: weekObs.length ? weekObs.map((o) => `${o.date}：${o.text}`) : ['这一周暂无主观状态记录。'],
   });
 
   const weekFindings = findings.filter(
@@ -83,7 +92,7 @@ export function buildWeeklyReport(
     title: '需要留意的变化',
     lines: weekFindings.length
       ? weekFindings.map((f) => `【${f.title}】${f.evidence[0]}`)
-      : ['这一周没有发现持续异常，继续保持。'],
+      : [comparable ? '已有记录中暂无需要特别留意的变化。' : '暂无足够记录判断近期趋势。'],
   });
 
   if (tasks.length > 0) {
@@ -91,7 +100,7 @@ export function buildWeeklyReport(
     const pending = tasks.filter((task) => task.status === 'pending' || task.status === 'in_progress').length;
     const dismissed = tasks.filter((task) => task.status === 'dismissed').length;
     sections.push({
-      title: '这周处理过的事情',
+      title: '本周处理与当前待办',
       lines: [
         `已完成 ${completed} 项，待处理 ${pending} 项，已忽略 ${dismissed} 项。`,
         ...tasks.map(
@@ -110,11 +119,13 @@ export function buildWeeklyReport(
     sections,
     forElder: hasAlert
       ? '这周您的身体状态比此前个人平时有一些变化，我在帮您盯着。您按自己的医生建议用药和活动，别太累。'
-      : '这周整体平稳，继续保持现在的作息和活动量，我一直在陪着您。',
+      : !comparable
+        ? '暂无足够记录判断健康趋势。您可以在助手里说说近期情况，逐步积累自己的记录。'
+        : '已有记录中暂未发现需要特别留意的变化。',
     forFamily:
       `${weekStart} ~ ${weekEnd} 周报：` +
       (hasAlert
         ? `本周检测到持续偏离此前个人基线的变化（详见“需要留意的变化”），建议近期多联系老人，必要时陪同就医。${completedCount || pendingCount ? ` 已完成 ${completedCount} 项照护任务，仍有 ${pendingCount} 项待处理。` : ''}`
-        : `各项指标基本在此前个人基线范围内，无持续异常，暂不需要特别关注。${completedCount || pendingCount ? ` 本周已完成 ${completedCount} 项照护任务，仍有 ${pendingCount} 项待处理。` : ''}`),
+        : `${comparable ? '已有共享记录中暂未发现需要特别留意的变化。' : '暂无足够的共享记录判断健康趋势。'}${completedCount || pendingCount ? ` 本周已完成 ${completedCount} 项照护任务，仍有 ${pendingCount} 项待处理。` : ''}`),
   };
 }

@@ -193,7 +193,7 @@ export function serializeAgentContext(context: AgentContext): string {
     .join('\n');
   const functionProfile = [
     `行动能力=${context.personTwin.functionalProfile.mobility}`,
-    `是否使用拐杖=${context.personTwin.functionalProfile.usesCane ? '是' : '否'}`,
+    `是否使用拐杖=${context.personTwin.functionalProfile.usesCane === null ? '未填写' : context.personTwin.functionalProfile.usesCane ? '是' : '否'}`,
     `夜间视力=${context.personTwin.functionalProfile.nightVision}`,
     `认知状态=${context.personTwin.functionalProfile.cognition}`,
   ].join('；');

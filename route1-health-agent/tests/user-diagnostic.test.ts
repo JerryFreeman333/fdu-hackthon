@@ -90,6 +90,24 @@ async function main() {
     assert(input.claims[0]?.timeScope === 'lastNight', 'last night should preserve time scope');
   });
 
+  await runCase('symptom details continue the preceding elder report', () => {
+    const messages: ChatMessage[] = [
+      { id: '1', role: 'elder', text: '我心口疼', time: '10:00' },
+      { id: '2', role: 'agent', text: '这种不舒服是刚出现的吗？', time: '10:00' },
+    ];
+    const input = understandElderInput(
+      '一周了，隔几分钟稍微疼一阵，也不是一直这样，累了就会这样，也不是很痛',
+      TODAY,
+      messages,
+    );
+    const accepted = acceptedSelfClaims(input);
+    assert(accepted.length > 0, 'follow-up details should be recorded');
+    assert(
+      accepted.some((claim) => claim.tags.includes('chestPain')),
+      'follow-up should retain chest-pain context',
+    );
+  });
+
   await runCase('fatigue reply does not invent activity decline', async () => {
     const reply = await generateAgentReply('我很累', ['fatigue'], [], false, undefined, ruleBasedAdapter);
     assert(!reply.includes('活动量比平时少'), 'fatigue reply must not invent activity decline');

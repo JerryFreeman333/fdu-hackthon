@@ -17,11 +17,18 @@ interface PersistedHealthData {
 }
 
 export class LocalHealthRecordStore implements HealthRecordStore {
+  private loadFailed = false;
+  constructor(private readonly storageKey = STORAGE_KEY) {}
   load(): HealthRecordSnapshot {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(this.storageKey) ??
+        (this.storageKey === STORAGE_KEY ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null);
       if (!raw) return EMPTY;
       const parsed = JSON.parse(raw) as PersistedHealthData;
+      if (!parsed || typeof parsed !== 'object') throw new Error('Invalid saved record');
+      if (this.storageKey !== STORAGE_KEY && (!Array.isArray(parsed.events) || !Array.isArray(parsed.chat)))
+        throw new Error('Invalid personal record');
       const chat = Array.isArray(parsed.chat) ? (parsed.chat as ChatMessage[]) : [];
 
       if (Array.isArray(parsed.events)) return { events: parsed.events as HealthEvent[], chat };
@@ -36,18 +43,23 @@ export class LocalHealthRecordStore implements HealthRecordStore {
         chat,
       };
     } catch {
+      this.loadFailed = true;
       return EMPTY;
     }
   }
 
   save(snapshot: HealthRecordSnapshot): void {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    if (this.loadFailed) throw new Error('Existing records could not be read; refusing to overwrite them.');
+    window.localStorage.setItem(this.storageKey, JSON.stringify(snapshot));
   }
 
   clear(): void {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.removeItem(this.storageKey);
+    if (this.storageKey === STORAGE_KEY) window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    this.loadFailed = false;
   }
 }
 
 export const healthRecordStore = new LocalHealthRecordStore();
+
+export const personalHealthRecordStore = new LocalHealthRecordStore('ankang-personal-records-v1');

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import type { CareTask, Finding } from '../types';
+import { useEffect, useRef, useState } from 'react';
+import type { CareTask, Finding, PrivacyScope } from '../types';
 import { TODAY } from '../data/demo';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../engine/tasks';
 
-const TASK_KEY = 'ankang-route1-tasks-v2';
+const TASK_KEY = 'ankang-personal-tasks-v1';
 
 type StoredTask = CareTask;
 
@@ -22,14 +22,33 @@ function loadTasks(): CareTask[] {
 
 interface UseCareTasksOptions {
   findings: Finding[];
+  onStorageError?: () => void;
 }
 
-export function useCareTasks({ findings }: UseCareTasksOptions) {
+export function useCareTasks({ findings, onStorageError }: UseCareTasksOptions) {
   const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
 
+  const lastSaved = useRef(JSON.stringify(tasks));
   useEffect(() => {
-    window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+    function sync(event: StorageEvent) {
+      if (event.key !== TASK_KEY && event.key !== null) return;
+      const next = loadTasks();
+      lastSaved.current = JSON.stringify(next);
+      setTasks(next);
+    }
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+  useEffect(() => {
+    try {
+      const serialized = JSON.stringify(tasks);
+      if (serialized === lastSaved.current) return;
+      window.localStorage.setItem(TASK_KEY, serialized);
+      lastSaved.current = serialized;
+    } catch {
+      onStorageError?.();
+    }
+  }, [tasks, onStorageError]);
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
@@ -51,7 +70,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
     setTasks((current) => current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)));
   }
 
-  function ensureMedicationCheck(createdAt: string) {
+  function ensureMedicationCheck(createdAt: string, visibility: PrivacyScope = 'private') {
     setTasks((current) => {
       if (
         current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')
@@ -68,6 +87,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
           status: 'pending',
           createdAt,
           kind: 'medication_check',
+          visibility,
         },
       ];
     });

@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start:local": "node scripts/start-local.mjs",
     "typecheck": "tsc -b",
-    "test": "tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && node --test .test-build/tests/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node -e \"require('node:fs').writeFileSync('.test-build/package.json', JSON.stringify({type:'commonjs'}))\" && node --test .test-build/tests/*.test.js",
     "build": "npm run typecheck && vite build",
     "format": "npx --yes prettier@3.5.3 --write .",
     "format:check": "npx --yes prettier@3.5.3 --check .",

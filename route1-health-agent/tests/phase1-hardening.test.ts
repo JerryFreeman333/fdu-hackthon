@@ -190,6 +190,7 @@ async function main(): Promise<void> {
   assert(!isSafeAgentReply('您可能患有心衰。'), 'diagnostic phrasing must be rejected');
   assert(!isSafeAgentReply('您现在的情况就是心衰。'), 'diagnostic conclusions inside a sentence must be rejected');
   assert(!isSafeAgentReply('建议您自行加倍药量。'), 'unsafe medication changes must be rejected');
+  assert(!isSafeAgentReply('我这就帮您联系家里人。'), 'fake contact promises must be rejected');
   const safeFallback = await generateAgentReply('最近有点累', ['fatigue'], [], false, undefined, unsafeAdapter);
   assert(!safeFallback.includes('可能患有'), 'unsafe LLM output must fall back to a rule-based reply');
 
@@ -309,6 +310,7 @@ async function main(): Promise<void> {
         description: '确认状态',
         dueDate: TODAY,
         status: 'completed',
+        completedAt: `${TODAY}T10:00:00`,
         createdAt: `${TODAY}T09:00:00`,
         kind: 'contact_family',
         completionNote: '已联系',
@@ -316,7 +318,7 @@ async function main(): Promise<void> {
     ],
   );
   assert(
-    report.sections.some((section) => section.title === '这周处理过的事情'),
+    report.sections.some((section) => section.title === '本周处理与当前待办'),
     'weekly report should include task closure',
   );
   console.log('PASS: Phase 1 hardening regression suite');

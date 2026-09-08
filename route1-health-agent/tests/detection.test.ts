@@ -212,12 +212,13 @@ async function main() {
         description: '确认状态',
         dueDate: TODAY,
         status: 'completed',
+        completedAt: `${TODAY}T10:00:00`,
         createdAt: `${TODAY}T09:00:00`,
         kind: 'contact_family',
       } satisfies CareTask,
     ]);
     assert(
-      report.sections.some((section) => section.title === '这周处理过的事情'),
+      report.sections.some((section) => section.title === '本周处理与当前待办'),
       'report should expose task state',
     );
   });

@@ -17,10 +17,14 @@ export interface PersonTwin {
   safetyRelevantChanges: string[];
   functionalProfile: {
     mobility: ElderProfile['mobility'];
-    usesCane: boolean;
+    usesCane: boolean | null;
     nightVision: ElderProfile['nightVision'];
     cognition: ElderProfile['cognition'];
   };
+  background: Pick<
+    ElderProfile,
+    'age' | 'conditions' | 'medications' | 'injuryHistory' | 'usualNightWakes' | 'profileUpdatedAt' | 'profileSource'
+  >;
 }
 
 const RELEVANT_METRICS = ['steps', 'walkSpeed', 'sleepHours', 'nightWakes'] as const;
@@ -79,6 +83,15 @@ export function buildPersonTwin(
 
   return {
     asOf: today,
+    background: {
+      age: profile.age,
+      conditions: profile.conditions,
+      medications: profile.medications,
+      injuryHistory: profile.injuryHistory,
+      usualNightWakes: profile.usualNightWakes,
+      profileUpdatedAt: profile.profileUpdatedAt,
+      profileSource: profile.profileSource,
+    },
     activity,
     mobility: mobilityTrend,
     sleep,

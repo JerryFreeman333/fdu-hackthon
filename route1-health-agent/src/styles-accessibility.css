@@ -79,3 +79,25 @@ body[data-font-scale='large'] .font-size-control,
 body[data-font-scale='extraLarge'] .font-size-control {
   font-size: 16px;
 }
+
+/* Essential text has a fixed floor; avoid inherited/nested em shrinking or compounding. */
+body {
+  --essential-size: 18px;
+}
+body[data-font-scale='large'] {
+  --essential-size: 20px;
+}
+body[data-font-scale='extraLarge'] {
+  --essential-size: 22px;
+}
+body .task-item .task-copy p,
+body .chat-bubble p,
+body .voice-feedback,
+body .binding-success {
+  font-size: var(--essential-size);
+  line-height: 1.65;
+}
+.chat-bubble {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

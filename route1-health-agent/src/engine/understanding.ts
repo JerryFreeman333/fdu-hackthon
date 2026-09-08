@@ -67,7 +67,7 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     return 'hypothetical';
   }
   if (
-    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
+    /(没|没有|未曾|从来没|并没有|不是(?!很|太|一直|总是)).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
       clause,
     )
   ) {
@@ -87,6 +87,13 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
+function recentPriorHealthTags(messages: ChatMessage[]): SymptomTag[] {
+  const previous = [...messages]
+    .reverse()
+    .find((message) => message.role === 'elder' && parseElderInput(message.text).tags.length > 0);
+  return previous ? parseElderInput(previous.text).tags : [];
+}
+
 export function understandElderInput(
   text: string,
   today: string,
@@ -104,12 +111,15 @@ export function understandElderInput(
   }
 
   const priorSubjects = recentPriorSubjects(recentMessages);
+  const priorTags = recentPriorHealthTags(recentMessages);
+  const continuesPreviousSymptom =
+    priorTags.length > 0 && /(周|天|小时|分钟|一直|反复|有时|偶尔|累了|活动|休息|轻|重|严重|频繁)/.test(trimmed);
   const claims: StructuredClaim[] = [];
   let subjectsSeen = [...priorSubjects];
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
-    const tags = parsed.tags;
+    const tags = continuesPreviousSymptom ? [...new Set([...parsed.tags, ...priorTags])] : parsed.tags;
     const hasHealthValue = extractHealthValues(clause).length > 0;
     const time = timeFromText(clause, today);
     const subject = subjectFromText(clause, subjectsSeen);

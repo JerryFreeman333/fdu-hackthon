@@ -8,9 +8,9 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
   return (
     <div className="role-gate">
       <div className="role-card">
-        <div className="role-kicker">老人家庭智能助手 · 路线一</div>
-        <h1>先认识人，再理解家</h1>
-        <p className="role-lead">现在先把老人本人认识清楚：知道他平时是什么状态，只在出现“和平时不一样”时主动帮忙。</p>
+        <div className="role-kicker">阿安 · 老人家庭助手</div>
+        <h1>欢迎，今天怎么帮您？</h1>
+        <p className="role-lead">先选择您的身份。老人可以聊天和看报告，家属可以在获得授权后了解近况。</p>
         <div className="role-grid">
           <button className="role-option" onClick={() => onSelect('elder')}>
             <span className="role-icon">👵</span>
@@ -23,9 +23,7 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
             <span>只在真正需要时知道该不该介入</span>
           </button>
         </div>
-        <p className="role-note">
-          本 Demo 使用本地模拟数据；未来硬件、OCR、云端服务均通过独立接口接入，不改变 Agent 核心。
-        </p>
+        <p className="role-note">当前为本地体验版，资料保存在这台设备的浏览器中；家庭绑定暂不支持跨设备同步。</p>
       </div>
     </div>
   );

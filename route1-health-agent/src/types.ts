@@ -28,6 +28,9 @@ export interface CareTask {
   sourceFindingId?: string;
   kind: 'medication_check' | 'safety_check' | 'contact_family' | 'observation';
   completionNote?: string;
+  completedAt?: string;
+  updatedAt?: string;
+  visibility?: PrivacyScope;
 }
 
 export interface ConsentState {
@@ -166,13 +169,19 @@ export interface ChatMessage {
 
 export interface ElderProfile {
   name: string;
-  age: number;
+  age: number | null;
   conditions: string[];
   medications: string[];
   familyContact: string;
   mobility: MobilityStatus;
-  usesCane: boolean;
+  usesCane: boolean | null;
   nightVision: NightVisionStatus;
   cognition: CognitionStatus;
   familySharing: FamilySharing;
+  injuryHistory?: string;
+  usualNightWakes?: number | null;
+  profileUpdatedAt?: string;
+  profileSource?: 'self';
+  profileAnswers?: Record<string, string>;
+  profileInterviewComplete?: boolean;
 }

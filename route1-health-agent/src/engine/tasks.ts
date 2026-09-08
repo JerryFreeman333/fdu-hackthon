@@ -32,12 +32,20 @@ export function createTaskFromFinding(finding: Finding, today: string): CareTask
     status: 'pending',
     createdAt: `${today}T12:00:00`,
     sourceFindingId: finding.id,
+    visibility: finding.familyEligible === true ? 'family_ok' : 'private',
     kind,
   };
 }
 
-export function updateTaskStatus(task: CareTask, status: TaskStatus, completionNote?: string): CareTask {
-  const next: CareTask = { ...task, status };
+export function updateTaskStatus(
+  task: CareTask,
+  status: TaskStatus,
+  completionNote?: string,
+  now = new Date().toISOString(),
+): CareTask {
+  const next: CareTask = { ...task, status, updatedAt: now };
+  if (status === 'completed') next.completedAt = task.status === 'completed' ? (task.completedAt ?? now) : now;
+  else delete next.completedAt;
   if (status === 'completed') next.completionNote = completionNote ?? '已完成';
   if (status !== 'completed') delete next.completionNote;
   return next;

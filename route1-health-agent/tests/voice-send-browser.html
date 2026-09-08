@@ -1,0 +1,68 @@
+<!doctype html><meta charset="utf-8" />
+<h1>语音发送边界测试</h1>
+<pre id="result">运行中</pre>
+<div id="root"></div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import ChatView from '/src/components/ChatView.tsx';
+  const out = document.getElementById('result');
+  const sent = [];
+  class SpeechMock {
+    start() {
+      queueMicrotask(() => this.onstart?.());
+    }
+    stop() {
+      this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: '测试语音' } }] });
+      queueMicrotask(() => this.onend?.());
+    }
+    abort() {}
+  }
+  window.SpeechRecognition = SpeechMock;
+  createRoot(document.getElementById('root')).render(
+    React.createElement(ChatView, {
+      chat: [],
+      quickInputs: [],
+      onSend: (t) => {
+        sent.push(t);
+      },
+    }),
+  );
+  const wait = async (f) => {
+    for (let i = 0; i < 100; i++) {
+      if (f()) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw Error('等待超时');
+  };
+  const button = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t);
+  const check = (v, t) => {
+    if (!v) throw Error(t);
+    out.textContent += '\nPASS ' + t;
+  };
+  try {
+    await wait(() => button('🎙️ 开始说话'));
+    button('🎙️ 开始说话').click();
+    await wait(() => button('说完并发送'));
+    check(sent.length === 0, '开始和停顿不发送');
+    button('说完并发送').click();
+    await wait(() => sent.length === 1);
+    check(sent[0] === '测试语音', '点击说完后只发送一次');
+    await wait(() => button('🎙️ 开始说话'));
+    button('🎙️ 开始说话').click();
+    await wait(() => button('取消录音'));
+    button('取消录音').click();
+    await wait(() => button('🎙️ 开始说话'));
+    check(sent.length === 1, '取消录音不发送');
+    document.querySelector('input[type=checkbox]').click();
+    await wait(() => document.querySelector('input[type=checkbox]').checked);
+    button('🎙️ 开始说话').click();
+    await wait(() => button('说完了，检查文字'));
+    button('说完了，检查文字').click();
+    await wait(() => !button('说完了，检查文字'));
+    check(sent.length === 1 && document.querySelector('textarea').value === '测试语音', '检查模式保留文字，不自动发送');
+    out.textContent += '\n全部通过（模拟语音，不使用麦克风）';
+  } catch (e) {
+    out.textContent += '\nFAIL ' + e.message;
+  }
+</script>

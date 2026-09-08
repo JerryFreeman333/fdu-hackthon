@@ -23,6 +23,7 @@ export interface MeasurementEvent extends HealthEventBase {
 export interface ObservationEvent extends HealthEventBase {
   type: 'observation';
   observation: Observation;
+  sharedOnce?: boolean;
 }
 
 export interface LabResultEvent extends HealthEventBase {

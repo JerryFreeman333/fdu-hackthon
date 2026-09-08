@@ -1,5 +1,5 @@
 /** 对话 Agent：规则负责识别与安全边界，Adapter 负责最终措辞。 */
-import type { ChatMessage, Finding, SymptomTag } from '../types';
+import type { ChatMessage, ElderProfile, Finding, SymptomTag } from '../types';
 import type { AgentContext } from './context';
 import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
@@ -49,7 +49,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'chestPain',
-    patterns: [/胸(口)?痛/, /胸疼/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/],
+    patterns: [/胸(口)?痛/, /胸疼/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口(痛|疼)/],
     replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'],
   },
   {
@@ -212,7 +212,11 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
 }
 
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
-export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
+export function createHttpLlmAdapter(
+  endpoint: string,
+  history: ChatMessage[] = [],
+  profile?: ElderProfile,
+): LlmAdapter {
   if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
   return {
@@ -222,10 +226,43 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
         throw new Error('Private and no-record inputs must stay on the local safety adapter.');
       const safeContext = context ? sanitizeExternalContext(context) : undefined;
       const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
+      let includeReply = false;
+      const safeHistory = history
+        .filter((message) => {
+          if (message.role === 'elder')
+            includeReply =
+              message.persisted !== false && !['private', 'no_record'].includes(parsePrivacyIntent(message.text));
+          return includeReply && message.persisted !== false;
+        })
+        .slice(-12)
+        .map((message) => ({
+          role: message.role === 'elder' ? 'user' : 'assistant',
+          content: message.text.slice(0, 1000),
+        }));
       const response = await fetch(endpoint, {
         method: 'POST',
+        signal: AbortSignal.timeout(30000),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
+        body: JSON.stringify({
+          systemPrompt,
+          userText: safeUserText,
+          context: {
+            ...safeContext,
+            confirmedProfile: profile
+              ? {
+                  name: profile.name,
+                  age: profile.age,
+                  conditions: profile.conditions,
+                  medications: profile.medications,
+                  mobility: profile.mobility,
+                  nightVision: profile.nightVision,
+                  injuryHistory: profile.injuryHistory,
+                  usualNightWakes: profile.usualNightWakes,
+                }
+              : undefined,
+          },
+          history: safeHistory,
+        }),
       });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
@@ -235,11 +272,13 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 }
 
 const SYSTEM_PROMPT =
-  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
+  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。用户可以聊家人、心情与日常，先回应当前话题，不强行转为健康问答；不要把想念家人或普通情绪推断为疾病。不要补写用户没有说过的症状、诱因、趋势或人物。你不能拨号、发送消息或实际联系任何人，绝不能声称已经或将替用户联系家属、医生或社区。';
 const UNSAFE_REPLY_PATTERNS = [
   /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
   /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
   /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
+  /(我|这边).{0,10}(帮您|替您)?(打(个)?电话|联系|通知)(家里人|家人|家属|医生|社区)/,
+  /我这就.{0,10}(联系|打电话|通知)/,
 ];
 const MAX_AGENT_REPLY_LENGTH = 500;
 const MAX_AGENT_INPUT_LENGTH = 1000;
@@ -268,7 +307,8 @@ export async function generateAgentReply(
     if (isSafeAgentReply(completion.text)) return completion.text.trim();
     return buildRuleBasedReply(newTags, findings, isNewFall, context);
   } catch {
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    const reply = buildRuleBasedReply(newTags, findings, isNewFall, context);
+    return adapter === ruleBasedAdapter ? reply : `智能对话暂时未连接，以下是基础模式回复。\n${reply}`;
   }
 }
 export const QUICK_INPUTS = [

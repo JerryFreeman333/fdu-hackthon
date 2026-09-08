@@ -538,6 +538,7 @@ button {
 }
 .chat-input {
   flex: 1;
+  min-width: 0;
   font-size: 18px;
   padding: 12px 16px;
   border: 2px solid var(--line);
@@ -546,6 +547,29 @@ button {
 }
 .chat-input:focus {
   border-color: var(--brand);
+}
+.voice-feedback {
+  padding: 12px 16px;
+  margin: 12px 0;
+  border-radius: 12px;
+  background: #eef4ef;
+}
+textarea.chat-input {
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.chat-input-row:has(textarea) {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.chat-input-row textarea {
+  flex-basis: 100%;
+  order: -1;
+}
+.chat-view button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* ---------- report ---------- */
@@ -616,4 +640,330 @@ button {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+/* Product shell: one persistent navigation and clear, touch-sized controls. */
+.app {
+  padding-bottom: 120px;
+}
+.welcome {
+  padding: 18px 4px 10px;
+}
+.welcome h1,
+.report-overview h1,
+.environment-page h1,
+.setup-card h1 {
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.4;
+  margin: 8px 0 12px;
+}
+.welcome p {
+  color: var(--ink-soft);
+}
+h2 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.bottom-nav {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(888px, calc(100% - 32px));
+  display: flex;
+  padding: 8px;
+  gap: 6px;
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 6px 30px #3d373018;
+  z-index: 20;
+}
+.bottom-nav button {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 8px 3px;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.bottom-nav button span {
+  font-size: 24px;
+  line-height: 1;
+}
+.bottom-nav button[aria-current='page'] {
+  color: var(--brand-dark);
+  background: #e6efe9;
+}
+.bottom-nav button:disabled {
+  opacity: 0.6;
+}
+.toast {
+  bottom: 110px;
+}
+button,
+summary {
+  min-height: 44px;
+}
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 3px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 0;
+}
+details[open] > summary {
+  margin-bottom: 12px;
+}
+.setup-card {
+  max-width: 720px;
+  width: 100%;
+  margin: 12px auto;
+  padding: 28px;
+}
+.setup-card progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--brand);
+}
+.setup-card form,
+.settings-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 24px;
+}
+.setup-card label:not(.choice),
+.settings-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.setup-card input:not([type='checkbox']):not([type='radio']),
+.setup-card textarea,
+.setup-card select,
+.settings-card input {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+fieldset {
+  border: 0;
+  min-width: 0;
+}
+legend {
+  margin-bottom: 12px;
+}
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.choice {
+  padding: 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: white;
+}
+.choice:has(input:checked) {
+  border-color: var(--brand);
+  background: #edf4ee;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--brand);
+  flex-shrink: 0;
+}
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+.text-button {
+  border: 0;
+  background: none;
+  color: var(--brand-dark);
+  padding: 10px;
+  text-decoration: underline;
+}
+.form-error {
+  color: var(--danger);
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+}
+.profile-summary {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 2fr;
+  gap: 12px 20px;
+  margin: 18px 0;
+  overflow-wrap: anywhere;
+}
+.profile-summary dt {
+  color: var(--ink-soft);
+}
+.profile-summary dd {
+  font-weight: 600;
+}
+.settings-card hr {
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.settings-card p + button {
+  margin-top: 12px;
+}
+.invite-code {
+  margin: 20px 0;
+  font-size: 22px;
+}
+.binding-success {
+  color: var(--brand-dark);
+  padding: 16px 0;
+}
+.environment-page {
+  padding: 36px;
+}
+.environment-icon {
+  font-size: 60px;
+  color: var(--brand);
+}
+.availability-label {
+  display: inline-block;
+  background: #edf1ed;
+  border-radius: 10px;
+  padding: 8px 16px;
+  margin: 20px 0;
+  color: var(--brand-dark);
+}
+.environment-page ol {
+  padding-left: 26px;
+  margin-bottom: 20px;
+}
+.environment-page li {
+  padding: 6px 0;
+}
+.demo-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+.chat-view {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+.chat-list {
+  max-height: 48vh;
+  overflow-y: auto;
+}
+.chat-list:has(.chat-row) {
+  min-height: 120px;
+}
+.chat-list:not(:has(.chat-row)) {
+  min-height: 0;
+  padding: 0;
+}
+.chat-suggestions {
+  margin: 4px 0;
+}
+.chat-suggestions summary {
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+.voice-entry {
+  min-height: 60px;
+  min-width: 190px;
+  font-size: 21px;
+}
+.chat-input-row .voice-entry {
+  flex: 1;
+}
+.stop-speech {
+  margin-bottom: 10px;
+}
+.is-listening {
+  box-shadow: 0 0 0 4px #4e7d6b22;
+}
+.report-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+@media (max-width: 600px) {
+  .setup-card,
+  .environment-page {
+    padding: 20px;
+  }
+  .bottom-nav button {
+    font-size: 15px;
+  }
+  .profile-summary {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .profile-summary dd {
+    margin-bottom: 12px;
+  }
+  .chat-view {
+    padding: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+.profile-summary > div {
+  display: contents;
+}
+
+/* Essential reading remains legible in the default size. */
+.muted,
+.voice-feedback,
+.form-error,
+.binding-success,
+.toast,
+.role-note {
+  font-size: 18px;
+  line-height: 1.65;
+}
+.muted,
+.role-note {
+  color: var(--ink);
 }
