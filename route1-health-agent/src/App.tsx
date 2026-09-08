@@ -14,6 +14,7 @@ import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
+import { visibleFamilyEvents } from './engine/familyLedger';
 import { healthRecordStore } from './store/LocalHealthRecordStore';
 import ElderHome from './components/ElderHome';
 import FamilyDashboard from './components/FamilyDashboard';
@@ -79,13 +80,8 @@ export default function App() {
     () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
     [measurements],
   );
-  const visibleFamilyEvents = useMemo(
-    () =>
-      familyEvents.filter(
-        (event) =>
-          event.visibility !== 'private' &&
-          (familySharing === 'granted' || sharedFamilyEventIds.includes(event.id)),
-      ),
+  const visibleFamilyFacts = useMemo(
+    () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
@@ -101,7 +97,6 @@ export default function App() {
   const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
     familySharing,
     events,
-    familyEvents,
     chat,
     findings,
     agentContext,
@@ -223,7 +218,7 @@ export default function App() {
           familyLink={familyLink}
           notifications={familyNotifs}
           findings={findings}
-          familyEvents={visibleFamilyEvents}
+          familyEvents={visibleFamilyFacts}
           tasks={tasks}
           records={familyRecords}
           observations={observations}
