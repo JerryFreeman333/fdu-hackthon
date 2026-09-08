@@ -94,6 +94,12 @@ export function useElderChat({
     const understanding = understandElderInput(text, TODAY, chat);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
+    const familyOnlyClaims = understanding.claims.filter(
+      (claim) =>
+        claim.subject !== 'self' &&
+        claim.subject !== 'unknown' &&
+        (claim.tags.length > 0 || claim.hasHealthValue),
+    );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
@@ -112,6 +118,10 @@ export function useElderChat({
       agentText = unresolved
         ? '知道了，您现在感觉还好。我会把您的当前感受和之前的记录分开看；之前还有需要确认的事情，我会单独提醒您。'
         : '知道了，您现在感觉还好。今天有什么变化，随时告诉我就行。';
+    } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && familyOnlyClaims.length > 0) {
+      const familyLabels = [...new Set(familyOnlyClaims.flatMap((claim) => claim.tags))].map(tagLabel);
+      const labelText = familyLabels.length > 0 ? `（我听到的是${familyLabels.join('、')}等家人的情况）` : '';
+      agentText = `我明白，您刚才说的是家里人的情况${labelText}，不会记到您本人的健康档案里。需要继续处理时，可以告诉我具体是谁。`;
     } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && understanding.claims.length > 0) {
       agentText =
         '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
