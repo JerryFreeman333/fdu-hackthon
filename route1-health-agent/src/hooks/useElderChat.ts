@@ -125,6 +125,8 @@ export function useElderChat({
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
+    const shareMode =
+      intent === 'share_family' ? 'one_time' : canShare ? 'persistent' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
 
@@ -187,6 +189,7 @@ export function useElderChat({
         tags: claim.tags,
         status: claim.status,
         visibility,
+        shareMode,
       }));
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
