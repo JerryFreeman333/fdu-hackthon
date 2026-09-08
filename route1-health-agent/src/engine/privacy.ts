@@ -4,8 +4,12 @@ export type PrivacyIntent = 'none' | 'private' | 'no_record' | 'share_family';
 
 export function parsePrivacyIntent(text: string): PrivacyIntent {
   if (/(不要|别).{0,4}(记录|记下来|保存)/.test(text)) return 'no_record';
-  if (/(不要|别).{0,4}(告诉|让).{0,3}(孩子|女儿|儿子|家人)/.test(text)) return 'private';
-  if (/(告诉|通知|跟).{0,4}(孩子|女儿|儿子|家人)/.test(text)) return 'share_family';
+  if (
+    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(告诉|让|通知).{0,3}(孩子|女儿|儿子|家人)/.test(text) ||
+    /不想让.{0,3}(孩子|女儿|儿子|家人).{0,3}(知道|看见|知道这件事)/.test(text)
+  )
+    return 'private';
+  if (/(告诉|通知|跟|让).{0,4}(孩子|女儿|儿子|家人).{0,3}(知道|说|讲)?/.test(text)) return 'share_family';
   return 'none';
 }
 
