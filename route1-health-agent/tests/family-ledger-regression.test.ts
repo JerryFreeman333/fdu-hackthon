@@ -13,6 +13,7 @@ function familyEvent(
   id: string,
   shareMode: FamilyHealthEvent['shareMode'],
   visibility: FamilyHealthEvent['visibility'] = 'family_ok',
+  hasHealthValue = false,
 ): FamilyHealthEvent {
   return {
     id,
@@ -21,6 +22,7 @@ function familyEvent(
     subject: 'father',
     text: '我爸今天摔了一下',
     tags: ['fall'],
+    hasHealthValue,
     status: 'occurred',
     visibility,
     shareMode,
@@ -81,6 +83,15 @@ runCase('family visibility respects persistent sharing and one-time sharing', ()
     visibleFamilyEvents([oneTime], 'granted').length === 0,
     'a one-time fact must not reappear when long-term sharing is later re-enabled',
   );
+});
+
+runCase('numeric family health values are retained even without symptom tags', () => {
+  const input = understandElderInput('我爸今天血压150/95', TODAY);
+  const claim = input.claims[0];
+  assert(claim?.subject === 'father', 'numeric family fact must keep the family subject');
+  assert(claim?.hasHealthValue, 'numeric family fact must retain health-value evidence');
+  const event = familyEvent('numeric', 'one_time', 'family_ok', true);
+  assert(event.hasHealthValue, 'family event model must carry health-value metadata');
 });
 
 runCase('comparative symptom stays in elder stream while comparison date does not replace current date', () => {
