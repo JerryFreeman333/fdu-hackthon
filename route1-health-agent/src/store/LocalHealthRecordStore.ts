@@ -23,6 +23,7 @@ function normalizeFamilyEvents(raw: unknown): FamilyHealthEvent[] {
     .filter((item): item is FamilyHealthEvent => Boolean(item) && typeof item === 'object')
     .map((event) => ({
       ...event,
+      hasHealthValue: typeof event.hasHealthValue === 'boolean' ? event.hasHealthValue : event.tags.length > 0,
       // Data written before shareMode existed is treated conservatively as one-time access.
       shareMode: event.shareMode === 'persistent' || event.shareMode === 'private' ? event.shareMode : 'one_time',
     }));
