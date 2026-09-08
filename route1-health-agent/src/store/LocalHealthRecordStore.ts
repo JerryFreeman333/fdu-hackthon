@@ -20,11 +20,24 @@ interface PersistedHealthData {
 function normalizeFamilyEvents(raw: unknown): FamilyHealthEvent[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((item): item is FamilyHealthEvent => Boolean(item) && typeof item === 'object')
+    .filter((item): item is FamilyHealthEvent => {
+      if (!item || typeof item !== 'object') return false;
+      const event = item as Partial<FamilyHealthEvent>;
+      return (
+        typeof event.id === 'string' &&
+        typeof event.timestamp === 'string' &&
+        typeof event.source === 'string' &&
+        typeof event.subject === 'string' &&
+        Array.isArray(event.tags) &&
+        typeof event.status === 'string' &&
+        (event.visibility === 'private' || event.visibility === 'family_ok' || event.visibility === undefined)
+      );
+    })
     .map((event) => ({
       ...event,
       hasHealthValue: typeof event.hasHealthValue === 'boolean' ? event.hasHealthValue : event.tags.length > 0,
-      // Data written before shareMode existed is treated conservatively as one-time access.
+      // Data written before shareMode/visibility hardening is treated conservatively as one-time + private.
+      visibility: event.visibility === 'family_ok' ? 'family_ok' : 'private',
       shareMode: event.shareMode === 'persistent' || event.shareMode === 'private' ? event.shareMode : 'one_time',
     }));
 }
