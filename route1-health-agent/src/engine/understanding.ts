@@ -118,6 +118,9 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     /(像|那么|这么|那样|比)/.test(clause) &&
     /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
   if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
+  if (/(今天|现在|目前)/.test(clause) && /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) && tags.length > 0) {
+    return 'occurred';
+  }
 
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
@@ -167,14 +170,19 @@ export function understandElderInput(
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
     const subject = subjectFromText(clause, subjectsSeen);
-    const tags =
-      explicitTags.length > 0
-        ? explicitTags
-        : /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
-            lastTags.length > 0
-          ? lastTags
-          : explicitTags;
-    const hasHealthValue = hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && /^(?:我|我自己|本人)(?:也|还|同样)/.test(clause));
+    const isOmittedComparison =
+      explicitTags.length === 0 &&
+      /(今天|现在|目前)/.test(clause) &&
+      /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
+      lastTags.length > 0;
+    const isOmittedParallelAction =
+      explicitTags.length === 0 &&
+      /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
+      lastTags.length > 0;
+    const tags = explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
+    const hasHealthValue =
+      hasExplicitHealthValue ||
+      (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
     const time = timeFromText(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
