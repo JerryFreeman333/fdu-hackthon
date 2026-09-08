@@ -65,5 +65,8 @@ runCase('撤销共享后历史一次性 finding 不再触发家属通知', () =>
   };
   assert(collectFamilyNotifications([finding], 'granted').length === 1, '授权时应可见');
   assert(collectFamilyNotifications([finding], 'denied').length === 0, '撤销授权后不应继续通知');
-  assert(collectFamilyNotifications([finding], 'denied', ['finding-1']).length === 1, '显式一次性分享仍可在当前授权周期内生效');
+  assert(
+    collectFamilyNotifications([finding], 'denied', ['finding-1']).length === 1,
+    '显式一次性分享仍可在当前授权周期内生效',
+  );
 });
