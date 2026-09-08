@@ -46,8 +46,32 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Format working tree for audit artifact
+        run: npx --yes prettier@3.5.3 --write .
+
+      - name: Upload formatter output for audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: route1-final-prettier-output
+          path: |
+            route1-health-agent/src/engine/understanding.ts
+            route1-health-agent/src/engine/familyLedger.ts
+            route1-health-agent/src/hooks/useElderChat.ts
+            route1-health-agent/src/hooks/useFamilyBinding.ts
+            route1-health-agent/src/store/HealthRecordStore.ts
+            route1-health-agent/src/store/LocalHealthRecordStore.ts
+            route1-health-agent/src/types.ts
+            route1-health-agent/src/App.tsx
+            route1-health-agent/src/components/FamilyDashboard.tsx
+            route1-health-agent/tests/family-ledger-regression.test.ts
+            route1-health-agent/tests/final-audit-smoke.test.ts
+            route1-health-agent/tests/final-audit-ci-2.test.ts
+            route1-health-agent/tests/family-ledger-ci-smoke.test.ts
+            route1-health-agent/tests/final-main-ci-trigger.test.ts
+          if-no-files-found: error
+
       - name: Verify formatting
-        run: npm run format:check
+        run: git diff --exit-code -- . ':!package-lock.json'
 
       - name: Typecheck
         run: npm run typecheck
