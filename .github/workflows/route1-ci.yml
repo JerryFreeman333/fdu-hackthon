@@ -16,8 +16,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: route1-health-agent-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: route1-health-agent-formatter-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
