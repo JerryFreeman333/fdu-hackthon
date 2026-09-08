@@ -108,7 +108,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     updatePersistentFamilySharing('denied');
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
-    showToast('已暂停家属共享。历史的一次性分享也已撤销，老人本人仍可继续使用助手。');
+    showToast('已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。');
   }
 
   function generateInvite() {
