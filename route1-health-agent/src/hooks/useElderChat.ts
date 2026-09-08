@@ -74,7 +74,7 @@ function shouldPersistFamilyClaim(claim: StructuredElderInput['claims'][number])
     isFamilySubject(claim.subject) &&
     claim.status !== 'hypothetical' &&
     claim.eventDate !== null &&
-    claim.tags.length > 0
+    (claim.tags.length > 0 || claim.hasHealthValue)
   );
 }
 
@@ -203,6 +203,7 @@ export function useElderChat({
         subject: claim.subject,
         text: claim.text,
         tags: claim.tags,
+        hasHealthValue: claim.hasHealthValue,
         status: claim.status,
         visibility,
         shareMode,
