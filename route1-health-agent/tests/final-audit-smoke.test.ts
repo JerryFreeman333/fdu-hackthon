@@ -14,6 +14,7 @@ const oneTimeEvent: FamilyHealthEvent = {
   subject: 'father',
   text: '我爸今天摔了一下',
   tags: ['fall'],
+  hasHealthValue: false,
   status: 'occurred',
   visibility: 'family_ok',
   shareMode: 'one_time',
@@ -46,5 +47,9 @@ assert(
   visibleFamilyEvents([oneTimeEvent], 'granted').length === 0,
   're-enabling long-term sharing must not resurrect an old one-time event',
 );
+
+const familyNumeric = understandElderInput('我爸今天血压150/95', TODAY);
+assert(familyNumeric.claims[0]?.subject === 'father', 'numeric family fact must keep the family subject');
+assert(familyNumeric.claims[0]?.hasHealthValue, 'numeric family fact must retain health-value evidence');
 
 console.log('PASS: final Route 1 audit smoke');
