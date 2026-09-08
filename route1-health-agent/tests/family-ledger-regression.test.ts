@@ -9,7 +9,11 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const TODAY = '2026-09-08';
 
-function familyEvent(id: string, visibility: FamilyHealthEvent['visibility'] = 'family_ok'): FamilyHealthEvent {
+function familyEvent(
+  id: string,
+  shareMode: FamilyHealthEvent['shareMode'],
+  visibility: FamilyHealthEvent['visibility'] = 'family_ok',
+): FamilyHealthEvent {
   return {
     id,
     timestamp: `${TODAY}T12:00:00`,
@@ -19,6 +23,7 @@ function familyEvent(id: string, visibility: FamilyHealthEvent['visibility'] = '
     tags: ['fall'],
     status: 'occurred',
     visibility,
+    shareMode,
   };
 }
 
@@ -33,29 +38,49 @@ runCase('family fact is persisted independently from elder health events', () =>
   assert(familyClaims.length === 1, 'father claim should be recognized');
   assert(acceptedSelfClaims(input).length === 0, 'father event must not be accepted as self');
 
-  const elderEvents = familyClaims.length === 1
-    ? [observationToEvent({
-        id: 'self-only',
-        date: TODAY,
-        source: 'chat',
-        text: '老人本人无相关事件',
-        tags: [],
-      })]
-    : [];
+  const elderEvents =
+    familyClaims.length === 1
+      ? [
+          observationToEvent({
+            id: 'self-only',
+            date: TODAY,
+            source: 'chat',
+            text: '老人本人无相关事件',
+            tags: [],
+          }),
+        ]
+      : [];
   const materialized = materializeHealthData(elderEvents);
-  assert(materialized.observations.every((observation) => !observation.tags.includes('fall')), 'family fall must not enter elder detection stream');
+  assert(
+    materialized.observations.every((observation) => !observation.tags.includes('fall')),
+    'family fall must not enter elder detection stream',
+  );
 });
 
 runCase('family visibility respects persistent sharing and one-time sharing', () => {
-  const publicEvent = familyEvent('public');
-  const privateEvent = familyEvent('private', 'private');
-  assert(visibleFamilyEvents([publicEvent, privateEvent], 'granted').length === 1, 'granted sharing shows only authorized facts');
-  assert(visibleFamilyEvents([publicEvent, privateEvent], 'denied').length === 0, 'denied sharing hides prior family facts');
+  const persistent = familyEvent('persistent', 'persistent');
+  const oneTime = familyEvent('one-time', 'one_time');
+  const privateEvent = familyEvent('private', 'private', 'private');
   assert(
-    visibleFamilyEvents([publicEvent, privateEvent], 'denied', ['public']).length === 1,
-    'explicit one-time sharing should still reveal the selected fact',
+    visibleFamilyEvents([persistent, oneTime, privateEvent], 'granted').length === 1,
+    'granted sharing should show persistent family facts only',
   );
-  assert(visibleFamilyEvents([publicEvent], 'ask', ['public']).length === 1, 'ask plus explicit share reveals the selected fact');
+  assert(
+    visibleFamilyEvents([persistent, oneTime, privateEvent], 'denied').length === 0,
+    'denied sharing should hide persistent and one-time facts',
+  );
+  assert(
+    visibleFamilyEvents([persistent, oneTime, privateEvent], 'denied', ['one-time']).length === 1,
+    'explicit one-time sharing should reveal only the selected fact',
+  );
+  assert(
+    visibleFamilyEvents([persistent, oneTime, privateEvent], 'ask', ['one-time']).length === 1,
+    'ask plus explicit share should reveal the selected fact',
+  );
+  assert(
+    visibleFamilyEvents([oneTime], 'granted').length === 0,
+    'a one-time fact must not reappear when long-term sharing is later re-enabled',
+  );
 });
 
 runCase('comparative symptom stays in elder stream while comparison date does not replace current date', () => {
