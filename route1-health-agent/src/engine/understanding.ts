@@ -185,7 +185,11 @@ export function understandElderInput(
       continue;
     }
 
-    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') continue;
+    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') {
+      // 即使本分句还没有健康标签，也保留它确定的主体，供后续“摔了一下/喘得更厉害”等省略主语分句继承。
+      subjectsSeen.push(subject);
+      continue;
+    }
     claims.push({
       text: clause,
       subject,
