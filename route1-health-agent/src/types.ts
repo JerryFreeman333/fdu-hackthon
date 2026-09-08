@@ -7,6 +7,7 @@ export type NightVisionStatus = 'normal' | 'reduced' | 'unknown';
 export type CognitionStatus = 'stable' | 'mild_change' | 'unknown';
 export type MobilityStatus = 'independent' | 'uses_cane' | 'needs_support' | 'unknown';
 export type PrivacyScope = 'private' | 'family_ok';
+export type FamilyShareMode = 'private' | 'persistent' | 'one_time';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'dismissed';
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
@@ -151,6 +152,7 @@ export interface FamilyHealthEvent {
   tags: SymptomTag[];
   status: ClaimStatus;
   visibility: PrivacyScope;
+  shareMode: FamilyShareMode;
 }
 
 export type Severity = 'info' | 'watch' | 'alert' | 'urgent';
