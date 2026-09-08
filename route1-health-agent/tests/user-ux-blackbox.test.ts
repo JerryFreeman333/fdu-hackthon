@@ -56,7 +56,10 @@ runCase('ambiguous family pronoun asks rather than silently guessing', () => {
   ]);
   assert(input.claims[0]?.subject === 'unknown', 'ambiguous pronoun must remain unknown');
   assert(Boolean(input.clarificationQuestion), 'user should get a clarification question');
-  assert(input.clarificationQuestion?.includes('为什么') || input.clarificationQuestion?.includes('这样'), 'clarification should explain why confirmation is needed');
+  assert(
+    input.clarificationQuestion?.includes('为什么') || input.clarificationQuestion?.includes('这样'),
+    'clarification should explain why confirmation is needed',
+  );
   assert(input.clarificationQuestion?.includes('记到您这里'), 'clarification should reassure about privacy');
 });
 
@@ -75,7 +78,10 @@ runCase('user can state two people in one breath', () => {
 
 runCase('user can correct the person without losing the distinction', () => {
   const input = understandElderInput('不是我，是我爸摔了', TODAY);
-  assert(input.claims.some((claim) => claim.subject === 'father'), 'correction should point to father');
+  assert(
+    input.claims.some((claim) => claim.subject === 'father'),
+    'correction should point to father',
+  );
   assert(acceptedSelfClaims(input).length === 0, 'correction should not create a self fall');
 });
 
