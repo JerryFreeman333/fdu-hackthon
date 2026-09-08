@@ -28,11 +28,31 @@ runCase('mixed family and self input still acknowledges the family fact', () => 
   const input = understandElderInput('我爸今天没吃降压药，我也没吃', TODAY);
   const family = input.claims.filter((claim) => claim.subject === 'father');
   const self = acceptedSelfClaims(input);
-  const text = buildFamilyAcknowledgement(family.map((claim) => ({ subject: 'father' as const, text: claim.text })));
+  const text = buildFamilyAcknowledgement(
+    family.map((claim) => ({ subject: 'father' as const, text: claim.text })),
+  );
   assert(family.length === 1, 'family claim should survive');
   assert(self.length === 1, 'self claim should survive');
   assert(text.includes('您爸爸'), 'mixed response should explicitly mention father');
   assert(text.includes('没吃降压药'), 'mixed response should not hide the family action');
+});
+
+runCase('one-time share is explicitly different from long-term sharing', () => {
+  const text = buildFamilyAcknowledgement(
+    [{ subject: 'father', text: '我爸今天摔了一下' }],
+    'one_time',
+  );
+  assert(text.includes('这次会分享给家属一次'), 'one-time share should be explicit');
+  assert(text.includes('不会打开长期共享'), 'one-time share should not imply persistent consent');
+});
+
+runCase('persistent sharing is described as currently authorized', () => {
+  const text = buildFamilyAcknowledgement(
+    [{ subject: 'father', text: '我爸今天血压150/95' }],
+    'persistent',
+  );
+  assert(text.includes('按您现在的授权'), 'persistent sharing should reference current consent');
+  assert(text.includes('必要的变化'), 'persistent sharing should stay scoped to necessary changes');
 });
 
 runCase('ambiguous family pronoun asks rather than silently guessing', () => {
