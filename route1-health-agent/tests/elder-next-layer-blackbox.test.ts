@@ -23,7 +23,7 @@ runCase('ambiguous family clarification protects the elder record', () => {
     { id: '2', role: 'elder', text: '我老公也不舒服', time: '09-07 10:01' },
   ]);
   assert(input.claims[0]?.subject === 'unknown', 'ambiguous pronoun must remain unknown');
-  assert(input.clarificationQuestion?.includes('为什么') === false || true, 'smoke check');
+  assert(input.clarificationQuestion?.includes('确认清楚'), 'clarification should explain why confirmation is needed');
   assert(input.clarificationQuestion?.includes('记到您这里'), 'clarification should explain the privacy risk');
 });
 
@@ -32,7 +32,7 @@ runCase('pure reassurance is not written as a new symptom', () => {
   assert(input.claims.length === 0, 'reassurance should not create a health claim');
 });
 
-runCase('repeating the same observation does not duplicate the health timeline', () => {
+runCase('repeating the same chat health fact does not duplicate the health timeline', () => {
   const first = observationToEvent({
     id: 'obs-live-1',
     date: TODAY,
@@ -49,10 +49,10 @@ runCase('repeating the same observation does not duplicate the health timeline',
     tags: ['dizziness'],
     visibility: 'private',
   });
-  assert(appendHealthEvents([first], [second]).length === 1, 'equivalent chat observations should be deduplicated');
+  assert(appendHealthEvents([first], [second]).length === 1, 'equivalent repeated chat facts should be stored once');
 });
 
-runCase('a meaningful update is still recorded after an earlier observation', () => {
+runCase('a meaningful update is not swallowed by chat dedupe', () => {
   const first = observationToEvent({
     id: 'obs-live-1',
     date: TODAY,
@@ -69,5 +69,5 @@ runCase('a meaningful update is still recorded after an earlier observation', ()
     tags: ['dizziness'],
     visibility: 'private',
   });
-  assert(appendHealthEvents([first], [second]).length === 2, 'a materially different observation should remain');
+  assert(appendHealthEvents([first], [second]).length === 2, 'meaningfully different observations should both remain');
 });
