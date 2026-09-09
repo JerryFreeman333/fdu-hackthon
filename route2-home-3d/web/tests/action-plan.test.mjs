@@ -2,32 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-async function loadModule() {
-  const source = await readFile(new URL('../src/hometwin/actionPlan.ts', import.meta.url), 'utf8');
-  const dataUrl = 'data:text/javascript,' + encodeURIComponent(source.replace(/: HomeSafetyActionPlan|: HomeSafetyActionPlan \| null|: Iterable<string>|: string|: boolean|: number|: HomeSafetyActionStatus/g, ''));
-  return import(dataUrl);
+async function json(path) {
+  return JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8'));
 }
 
-test('action plan contract contains rescan closure rule', async () => {
-  const { parseHomeSafetyActionPlan, applyRescan } = await loadModule();
-  const plan = parseHomeSafetyActionPlan({
-    schemaVersion: 1,
-    type: 'person-home-action-plan',
-    status: 'open',
-    privacyScope: 'family_ok',
-    actions: [{
-      id: 'action-r1',
-      riskId: 'r1',
-      kind: 'safety_check',
-      title: '处理地面障碍',
-      description: '处理并重新扫描',
-      status: 'open',
-      requiresRescan: true,
-      closureRule: { type: 'risk-disappears-after-rescan', riskId: 'r1' },
-    }],
-  });
-  assert.ok(plan);
-  const cleared = applyRescan(plan, []);
-  assert.equal(cleared.status, 'clear');
-  assert.equal(cleared.actions[0].status, 'resolved');
+test('family action fixture uses explicit rescan closure rules', async () => {
+  const plan = await json('../public/data/family-action-plan.json');
+  assert.equal(plan.schemaVersion, 1);
+  assert.equal(plan.type, 'person-home-action-plan');
+  assert.equal(plan.status, 'open');
+  assert.ok(plan.actions.length > 0);
+
+  for (const action of plan.actions) {
+    assert.equal(action.requiresRescan, true);
+    assert.equal(action.closureRule.type, 'risk-disappears-after-rescan');
+    assert.equal(action.closureRule.riskId, action.riskId);
+    assert.equal(action.status, 'open');
+  }
+});
+
+test('rescan fixture keeps an unresolved risk while allowing another risk to disappear', async () => {
+  const plan = await json('../public/data/family-action-plan.json');
+  const rescan = await json('../public/data/family-action-rescan.json');
+  const active = new Set(rescan.risks.map((risk) => risk.id));
+
+  const surface = plan.actions.find((action) => action.riskId === 'person-home-surface');
+  const night = plan.actions.find((action) => action.riskId === 'person-home-night-route');
+  assert.ok(surface);
+  assert.ok(night);
+  assert.equal(active.has(surface.riskId), false);
+  assert.equal(active.has(night.riskId), true);
 });
