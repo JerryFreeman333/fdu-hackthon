@@ -23,3 +23,10 @@ export function familyVisibleTasks(tasks: CareTask[], visibleFindings: Finding[]
     return task.kind === 'safety_check';
   });
 }
+
+/** Consuming a one-time grant is idempotent and leaves unrelated grants untouched. */
+export function consumeOneTimeShareIds(currentIds: string[], consumedIds: string[]): string[] {
+  if (consumedIds.length === 0) return currentIds;
+  const consumed = new Set(consumedIds);
+  return currentIds.filter((id) => !consumed.has(id));
+}
