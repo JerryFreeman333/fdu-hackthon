@@ -1,4 +1,4 @@
-import type { FamilyShareMode } from './userFacing';
+import type { FamilyShareMode } from '../types';
 
 export type SharingAuditScope = 'self' | 'family';
 export type SharingRecipient = 'daughter' | 'son' | 'family';
@@ -12,6 +12,9 @@ export interface SharingAuditEntry {
   content: string;
 }
 
+const SHARING_AUDIT_KEY = 'ankang-route1-sharing-audit-v1';
+const DEFAULT_LIMIT = 100;
+
 export function inferSharingRecipient(text: string): SharingRecipient {
   if (/女儿/.test(text)) return 'daughter';
   if (/儿子/.test(text)) return 'son';
@@ -21,10 +24,44 @@ export function inferSharingRecipient(text: string): SharingRecipient {
 export function appendSharingAudit(
   entries: SharingAuditEntry[],
   next: SharingAuditEntry[],
-  limit = 100,
+  limit = DEFAULT_LIMIT,
 ): SharingAuditEntry[] {
   if (next.length === 0) return entries.slice(-limit);
   return [...entries, ...next].slice(-limit);
+}
+
+export function loadSharingAudit(): SharingAuditEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SHARING_AUDIT_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is SharingAuditEntry => {
+      if (!entry || typeof entry !== 'object') return false;
+      const candidate = entry as Record<string, unknown>;
+      return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.createdAt === 'string' &&
+        (candidate.scope === 'self' || candidate.scope === 'family') &&
+        (candidate.recipient === 'daughter' || candidate.recipient === 'son' || candidate.recipient === 'family') &&
+        (candidate.shareMode === 'private' || candidate.shareMode === 'persistent' || candidate.shareMode === 'one_time') &&
+        typeof candidate.content === 'string'
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function saveSharingAudit(entries: SharingAuditEntry[]): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SHARING_AUDIT_KEY, JSON.stringify(entries.slice(-DEFAULT_LIMIT)));
+}
+
+export function recordSharingAudit(next: SharingAuditEntry[]): void {
+  if (next.length === 0) return;
+  saveSharingAudit(appendSharingAudit(loadSharingAudit(), next));
 }
 
 export function historicalSharesForRecipient(
@@ -44,7 +81,7 @@ export function buildHistoricalSharingAnswer(
   const latest = matches.slice(-5).reverse();
   const lines = latest.map((entry) => {
     const target = entry.recipient === 'daughter' ? '女儿' : entry.recipient === 'son' ? '儿子' : '家属';
-    const mode = entry.shareMode === 'one_time' ? '一次性' : '按长期授权';
+    const mode = entry.shareMode === 'one_time' ? '一次性' : entry.shareMode === 'persistent' ? '按长期授权' : '仅本人';
     return `${entry.createdAt.slice(0, 16).replace('T', ' ')}，${mode}告诉${target}：${entry.content}`;
   });
   return `我能确认的历史共享记录有：\n${lines.join('\n')}`;
