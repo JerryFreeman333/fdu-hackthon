@@ -49,7 +49,11 @@ export function ensureMedicationCheckTask(
 ): CareTask[] {
   const taskId = `task-medication-${today}`;
   if (tasks.some((task) => task.id === taskId)) return tasks;
-  if (tasks.some((task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending')) {
+  if (
+    tasks.some(
+      (task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending',
+    )
+  ) {
     return tasks;
   }
 
