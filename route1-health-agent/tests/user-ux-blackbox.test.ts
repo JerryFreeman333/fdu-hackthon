@@ -2,6 +2,7 @@ import { canShareWithFamily, parsePrivacyIntent, sharingLabel } from '../src/eng
 import { visibleFamilyEvents } from '../src/engine/familyLedger';
 import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../src/engine/userFacing';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
+import type { SymptomTag } from '../src/types';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -147,7 +148,7 @@ runCase('revoking persistent sharing hides previously persistent events from the
     source: 'chat' as const,
     subject: 'father' as const,
     text: '我爸今天摔了一下',
-    tags: ['fall'],
+    tags: ['fall'] as SymptomTag[],
     hasHealthValue: false,
     status: 'occurred' as const,
     visibility: 'family_ok' as const,
@@ -167,7 +168,7 @@ runCase('clearing one-time share ids stops future access and re-grant does not r
     source: 'chat' as const,
     subject: 'father' as const,
     text: '我爸今天摔了一下',
-    tags: ['fall'],
+    tags: ['fall'] as SymptomTag[],
     hasHealthValue: false,
     status: 'occurred' as const,
     visibility: 'family_ok' as const,

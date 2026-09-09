@@ -2,6 +2,7 @@ import { canShareWithFamily, parsePrivacyIntent } from '../src/engine/privacy';
 import { visibleFamilyEvents } from '../src/engine/familyLedger';
 import { buildHistoricalSharingAnswer, appendSharingAudit, type SharingAuditEntry } from '../src/engine/sharingAudit';
 import { understandElderInput } from '../src/engine/understanding';
+import type { SymptomTag } from '../src/types';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -69,7 +70,7 @@ runCase('revocation removes persistent family visibility', () => {
     source: 'chat' as const,
     subject: 'father' as const,
     text: '我爸今天摔了一下',
-    tags: ['fall'],
+    tags: ['fall'] as SymptomTag[],
     hasHealthValue: false,
     status: 'occurred' as const,
     visibility: 'family_ok' as const,
@@ -86,7 +87,7 @@ runCase('revocation removes one-time visibility and re-grant does not resurrect 
     source: 'chat' as const,
     subject: 'father' as const,
     text: '我爸今天血压150/95',
-    tags: [],
+    tags: [] as SymptomTag[],
     hasHealthValue: true,
     status: 'occurred' as const,
     visibility: 'family_ok' as const,
@@ -152,7 +153,7 @@ runCase('historical audit remains independent from current family visibility', (
     source: 'chat' as const,
     subject: 'father' as const,
     text: '我爸今天血压150/95',
-    tags: [],
+    tags: [] as SymptomTag[],
     hasHealthValue: true,
     status: 'occurred' as const,
     visibility: 'family_ok' as const,
