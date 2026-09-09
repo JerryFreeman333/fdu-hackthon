@@ -12,8 +12,16 @@ export interface SharingAuditEntry {
   content: string;
 }
 
+type SharingAuditCandidate = Omit<SharingAuditEntry, 'shareMode'> & {
+  shareMode: string;
+};
+
 const SHARING_AUDIT_KEY = 'ankang-route1-sharing-audit-v1';
 const DEFAULT_LIMIT = 100;
+
+function isFamilyShareMode(value: string): value is FamilyShareMode {
+  return value === 'private' || value === 'persistent' || value === 'one_time';
+}
 
 export function inferSharingRecipient(text: string): SharingRecipient {
   if (/女儿/.test(text)) return 'daughter';
@@ -23,11 +31,12 @@ export function inferSharingRecipient(text: string): SharingRecipient {
 
 export function appendSharingAudit(
   entries: SharingAuditEntry[],
-  next: SharingAuditEntry[],
+  next: SharingAuditCandidate[],
   limit = DEFAULT_LIMIT,
 ): SharingAuditEntry[] {
-  if (next.length === 0) return entries.slice(-limit);
-  return [...entries, ...next].slice(-limit);
+  const validNext = next.filter((entry): entry is SharingAuditEntry => isFamilyShareMode(entry.shareMode));
+  if (validNext.length === 0) return entries.slice(-limit);
+  return [...entries, ...validNext].slice(-limit);
 }
 
 export function loadSharingAudit(): SharingAuditEntry[] {
@@ -61,7 +70,7 @@ export function saveSharingAudit(entries: SharingAuditEntry[]): void {
   window.localStorage.setItem(SHARING_AUDIT_KEY, JSON.stringify(entries.slice(-DEFAULT_LIMIT)));
 }
 
-export function recordSharingAudit(next: SharingAuditEntry[]): void {
+export function recordSharingAudit(next: SharingAuditCandidate[]): void {
   if (next.length === 0) return;
   saveSharingAudit(appendSharingAudit(loadSharingAudit(), next));
 }
