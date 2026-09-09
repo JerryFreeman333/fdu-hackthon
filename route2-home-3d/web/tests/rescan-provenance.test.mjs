@@ -45,7 +45,7 @@ test('compiled actionPlan enforces N→N+2 accepted then delayed N+1 rejected', 
       actionPlanPath, '--format=esm', '--platform=neutral', '--outfile=' + output,
     ]);
     const { parseHomeSafetyActionPlan, acceptRescanActionPlan } = await import(output + `?t=${Date.now()}`);
-    const provenance = (homeVersion, captureId, reconstructionId, previous = undefined) => ({
+    const provenance = (homeVersion, captureId, reconstructionId, previous = null) => ({
       current: { homeId: 'home-a', homeVersion, riskRuleVersion: 'rule-v1', captureId, reconstructionId },
       previous,
     });
@@ -54,8 +54,8 @@ test('compiled actionPlan enforces N→N+2 accepted then delayed N+1 rejected', 
       actions: [], provenance: p,
     });
     const n = plan(provenance(1, 'capture-n', 'recon-n'));
-    const n1 = plan(provenance(2, 'capture-n1', 'recon-n1', n.provenance.current));
-    const n2 = plan(provenance(3, 'capture-n2', 'recon-n2', n1.provenance.current));
+    const n1 = plan(provenance(2, 'capture-n1', 'recon-n1', n?.provenance.current));
+    const n2 = plan(provenance(3, 'capture-n2', 'recon-n2', n1?.provenance.current));
     assert.ok(n && n1 && n2);
     assert.deepEqual(acceptRescanActionPlan(n, n1), { accepted: true });
     assert.deepEqual(acceptRescanActionPlan(n1, n2), { accepted: true });
