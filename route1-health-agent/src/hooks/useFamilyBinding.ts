@@ -47,11 +47,9 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     showToast(`已同意在必要时与家属共享。授权记录时间：${updatedAt.slice(0, 10)}`);
   }
 
-  function clearSessionAuthorization() {
+  function clearShareAuthorization() {
     setFamilySharing('denied');
     setConsentUpdatedAt('');
-    setIssuedInviteCode(null);
-    setFamilyLink(null);
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
     setClaimedOneTimeFindingIds([]);
@@ -59,12 +57,12 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   }
 
   function keepFamilyPrivate() {
-    clearSessionAuthorization();
+    clearShareAuthorization();
     showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
   }
 
   function revokeFamilyShare() {
-    clearSessionAuthorization();
+    clearShareAuthorization();
     showToast('已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。');
   }
 
