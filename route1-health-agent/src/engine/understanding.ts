@@ -38,7 +38,7 @@ function subtractDays(today: string, days: number): string {
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   return text
-    .split(/[。！？!?；;,，\n]+/)
+    .split(/[。！？!?；;，,\n]+/)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -254,6 +254,7 @@ export function understandElderInput(
     .filter((intent) => intent !== 'none');
   const uniquePrivacyIntents = [...new Set(privacyIntents)];
   const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
+
   if (hasMixedPrivacyIntent) {
     return {
       claims: [],
