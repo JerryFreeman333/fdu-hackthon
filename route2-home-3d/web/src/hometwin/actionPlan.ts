@@ -93,7 +93,7 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
     actions.push({
       id: a.id,
       riskId: a.riskId,
-      kind: a.kind,
+      kind: a.kind as HomeSafetyAction['kind'],
       title: a.title,
       description: a.description,
       status: a.status as HomeActionStatus,
@@ -104,7 +104,7 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
   }
 
   const rawPlanProvenance = value.provenance;
-  let planProvenance: HomeSafetyActionPlan['provenance'];
+  let planProvenance: HomeSafetyActionPlan['provenance'] = undefined;
   if (rawPlanProvenance && typeof rawPlanProvenance === 'object') {
     const p = rawPlanProvenance as Record<string, unknown>;
     const current = parseProvenance(p.current);
