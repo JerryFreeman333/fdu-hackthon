@@ -42,11 +42,7 @@ export function createTaskFromFinding(finding: Finding, today: string): CareTask
  * second object with the same React key. This remains true even after the task
  * is completed: a later reminder reuses the existing task rather than cloning it.
  */
-export function ensureMedicationCheckTask(
-  tasks: CareTask[],
-  today: string,
-  createdAt: string,
-): CareTask[] {
+export function ensureMedicationCheckTask(tasks: CareTask[], today: string, createdAt: string): CareTask[] {
   const taskId = `task-medication-${today}`;
   if (tasks.some((task) => task.id === taskId)) return tasks;
   if (
