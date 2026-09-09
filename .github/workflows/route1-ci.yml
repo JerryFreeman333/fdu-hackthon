@@ -67,3 +67,32 @@ jobs:
       - name: Dependency audit (full, informational)
         continue-on-error: true
         run: npm audit --omit=dev
+
+  blackbox-route1:
+    needs: build-route1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout revision under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+
+      - name: Install Route 1 dependencies
+        run: npm ci --prefix route1-health-agent
+
+      - name: Install black-box dependencies
+        run: npm install --prefix route1-health-agent/p0-blackbox --no-package-lock
+
+      - name: Install Chromium
+        run: npx --prefix route1-health-agent/p0-blackbox playwright install --with-deps chromium
+
+      - name: Run final browser black-box suite
+        run: npm run blackbox --prefix route1-health-agent/p0-blackbox
