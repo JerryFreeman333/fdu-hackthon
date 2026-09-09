@@ -1,4 +1,5 @@
 import type { CareTask, Finding } from '../src/types';
+import { collectFamilyNotifications } from '../src/engine/escalate';
 import { familyVisibleFindings, familyVisibleTasks } from '../src/engine/familyDisclosure';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -25,6 +26,14 @@ const baseFinding: Finding = {
 runCase('family disclosure is fail-closed when familyEligible is omitted', () => {
   const finding = { ...baseFinding, familyEligible: undefined };
   assert(familyVisibleFindings([finding]).length === 0, 'undefined family eligibility must stay hidden');
+});
+
+runCase('family notification is also fail-closed when familyEligible is omitted', () => {
+  const finding = { ...baseFinding, familyEligible: undefined };
+  assert(
+    collectFamilyNotifications([finding], 'granted').length === 0,
+    'undefined family eligibility must never trigger a family notification',
+  );
 });
 
 runCase('private-ineligible findings never reach family view', () => {
