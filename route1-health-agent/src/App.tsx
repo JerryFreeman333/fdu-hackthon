@@ -25,7 +25,6 @@ import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
-const ROLE_KEY = 'ankang-route1-role-v3';
 const MAX_FAMILY_FINDINGS_PER_VIEW = 3;
 const MAX_FAMILY_EVENTS_PER_VIEW = 5;
 
@@ -48,10 +47,7 @@ export default function App() {
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
-  const [role, setRole] = useState<UserRole | null>(() => {
-    const saved = window.localStorage.getItem(ROLE_KEY);
-    return saved === 'elder' || saved === 'family' ? saved : null;
-  });
+  const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const { fontScale, setFontScale } = useFontScale();
@@ -142,7 +138,8 @@ export default function App() {
       .slice(0, MAX_FAMILY_FINDINGS_PER_VIEW);
     const candidateFamilyEventIds = familyEvents
       .filter(
-        (event) => sharedFamilyEventIds.includes(event.id) && event.visibility !== 'private' && event.shareMode === 'one_time',
+        (event) =>
+          sharedFamilyEventIds.includes(event.id) && event.visibility !== 'private' && event.shareMode === 'one_time',
       )
       .map((event) => event.id)
       .slice(0, MAX_FAMILY_EVENTS_PER_VIEW);
@@ -160,13 +157,11 @@ export default function App() {
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
     if (nextRole !== 'family') familyClaimAttempted.current = false;
-    window.localStorage.setItem(ROLE_KEY, nextRole);
   }
 
   function resetRole() {
     setRole(null);
     familyClaimAttempted.current = false;
-    window.localStorage.removeItem(ROLE_KEY);
   }
 
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
@@ -266,7 +261,7 @@ export default function App() {
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
         第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
+        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。身份、家属绑定和共享授权只在当前演示会话有效；刷新页面后需要重新选择身份并重新授权。
       </footer>
     </div>
   );
