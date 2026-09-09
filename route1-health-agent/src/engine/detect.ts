@@ -1,5 +1,5 @@
 /** Detection Engine 主入口：事件流 → 个人基线 → 变化发现 → 安全分级。 */
-import type { Finding } from '../types';
+import type { Finding, SymptomTag } from '../types';
 import { METRICS, type MetricKey } from '../types';
 import { diffDays } from './baseline';
 import { materializeHealthData, type HealthEvent } from '../pipeline/events';
@@ -101,14 +101,14 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
   });
 }
 
-export function todayTags(events: HealthEvent[], today: string) {
+export function todayTags(events: HealthEvent[], today: string): SymptomTag[] {
   return materializeHealthData(events)
     .observations.filter((observation) => observation.date === today)
     .flatMap((observation) => observation.tags)
     .filter((tag, index, array) => array.indexOf(tag) === index);
 }
 
-export function recentTag(events: HealthEvent[], tag: Parameters<typeof hadTag>[1], endDate: string, days: number) {
+export function recentTag(events: HealthEvent[], tag: SymptomTag, endDate: string, days: number) {
   return hadTag(materializeHealthData(events).observations, tag, endDate, days);
 }
 
