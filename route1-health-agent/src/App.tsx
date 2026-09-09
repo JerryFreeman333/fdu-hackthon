@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
+import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { demoHomeSafetyActions } from './data/demoHomeSafetyActions';
 import {
   legacySnapshotToEvents,
   materializeHealthData,
@@ -27,6 +29,7 @@ import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
 const ROLE_KEY = 'ankang-route1-role-v3';
+const HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   const stored = healthRecordStore.load();
@@ -42,11 +45,23 @@ function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthE
   return snapshot;
 }
 
+function loadHomeSafetyActions(): HomeSafetyAction[] {
+  try {
+    const raw = window.localStorage.getItem(HOME_ACTION_KEY);
+    if (!raw) return demoHomeSafetyActions;
+    const parsed = JSON.parse(raw) as HomeSafetyAction[];
+    return Array.isArray(parsed) ? parsed : demoHomeSafetyActions;
+  } catch {
+    return demoHomeSafetyActions;
+  }
+}
+
 export default function App() {
   const initial = useMemo(() => initialSnapshot(), []);
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
+  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() => loadHomeSafetyActions());
   const [role, setRole] = useState<UserRole | null>(() => {
     const saved = window.localStorage.getItem(ROLE_KEY);
     return saved === 'elder' || saved === 'family' ? saved : null;
@@ -125,6 +140,10 @@ export default function App() {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
   }, [events, familyEvents, chat]);
 
+  useEffect(() => {
+    window.localStorage.setItem(HOME_ACTION_KEY, JSON.stringify(homeSafetyActions));
+  }, [homeSafetyActions]);
+
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
     window.localStorage.setItem(ROLE_KEY, nextRole);
@@ -140,6 +159,11 @@ export default function App() {
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
   }
 
+  function handleHomeSafetyActionStatus(actionId: string, status: HomeSafetyAction['status']) {
+    setHomeSafetyActions((current) => current.map((action) => (action.id === actionId ? { ...action, status } : action)));
+    if (status === 'done') showToast('已记录处理完成；重新扫描后才会确认风险是否消失。');
+  }
+
   function contactElder() {
     showToast(`演示联系：${activeProfile.familyContact}`);
   }
@@ -150,44 +174,12 @@ export default function App() {
     return (
       <div className="app">
         <header className="simple-header">
-          <div>
-            <div className="persona-name">{activeProfile.name}</div>
-            <div className="persona-sub">
-              今天 ·{' '}
-              {activeProfile.familySharing === 'granted'
-                ? '已允许必要的家属协同'
-                : activeProfile.familySharing === 'ask'
-                  ? '需要时先问您'
-                  : '暂不共享给家属'}
-            </div>
-          </div>
-          <div className="header-actions">
-            <FontSizeControl value={fontScale} onChange={setFontScale} />
-            <button className="btn-secondary" onClick={resetRole}>
-              切换身份
-            </button>
-          </div>
+          <div><div className="persona-name">{activeProfile.name}</div><div className="persona-sub">今天 · {activeProfile.familySharing === 'granted' ? '已允许必要的家属协同' : activeProfile.familySharing === 'ask' ? '需要时先问您' : '暂不共享给家属'}</div></div>
+          <div className="header-actions"><FontSizeControl value={fontScale} onChange={setFontScale} /><button className="btn-secondary" onClick={resetRole}>切换身份</button></div>
         </header>
         <main className="content">
-          <ElderHome
-            profile={activeProfile}
-            chat={chat}
-            onSend={handleElderSend}
-            onPhotoImport={handlePhotoImport}
-            quickInputs={quickInputs}
-            tasks={tasks}
-            findings={findings}
-            familyLink={familyLink}
-            onTaskStatus={handleTaskStatus}
-            onRequestFamilyShare={requestFamilyShare}
-            onKeepFamilyPrivate={keepFamilyPrivate}
-            onRevokeFamilyShare={revokeFamilyShare}
-            onGenerateInvite={generateInvite}
-          />
-          <details className="advanced-details">
-            <summary>查看我的状态（可选）</summary>
-            <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
-          </details>
+          <ElderHome profile={activeProfile} chat={chat} onSend={handleElderSend} onPhotoImport={handlePhotoImport} quickInputs={quickInputs} tasks={tasks} findings={findings} familyLink={familyLink} onTaskStatus={handleTaskStatus} onRequestFamilyShare={requestFamilyShare} onKeepFamilyPrivate={keepFamilyPrivate} onRevokeFamilyShare={revokeFamilyShare} onGenerateInvite={generateInvite} />
+          <details className="advanced-details"><summary>查看我的状态（可选）</summary><ProfileView records={records} observations={observations} findings={findings} today={TODAY} /></details>
         </main>
         {toast && <div className="toast">{toast}</div>}
       </div>
@@ -197,20 +189,8 @@ export default function App() {
   return (
     <div className="app">
       <header className="simple-header">
-        <div>
-          <div className="persona-name">{activeProfile.name} · 家属端</div>
-          <div className="persona-sub">
-            {familyLink?.status === 'active'
-              ? `绑定关系：${familyLink.relation} ${familyLink.displayName}`
-              : '尚未绑定老人'}
-          </div>
-        </div>
-        <div className="header-actions">
-          <FontSizeControl value={fontScale} onChange={setFontScale} />
-          <button className="btn-secondary" onClick={resetRole}>
-            切换身份
-          </button>
-        </div>
+        <div><div className="persona-name">{activeProfile.name} · 家属端</div><div className="persona-sub">{familyLink?.status === 'active' ? `绑定关系：${familyLink.relation} ${familyLink.displayName}` : '尚未绑定老人'}</div></div>
+        <div className="header-actions"><FontSizeControl value={fontScale} onChange={setFontScale} /><button className="btn-secondary" onClick={resetRole}>切换身份</button></div>
       </header>
       <main className="content">
         <FamilyDashboard
@@ -220,10 +200,12 @@ export default function App() {
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
+          homeSafetyActions={homeSafetyActions}
           records={familyRecords}
           observations={observations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
+          onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
           onContactElder={contactElder}
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
@@ -232,10 +214,7 @@ export default function App() {
         />
       </main>
       {toast && <div className="toast">{toast}</div>}
-      <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
-      </footer>
+      <footer className="footer">第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM 可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。</footer>
     </div>
   );
 }
