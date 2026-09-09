@@ -33,15 +33,15 @@ runCase('persistent family events disappear immediately after consent is revoked
   assert(visibleFamilyEvents([baseEvent], 'denied').length === 0, 'revoked consent must hide persistent family events');
 });
 
-runCase('one-time family events require the explicit event id even when persistent sharing is denied', () => {
+runCase('one-time family events require an explicit active claim', () => {
   const oneTimeEvent: FamilyHealthEvent = { ...baseEvent, id: 'family-once', shareMode: 'one_time' };
   assert(
     visibleFamilyEvents([oneTimeEvent], 'denied').length === 0,
-    'without the explicit id the one-time event stays hidden',
+    'without an active claim the one-time event must stay hidden',
   );
   assert(
     visibleFamilyEvents([oneTimeEvent], 'denied', ['family-once']).length === 1,
-    'an explicitly shared one-time event remains visible for the first disclosure',
+    'an atomically claimed one-time event should be visible in the current session',
   );
 });
 
@@ -62,9 +62,9 @@ runCase('revocation plus cleared one-time ids removes previously explicit family
   const oneTimeEvent: FamilyHealthEvent = { ...baseEvent, id: 'family-once-2', shareMode: 'one_time' };
   assert(
     visibleFamilyEvents([oneTimeEvent], 'denied', ['family-once-2']).length === 1,
-    'the explicit share is visible before consumption',
+    'the explicit share is visible before revocation state is cleared',
   );
-  assert(visibleFamilyEvents([oneTimeEvent], 'denied', []).length === 0, 'consumed ids make the event disappear');
+  assert(visibleFamilyEvents([oneTimeEvent], 'denied', []).length === 0, 'cleared ids make the event disappear');
 });
 
 runCase('consuming one-time ids is selective and idempotent', () => {
@@ -91,6 +91,10 @@ const baseFinding: Finding = {
 };
 
 runCase('one-time finding is marked consumable and can be removed after disclosure', () => {
+  assert(
+    collectFamilyNotifications([baseFinding], 'denied', []).length === 0,
+    'an unclaimed one-time finding must remain undisclosed when persistent sharing is denied',
+  );
   const notifications = collectFamilyNotifications([baseFinding], 'denied', [baseFinding.id]);
   assert(notifications.length === 1, 'explicit one-time finding should be disclosed once');
   assert(notifications[0]?.oneTime === true, 'explicit finding share must be marked one-time');
