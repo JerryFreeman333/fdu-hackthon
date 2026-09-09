@@ -17,3 +17,6 @@ web/public/models/*.spz
 # node
 web/node_modules/
 web/dist/
+
+# python
+__pycache__/
