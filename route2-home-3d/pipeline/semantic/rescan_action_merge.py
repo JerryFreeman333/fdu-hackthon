@@ -21,9 +21,25 @@ def validate_projection(risk_projection: dict[str, Any]) -> None:
             raise RuntimeError(f'复扫风险投影缺少 provenance 字段: {key}')
     if risk_projection.get('riskRuleVersion') != RISK_RULE_VERSION:
         raise RuntimeError('risk rule version 不一致或不受支持')
+
+    home_id = risk_projection.get('homeId')
+    home_version = risk_projection.get('homeVersion')
+    if not isinstance(home_id, str) or not home_id.strip():
+        raise RuntimeError('复扫风险投影缺少有效 homeId')
+    if not isinstance(home_version, int) or home_version < 1:
+        raise RuntimeError('复扫风险投影缺少有效 homeVersion')
+
     home_provenance = risk_projection['homeProvenance']
-    if not isinstance(home_provenance, dict) or home_provenance.get('homeId') != risk_projection.get('homeId') or home_provenance.get('homeVersion') != risk_projection.get('homeVersion'):
+    if not isinstance(home_provenance, dict) or home_provenance.get('homeId') != home_id or home_provenance.get('homeVersion') != home_version:
         raise RuntimeError('Home Twin provenance 与 risk projection 不一致')
+
+    # An incremented snapshot version alone is not sufficient evidence of a fresh
+    # rescan. Both identities must be present so the action plan can prove that
+    # the current risk projection came from a distinct capture + reconstruction.
+    for key in ('captureId', 'reconstructionId'):
+        value = home_provenance.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError(f'Home Twin provenance 缺少有效 {key}，禁止自动关闭历史风险')
 
 
 def provenance(risk_projection: dict[str, Any]) -> dict[str, Any]:
@@ -76,17 +92,17 @@ def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, An
             raise RuntimeError('复扫 Home Twin homeId 不一致，拒绝关闭历史风险')
         previous_version = previous_provenance.get('homeVersion')
         latest_version = latest_provenance.get('homeVersion')
-        if isinstance(previous_version, int) and isinstance(latest_version, int) and latest_version <= previous_version:
+        if not isinstance(previous_version, int) or not isinstance(latest_version, int) or latest_version <= previous_version:
             raise RuntimeError('复扫 Home Twin version 未前进，拒绝自动关闭历史风险')
         if previous_provenance.get('riskRuleVersion') != latest_provenance.get('riskRuleVersion'):
             raise RuntimeError('risk rule version 不一致，拒绝自动关闭历史风险')
         previous_capture = previous_provenance.get('captureId')
         latest_capture = latest_provenance.get('captureId')
-        if previous_capture and latest_capture and previous_capture == latest_capture:
+        if previous_capture == latest_capture:
             raise RuntimeError('复扫 captureId 未变化，拒绝把同一批输入当作新复扫')
         previous_reconstruction = previous_provenance.get('reconstructionId')
         latest_reconstruction = latest_provenance.get('reconstructionId')
-        if previous_reconstruction and latest_reconstruction and previous_reconstruction == latest_reconstruction:
+        if previous_reconstruction == latest_reconstruction:
             raise RuntimeError('复扫 reconstructionId 未变化，拒绝把同一轮重建当作新证据')
 
     for action in actions:
