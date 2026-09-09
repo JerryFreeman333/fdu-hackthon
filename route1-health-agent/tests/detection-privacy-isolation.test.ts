@@ -25,10 +25,7 @@ const currentFamilyOkFall = {
   visibility: 'family_ok' as const,
 };
 
-const findings = runDetection(
-  [observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)],
-  TODAY,
-);
+const findings = runDetection([observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)], TODAY);
 
 const fall = findings.find((finding) => finding.ruleId === 'safety.fall');
 assert(Boolean(fall), "today's fall must still produce the safety finding");
