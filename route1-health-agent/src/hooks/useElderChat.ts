@@ -127,6 +127,10 @@ function isCurrentReassurance(text: string): boolean {
   return /^(?:我)?(?:现在)?(?:感觉)?(?:没事|没什么事|没什么事情|还好|挺好的)[。！!,.，]*$/.test(text.trim());
 }
 
+export function shouldCommitElderTurn(turnId: number, latestTurnId: number): boolean {
+  return turnId === latestTurnId;
+}
+
 export function useElderChat({
   familySharing,
   events,
@@ -202,7 +206,7 @@ export function useElderChat({
       );
     }
 
-    if (turnId !== latestTurnRef.current) return;
+    if (!shouldCommitElderTurn(turnId, latestTurnRef.current)) return;
 
     let familyAcknowledgement = '';
     if (familyClaims.length > 0 && intent !== 'no_record') {
@@ -218,7 +222,7 @@ export function useElderChat({
       return;
     }
 
-    if (turnId !== latestTurnRef.current) return;
+    if (!shouldCommitElderTurn(turnId, latestTurnRef.current)) return;
 
     if (understanding.correction) {
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
