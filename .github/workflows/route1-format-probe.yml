@@ -1,0 +1,26 @@
+name: route1-format-probe
+
+on:
+  push:
+    branches:
+      - 'route1-security-hardening-2026-09-09'
+
+permissions:
+  contents: read
+
+jobs:
+  format-probe:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Format and print diff
+        run: |
+          npx --yes prettier@3.5.3 --write .
+          git diff -- .
