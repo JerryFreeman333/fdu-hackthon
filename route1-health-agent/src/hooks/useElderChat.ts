@@ -93,33 +93,31 @@ function shouldPersistFamilyClaim(
   );
 }
 
-function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
-  if (priorTags.length === 0) return events;
-  let removed = false;
-  const next = [...events].reverse().filter((event) => {
-    if (removed || event.source !== 'chat') return true;
-    if (event.type === 'observation' && event.observation.tags.some((tag) => priorTags.includes(tag))) {
-      removed = true;
-      return false;
-    }
-    return true;
-  });
-  return next.reverse();
+function claimIdForMessage(text: string, claimIndex: number): string {
+  let hash = 2166136261;
+  const input = `${text.trim()}#${claimIndex}`;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `claim-${(hash >>> 0).toString(16)}`;
 }
 
-function removeLatestCorrectedFamilyEvents(
-  events: FamilyHealthEvent[],
-  priorTags: string[],
-  priorFamilySubjects: FamilySubject[],
-): FamilyHealthEvent[] {
-  if (priorTags.length === 0 || priorFamilySubjects.length === 0) return events;
-  const familySubjects = new Set(priorFamilySubjects);
-  const index = [...events]
-    .reverse()
-    .findIndex((event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)));
-  if (index === -1) return events;
-  const actualIndex = events.length - 1 - index;
-  return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
+function removeCorrectedChatEvents(events: HealthEvent[], claimIds: string[]): HealthEvent[] {
+  if (claimIds.length === 0) return events;
+  const ids = new Set(claimIds);
+  return events.filter((event) => {
+    if (event.source !== 'chat') return true;
+    if (event.type === 'observation') return !ids.has(event.observation.claimId ?? '');
+    if (event.type === 'measurement') return !ids.has(event.measurement.claimId ?? '');
+    return true;
+  });
+}
+
+function removeCorrectedFamilyEvents(events: FamilyHealthEvent[], claimIds: string[]): FamilyHealthEvent[] {
+  if (claimIds.length === 0) return events;
+  const ids = new Set(claimIds);
+  return events.filter((event) => !ids.has(event.claimId ?? ''));
 }
 
 function isCurrentReassurance(text: string): boolean {
@@ -214,21 +212,27 @@ export function useElderChat({
 
     if (understanding.correction) {
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
-      const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
-      const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects = previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
-      if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
-      if (tagsToCorrect.length > 0) {
-        setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
+      if (previousElder) {
+        const previousInput = understandElderInput(previousElder.text, TODAY, chat);
+        const claimIds = previousInput.claims.map((_claim, claimIndex) => claimIdForMessage(previousElder.text, claimIndex));
+        setEvents((current) => removeCorrectedChatEvents(current, claimIds));
+        setFamilyEvents((current) => removeCorrectedFamilyEvents(current, claimIds));
+        if (claimIds.length > 0) {
+          showToast('已按刚才那句话的事实整体撤销，包括相关数值和家属记录。');
+        } else {
+          showToast('已收到更正；上一条内容没有可自动撤销的健康事实。');
+        }
       }
     }
 
     const receivedAt = localIsoTimestamp();
 
     if (familyClaims.length > 0) {
-      const incomingFamilyEvents = familyClaims.map(
-        (claim, claimIndex): FamilyHealthEvent => ({
-          id: `family-live-${Date.now()}-${claimIndex}`,
+      const incomingFamilyEvents = familyClaims.map((claim): FamilyHealthEvent => {
+        const claimIndex = understanding.claims.indexOf(claim);
+        const claimId = claimIdForMessage(text, claimIndex);
+        return {
+          id: `family-live-${claimId}`,
           timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
           source: 'chat',
           subject: claim.subject,
@@ -238,8 +242,9 @@ export function useElderChat({
           status: claim.status,
           visibility,
           shareMode,
-        }),
-      );
+          claimId,
+        };
+      });
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
     }
@@ -278,25 +283,27 @@ export function useElderChat({
     }
 
     const incomingEvents: HealthEvent[] = [];
-    for (let claimIndex = 0; claimIndex < acceptedClaims.length; claimIndex += 1) {
-      const claim = acceptedClaims[claimIndex];
+    for (const claim of acceptedClaims) {
       if (!shouldPersistClaim(claim)) continue;
+      const claimIndex = understanding.claims.indexOf(claim);
+      const claimId = claimIdForMessage(text, claimIndex);
       const extractedValues = extractHealthValues(claim.text);
       const eventDate = claim.eventDate ?? TODAY;
       incomingEvents.push(
         observationToEvent({
-          id: `obs-live-${Date.now()}-${claimIndex}`,
+          id: `obs-live-${claimId}`,
           date: eventDate,
           source: 'chat',
           text: claim.text,
           tags: claim.tags,
           visibility,
+          claimId,
         }),
       );
       for (const extracted of extractedValues) {
         incomingEvents.push(
           measurementToEvent({
-            id: `chat-value-${Date.now()}-${claimIndex}-${extracted.metric}`,
+            id: `chat-value-${claimId}-${extracted.metric}`,
             timestamp: `${eventDate}T12:00:00`,
             metric: extracted.metric,
             value: extracted.value,
@@ -304,6 +311,7 @@ export function useElderChat({
             source: 'chat',
             confidence: 0.9,
             visibility,
+            claimId,
             metadata: {
               sourceText: extracted.sourceText,
               extraction: 'rule',
