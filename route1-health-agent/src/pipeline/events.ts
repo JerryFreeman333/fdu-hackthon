@@ -61,7 +61,7 @@ export function observationToEvent(observation: Observation): ObservationEvent {
   return {
     id: `observation:${observation.id}`,
     type: 'observation',
-    timestamp: `${observation.date}T12:00:00`,
+    timestamp: observation.recordedAt ?? `${observation.date}T12:00:00`,
     source: observation.source,
     observation,
   };
@@ -130,7 +130,7 @@ export function isDuplicateChatHealthEvent(current: HealthEvent, incoming: Healt
 export function mergeHealthEvents(...sets: HealthEvent[][]): HealthEvent[] {
   const byId = new Map<string, HealthEvent>();
   for (const set of sets) for (const event of set) byId.set(event.id, event);
-  return [...byId.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+  return [...byId.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 export function appendHealthEvents(current: HealthEvent[], incoming: HealthEvent[]): HealthEvent[] {
