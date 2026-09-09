@@ -16,7 +16,6 @@ const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
 
-
 async function hasRealModel(): Promise<boolean> {
   try {
     const res = await fetch(DEMO_SPLAT_URL, { method: 'HEAD' });
@@ -47,6 +46,8 @@ async function main() {
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
+  let rescanInFlight = false;
+  let rescanGeneration = 0;
 
   const badge = document.getElementById('scene-badge')!;
   badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
@@ -153,11 +154,19 @@ async function main() {
   let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void };
 
   async function handleRescanFiles(files: File[]): Promise<void> {
+    if (rescanInFlight) {
+      setHint('复扫正在进行，本次不会重复提交。');
+      return;
+    }
+
     const input = prepareRescanFiles(files);
     if (!input) {
       setHint('没有识别到支持的 JPG/PNG/WebP/HEIC/HEIF 图片或 MP4/WebM/MOV/M4V 视频。');
       return;
     }
+
+    rescanInFlight = true;
+    const generation = ++rescanGeneration;
     lastRescanInput = input;
     const batch = input.batch;
     setHint(`已选择 ${batch.files.length} 个复扫文件。正在提交到 Home Twin…`);
@@ -168,12 +177,17 @@ async function main() {
         if (!result.jobId) throw new Error('复扫服务未返回 jobId');
         result = await waitForRescanJob(result.jobId, { endpoint: RESCAN_ENDPOINT, maxAttempts: 90, intervalMs: 1000 });
       }
+      if (generation !== rescanGeneration) {
+        throw new Error('复扫响应已过期，拒绝覆盖当前风险/行动状态');
+      }
       if (result.status === 'failed') {
         throw new Error(result.message ?? '复扫处理失败');
       }
       if (result.actionPlan) {
         const parsed = parseHomeSafetyActionPlan(result.actionPlan);
-        if (!parsed) throw new Error('复扫行动计划缺少完整 provenance，拒绝自动更新风险状态');
+        if (!parsed?.provenance?.current) {
+          throw new Error('复扫行动计划缺少当前 provenance，拒绝自动更新风险状态');
+        }
         currentActionPlan = parsed;
       } else {
         throw new Error('复扫服务未返回可验证的行动计划，拒绝仅凭 riskId 自动关闭历史风险');
@@ -186,10 +200,15 @@ async function main() {
     } finally {
       revokeRescanPreview(lastRescanInput);
       lastRescanInput = null;
+      rescanInFlight = false;
     }
   }
 
   function onRescan(): void {
+    if (rescanInFlight) {
+      setHint('复扫正在进行，请等待当前复扫完成。');
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime,video/x-m4v';
