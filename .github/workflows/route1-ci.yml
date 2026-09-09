@@ -211,4 +211,4 @@ jobs:
         run: npm run blackbox
         working-directory: route1-health-agent/p0-blackbox
       - name: Final gate marker
-        run: echo 'Route 1 final 7-gate verification completed on this runner. Agent API restored and gait synonym included.'
+        run: echo 'Route 1 final 7-gate verification completed on this runner.'
