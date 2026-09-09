@@ -186,34 +186,43 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
-  const claimOneTimeShares = useCallback(async (): Promise<void> => {
-    const locks = getWebLocks();
-    if (!locks) {
-      // Fail closed on browsers without cross-tab atomic locking support.
-      return;
-    }
+  const claimOneTimeShares = useCallback(
+    async (candidateFindingIds: string[], candidateFamilyEventIds: string[]): Promise<void> => {
+      const locks = getWebLocks();
+      if (!locks) {
+        // Fail closed on browsers without cross-tab atomic locking support.
+        return;
+      }
 
-    try {
-      await locks.request('ankang-route1-one-time-share-claim', async () => {
-        const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY);
-        const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY);
-        if (findingIds.length === 0 && familyEventIds.length === 0) return;
+      try {
+        await locks.request('ankang-route1-one-time-share-claim', async () => {
+          const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY).filter((id) => candidateFindingIds.includes(id));
+          const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY).filter((id) =>
+            candidateFamilyEventIds.includes(id),
+          );
+          if (findingIds.length === 0 && familyEventIds.length === 0) return;
 
-        window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify([]));
-        window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify([]));
-        setClaimedOneTimeFindingIds((current) =>
-          [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-        );
-        setClaimedOneTimeFamilyEventIds((current) =>
-          [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-        );
-        setSharedFindingIds([]);
-        setSharedFamilyEventIds([]);
-      });
-    } catch {
-      // Lock/Storage failure must not turn into a visible one-time share.
-    }
-  }, []);
+          const remainingFindingIds = loadStringIds(SHARED_FINDING_IDS_KEY).filter((id) => !findingIds.includes(id));
+          const remainingFamilyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY).filter(
+            (id) => !familyEventIds.includes(id),
+          );
+          window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify(remainingFindingIds));
+          window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify(remainingFamilyEventIds));
+          setClaimedOneTimeFindingIds((current) =>
+            [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+          );
+          setClaimedOneTimeFamilyEventIds((current) =>
+            [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+          );
+          setSharedFindingIds(remainingFindingIds);
+          setSharedFamilyEventIds(remainingFamilyEventIds);
+        });
+      } catch {
+        // Lock/Storage failure must not turn into a visible one-time share.
+      }
+    },
+    [],
+  );
 
   return {
     familySharing,
