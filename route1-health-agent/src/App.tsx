@@ -89,6 +89,8 @@ export default function App() {
     shareFindingIds,
     shareFamilyEventIds,
     claimOneTimeShares,
+    consumeSharedFindingIds,
+    consumeSharedFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
@@ -261,6 +263,8 @@ export default function App() {
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}
+          onConsumeFindingShare={consumeSharedFindingIds}
+          onConsumeFamilyEventShare={consumeSharedFamilyEventIds}
           view={familyView}
         />
       </main>
