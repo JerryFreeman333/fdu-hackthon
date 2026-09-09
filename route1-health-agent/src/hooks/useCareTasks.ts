@@ -6,8 +6,6 @@ import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../e
 const LEGACY_TASK_KEY = 'ankang-route1-tasks-v2';
 let sessionTasks: CareTask[] | null = null;
 
-type StoredTask = CareTask;
-
 function cloneTasks(tasks: CareTask[]): CareTask[] {
   return tasks.map((task) => ({ ...task }));
 }
