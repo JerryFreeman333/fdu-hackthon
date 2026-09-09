@@ -8,9 +8,9 @@ let sessionSnapshot: HealthRecordSnapshot = EMPTY;
 
 function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
   return {
-    events: snapshot.events.map((event) => ({ ...event } as HealthEvent)),
-    familyEvents: snapshot.familyEvents.map((event) => ({ ...event } as FamilyHealthEvent)),
-    chat: snapshot.chat.map((message) => ({ ...message } as ChatMessage)),
+    events: snapshot.events.map((event) => ({ ...event }) as HealthEvent),
+    familyEvents: snapshot.familyEvents.map((event) => ({ ...event }) as FamilyHealthEvent),
+    chat: snapshot.chat.map((message) => ({ ...message }) as ChatMessage),
   };
 }
 
