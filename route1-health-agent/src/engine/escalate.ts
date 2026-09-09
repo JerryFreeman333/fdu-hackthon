@@ -21,7 +21,7 @@ export function collectFamilyNotifications(
       (finding) =>
         FAMILY_LEVELS.includes(finding.severity) &&
         finding.familyMessage &&
-        finding.familyEligible !== false &&
+        finding.familyEligible === true &&
         (familySharing === 'granted' || sharedIds.has(finding.id)),
     )
     .map((finding) => ({
