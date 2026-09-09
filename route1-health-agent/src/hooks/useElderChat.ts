@@ -333,7 +333,7 @@ export function useElderChat({
         msg('elder', text, now, persisted),
         msg('agent', finalFamilyText, now, persisted),
       ]);
-      showToast(finalAgentText.replace(/\n/g, ' '));
+      showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
 
