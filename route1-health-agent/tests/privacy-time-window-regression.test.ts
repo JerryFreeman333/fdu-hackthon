@@ -24,11 +24,17 @@ const currentShared: Observation = {
   visibility: 'family_ok',
 };
 
-const events: HealthEvent[] = [observationToEvent(oldPrivate), observationToEvent(currentShared)];
+const events: HealthEvent[] = [
+  observationToEvent(oldPrivate),
+  observationToEvent(currentShared),
+];
 const findings = runDetection(events, '2026-09-08');
 const fatigueFinding = findings.find((finding) => finding.ruleId === 'symptom.fatigue.reminder');
 
 assert(fatigueFinding, 'current shared fatigue should still produce its own reminder finding');
-assert(fatigueFinding.familyEligible === true, 'an old private fatigue observation must not suppress a newer shared finding');
+assert(
+  fatigueFinding.familyEligible === true,
+  'an old private fatigue observation must not suppress a newer shared finding',
+);
 
 console.log('PASS: private observation privacy is scoped to its own finding evidence');
