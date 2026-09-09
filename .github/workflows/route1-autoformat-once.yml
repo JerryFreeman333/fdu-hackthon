@@ -30,12 +30,12 @@ jobs:
         run: npx --yes prettier@3.5.3 --write .
       - name: Commit formatting changes
         run: |
-          if git diff --quiet -- route1-health-agent; then
+          if git diff --quiet -- .; then
             echo "No formatting changes"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add route1-health-agent
+          git add .
           git commit -m "style(route1): apply Prettier formatting"
           git push
