@@ -41,7 +41,12 @@ def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, An
 
     for action in actions:
         risk_id = action.get('riskId')
-        if risk_id and risk_id not in latest and action.get('status') not in {'completed', 'resolved'}:
+        if (
+            risk_id
+            and risk_id not in latest
+            and action.get('requiresRescan') is True
+            and action.get('status') != 'resolved'
+        ):
             action['status'] = 'resolved'
             action['resolvedBy'] = 'rescan'
 
@@ -54,7 +59,7 @@ def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, An
     result['type'] = 'person-home-action-plan'
     result['privacyScope'] = latest_risk.get('privacyScope', previous.get('privacyScope', 'family_ok'))
     result['actions'] = actions
-    result['status'] = 'open' if any(a.get('status') in {'open', 'in_progress'} for a in actions) else 'clear'
+    result['status'] = 'open' if any(a.get('status') != 'resolved' for a in actions) else 'clear'
     return result
 
 
