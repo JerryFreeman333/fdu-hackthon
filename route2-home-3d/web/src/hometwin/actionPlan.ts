@@ -1,5 +1,15 @@
 export type HomeActionStatus = 'open' | 'in_progress' | 'completed' | 'resolved';
 
+export interface HomePlanProvenance {
+  homeId: string;
+  homeVersion: number;
+  riskRuleVersion: string;
+  projectionAsOf?: string;
+  generatedAt?: string;
+  captureId: string;
+  reconstructionId: string;
+}
+
 export interface HomeSafetyAction {
   id: string;
   riskId: string;
@@ -9,6 +19,8 @@ export interface HomeSafetyAction {
   status: HomeActionStatus;
   requiresRescan: boolean;
   closureRule: { type: 'risk-disappears-after-rescan'; riskId: string };
+  provenance?: HomePlanProvenance & { riskId: string };
+  resolvedAtProvenance?: HomePlanProvenance & { riskId: string };
 }
 
 export interface HomeSafetyActionPlan {
@@ -17,7 +29,36 @@ export interface HomeSafetyActionPlan {
   status: 'open' | 'clear';
   privacyScope: 'private' | 'family_ok';
   actions: HomeSafetyAction[];
+  provenance?: { current: HomePlanProvenance; previous: HomePlanProvenance | null };
   principle?: string;
+}
+
+function parseProvenance(input: unknown): HomePlanProvenance | null {
+  if (!input || typeof input !== 'object') return null;
+  const value = input as Record<string, unknown>;
+  if (
+    typeof value.homeId !== 'string' ||
+    !value.homeId.trim() ||
+    !Number.isInteger(value.homeVersion) ||
+    value.homeVersion < 1 ||
+    typeof value.riskRuleVersion !== 'string' ||
+    !value.riskRuleVersion.trim() ||
+    typeof value.captureId !== 'string' ||
+    !value.captureId.trim() ||
+    typeof value.reconstructionId !== 'string' ||
+    !value.reconstructionId.trim()
+  ) {
+    return null;
+  }
+  return {
+    homeId: value.homeId,
+    homeVersion: value.homeVersion,
+    riskRuleVersion: value.riskRuleVersion,
+    projectionAsOf: typeof value.projectionAsOf === 'string' ? value.projectionAsOf : undefined,
+    generatedAt: typeof value.generatedAt === 'string' ? value.generatedAt : undefined,
+    captureId: value.captureId,
+    reconstructionId: value.reconstructionId,
+  };
 }
 
 export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan | null {
@@ -48,6 +89,7 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
     ) {
       continue;
     }
+    const actionProvenance = a.provenance ? parseProvenance(a.provenance) : null;
     actions.push({
       id: a.id,
       riskId: a.riskId,
@@ -57,7 +99,18 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
       status: a.status as HomeActionStatus,
       requiresRescan: a.requiresRescan,
       closureRule: { type: 'risk-disappears-after-rescan', riskId: c.riskId },
+      provenance: actionProvenance ? { ...actionProvenance, riskId: a.riskId } : undefined,
     });
+  }
+
+  const rawPlanProvenance = value.provenance;
+  let planProvenance: HomeSafetyActionPlan['provenance'];
+  if (rawPlanProvenance && typeof rawPlanProvenance === 'object') {
+    const p = rawPlanProvenance as Record<string, unknown>;
+    const current = parseProvenance(p.current);
+    const previous = p.previous === null ? null : parseProvenance(p.previous);
+    if (!current || (p.previous !== null && !previous)) return null;
+    planProvenance = { current, previous: previous ?? null };
   }
 
   return {
@@ -66,18 +119,24 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
     status: value.status,
     privacyScope: value.privacyScope,
     actions,
+    provenance: planProvenance,
     principle: typeof value.principle === 'string' ? value.principle : undefined,
   };
 }
 
 export function applyRescan(plan: HomeSafetyActionPlan, activeRiskIds: Iterable<string>): HomeSafetyActionPlan {
+  if (!plan.provenance?.current) {
+    throw new Error('复扫结果缺少完整 provenance，禁止自动关闭历史风险。');
+  }
   const active = new Set(activeRiskIds);
   const actions = plan.actions.map((action) => {
-    // A user completing the action is evidence of attempted remediation, not proof
-    // that the environmental risk is gone. Only a new rescan can move it to resolved.
     if (action.status === 'resolved') return action;
     if (action.requiresRescan && !active.has(action.riskId)) {
-      return { ...action, status: 'resolved' as const };
+      return {
+        ...action,
+        status: 'resolved' as const,
+        resolvedAtProvenance: { ...plan.provenance!.current, riskId: action.riskId },
+      };
     }
     return action;
   });
@@ -85,6 +144,5 @@ export function applyRescan(plan: HomeSafetyActionPlan, activeRiskIds: Iterable<
   return {
     ...plan,
     status: actions.some((action) => action.status !== 'resolved') ? 'open' : 'clear',
-    actions,
   };
 }
