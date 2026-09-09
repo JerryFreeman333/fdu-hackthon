@@ -54,10 +54,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
   const state = overallMessage(props.notifications);
-  const familyFindings = familyVisibleFindings(props.findings);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
+  const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
-  const activeTasks = familyVisibleTasks(props.tasks, familyFindings).slice(0, 3);
+  const activeTasks = canViewSharedDetail ? familyVisibleTasks(props.tasks, familyFindings).slice(0, 3) : [];
   const openHomeActions = canViewSharedDetail
     ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
     : [];
