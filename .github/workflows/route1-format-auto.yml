@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - 'route1-security-hardening-2026-09-09'
-    paths:
-      - '.github/workflows/route1-format-auto.yml'
 
 permissions:
   contents: write
@@ -32,7 +30,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # One-time server-side formatting pass; this workflow will be removed after the pass.
       - name: Format with repository Prettier
         run: npx --yes prettier@3.5.3 --write .
 
