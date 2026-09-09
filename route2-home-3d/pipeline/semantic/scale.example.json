@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "metresPerUnit": 1.0,
+  "source": "manual-measured-reference",
+  "confidence": 0.0,
+  "note": "Replace 1.0 with a measured metres-per-COLMAP-unit value. Do not commit private room measurements if the dataset is sensitive."
+}
