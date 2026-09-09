@@ -16,15 +16,26 @@ function runCase(name: string, fn: () => void) {
 runCase('口语化“我觉得他……”不会归到本人', () => {
   const input = understandElderInput('我觉得他喘得厉害', TODAY);
   assert(input.claims.length === 1, '应识别出一条关于他人的健康事实');
-  assert(input.claims[0].subject === 'family_other', '“他”应优先于开头的“我”确定主体');
+  assert(input.claims[0].subject === 'unknown', '没有明确家属身份时应保守标为 unknown');
   assert(acceptedSelfClaims(input).length === 0, '他人的喘不能进入本人健康事件流');
+  assert(Boolean(input.clarificationQuestion), '身份不明确时必须先澄清');
+});
+
+runCase('已有明确家属上下文时第三人称可以延续主体', () => {
+  const messages = [
+    { id: 'm1', role: 'elder' as const, text: '我爸今天走路不稳', time: '09-08 09:00' },
+  ];
+  const input = understandElderInput('我觉得他喘得厉害', TODAY, messages);
+  assert(input.claims.length === 1, '应识别第三人称事实');
+  assert(input.claims[0].subject === 'father', '应继承上一条明确家属主体');
+  assert(acceptedSelfClaims(input).length === 0, '家属事实不能进入本人健康事件流');
 });
 
 runCase('口语化“我看他……”不会丢掉跌倒事实', () => {
   const input = understandElderInput('我看他今天走路不太稳，摔了一下', TODAY);
   assert(input.claims.length === 2, '逗号后的跌倒事实也应独立提取');
-  assert(input.claims[0].subject === 'family_other', '第一条应属于家属');
-  assert(input.claims[1].subject === 'family_other', '第二条无主语时应延续上一条家属主体');
+  assert(input.claims[0].subject === 'unknown', '没有明确家属身份时第一条应保持 unknown');
+  assert(input.claims[1].subject === 'unknown', '第二条无主语时也应保持 unknown');
   assert(input.claims[1].tags.includes('fall'), '第二条应保留跌倒标签');
   assert(acceptedSelfClaims(input).length === 0, '家属跌倒不能进入老人本人档案');
 });
