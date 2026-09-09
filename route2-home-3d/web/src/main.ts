@@ -4,6 +4,8 @@ import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from './ty
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
 import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
+import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
+import { submitRescanBatch } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
 import { buildDemoRoom } from './scene/demoRoom';
 import { createHazardMarkers, createItemRings } from './scene/markers';
@@ -13,6 +15,7 @@ import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_RISK_URL = 'data/family-action-rescan.json';
+const RESCAN_ENDPOINT = '/api/route2/rescan';
 
 type RiskProjection = {
   schemaVersion: 1;
@@ -43,6 +46,10 @@ async function loadJson<T>(url: string): Promise<T | null> {
   }
 }
 
+function latestRiskIdsFromResult(result: RiskProjection | null): string[] {
+  return result?.risks.map((risk) => risk.id) ?? [];
+}
+
 async function main() {
   const dataResponse = await fetch('data/hazards.json');
   if (!dataResponse.ok) throw new Error(`无法读取场景数据: HTTP ${dataResponse.status}`);
@@ -52,6 +59,7 @@ async function main() {
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
   const rescanRisk = await loadJson<RiskProjection>(RESCAN_RISK_URL);
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
+  let lastRescanInput: RescanInputResult | null = null;
 
   const badge = document.getElementById('scene-badge')!;
   badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
@@ -68,28 +76,30 @@ async function main() {
   if (mode === 'demo') {
     const room = buildDemoRoom();
     app.scene.add(room.group);
-    app.initDemo(on => room.setNight(on));
+    app.initDemo((on) => room.setNight(on));
     setHint('演示模式：危险点、动线和物品均来自预置场景数据；真实模型需要完成空间标定。');
   } else {
     setHint('正在加载真实高斯泼溅模型…');
     await app.initReal(DEMO_SPLAT_URL);
-    const realHazardCount = data.hazards.filter(h => h.realPos).length;
-    const realPathCount = data.paths.filter(p => p.realPoints && p.realPoints.length >= 2).length;
-    const realItemCount = data.items.filter(item => item.realPos).length;
+    const realHazardCount = data.hazards.filter((h) => h.realPos).length;
+    const realPathCount = data.paths.filter((p) => p.realPoints && p.realPoints.length >= 2).length;
+    const realItemCount = data.items.filter((item) => item.realPos).length;
     setHint(`真实模型已加载 · 已标定危险点 ${realHazardCount}/${data.hazards.length} · 动线 ${realPathCount}/${data.paths.length} · 物品 ${realItemCount}/${data.items.length}`);
   }
 
-  const markers = createHazardMarkers(data.hazards, mode, cb => app.onUpdate(cb));
+  const markers = createHazardMarkers(data.hazards, mode, (cb) => app.onUpdate(cb));
   app.scene.add(markers.group);
 
-  const rings = createItemRings(cb => app.onUpdate(cb));
+  const rings = createItemRings((cb) => app.onUpdate(cb));
   app.scene.add(rings.group);
 
   const clickables = markers.objects;
   const domEl = () => (app as any).renderer?.domElement ?? (app as any).gsViewer?.renderer?.domElement;
   let downXY: [number, number] | null = null;
-  window.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; });
-  window.addEventListener('pointerup', e => {
+  window.addEventListener('pointerdown', (e) => {
+    downXY = [e.clientX, e.clientY];
+  });
+  window.addEventListener('pointerup', (e) => {
     if (!downXY) return;
     const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]);
     downXY = null;
@@ -99,7 +109,7 @@ async function main() {
     if (!hit) return;
     const id = markers.idOf(hit.object);
     if (!id) return;
-    const h = data.hazards.find(x => x.id === id);
+    const h = data.hazards.find((x) => x.id === id);
     if (h) openHazard(h);
   });
 
@@ -111,13 +121,16 @@ async function main() {
   }
 
   const pathVisuals = data.paths
-    .filter(p => mode === 'demo' || (p.realPoints && p.realPoints.length >= 2))
-    .map(p => createPathVisual(p, mode, cb => app.onUpdate(cb)));
-  pathVisuals.forEach(v => { v.group.visible = false; app.scene.add(v.group); });
+    .filter((p) => mode === 'demo' || (p.realPoints && p.realPoints.length >= 2))
+    .map((p) => createPathVisual(p, mode, (cb) => app.onUpdate(cb)));
+  pathVisuals.forEach((v) => {
+    v.group.visible = false;
+    app.scene.add(v.group);
+  });
   let dangerZones: THREE.Group | null = null;
 
   function selectPath(p: PathItem | null) {
-    pathVisuals.forEach(v => v.hide());
+    pathVisuals.forEach((v) => v.hide());
     dangerZones?.removeFromParent();
     dangerZones = null;
     hideHazardCard();
@@ -127,7 +140,7 @@ async function main() {
       setHint(mode === 'demo' ? '演示模式：危险点、动线和物品均来自预置场景数据。' : '真实模型已加载；请先完成路线标定。');
       return;
     }
-    const v = pathVisuals.find(x => x.item.id === p.id);
+    const v = pathVisuals.find((x) => x.item.id === p.id);
     if (!v) {
       setHint(`「${p.title}」尚未完成真实空间标定，当前不会伪造路线。`);
       return;
@@ -136,34 +149,70 @@ async function main() {
     app.setNight(p.mode === 'night');
     markers.filter(new Set(p.hazardIds));
     const posMap = new Map<string, THREE.Vector3>();
-    p.hazardIds.forEach(id => { const q = markers.positionOf(id); if (q) posMap.set(id, q); });
+    p.hazardIds.forEach((id) => {
+      const q = markers.positionOf(id);
+      if (q) posMap.set(id, q);
+    });
     const zones = highlightDangerZones(p, posMap, mode);
     if (zones) {
       dangerZones = zones;
       app.scene.add(zones);
     }
-    const names = p.hazardIds.map(id => data.hazards.find(h => h.id === id)?.title).filter(Boolean).join('、');
+    const names = p.hazardIds.map((id) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
     setHint(`${p.title} — 途经风险: ${names || '暂无已标注风险'}`);
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
 
   let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void };
-  const onRescan = async () => {
-    if (!currentActionPlan) return;
-    if (!rescanRisk) {
-      setHint('当前没有可用的复扫风险证据。真实环境应由新一轮 Home Twin 重新计算后关闭任务。');
+
+  async function handleRescanFiles(files: File[]): Promise<void> {
+    const input = prepareRescanFiles(files);
+    if (!input) {
+      setHint('没有识别到支持的 JPG/PNG/WebP/HEIC/HEIF 图片或 MP4/WebM/MOV/M4V 视频。');
       return;
     }
-    const activeRiskIds = rescanRisk.risks.map(risk => risk.id);
-    currentActionPlan = applyRescan(currentActionPlan, activeRiskIds);
-    panelController.updateActionPlan(currentActionPlan);
-
-    const resolved = currentActionPlan.actions.filter(a => a.status === 'resolved');
-    if (resolved.length) {
-      const titles = resolved.map(a => a.title).join('、');
-      setHint(`复扫完成：${titles} 对应风险已消失，任务自动关闭；仍存在的风险保持开放。`);
+    lastRescanInput = input;
+    const batch = input.batch;
+    setHint(`已选择 ${batch.files.length} 个复扫文件。正在提交到 Home Twin…`);
+    try {
+      const result = await submitRescanBatch(batch, files, { endpoint: RESCAN_ENDPOINT });
+      if (result.actionPlan) {
+        const parsed = parseHomeSafetyActionPlan(result.actionPlan);
+        if (parsed) currentActionPlan = parsed;
+      } else if (result.latestRiskIds && currentActionPlan) {
+        currentActionPlan = applyRescan(currentActionPlan, result.latestRiskIds);
+      }
+      panelController.updateActionPlan(currentActionPlan);
+      setHint(result.status === 'ready'
+        ? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`
+        : `复扫已提交：${result.jobId ?? batch.id}，等待 Home Twin 重建。`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (rescanRisk && currentActionPlan) {
+        setHint(`${detail}；未使用预置复扫结果，因此不会伪造“风险已消失”。`);
+      } else {
+        setHint(`${detail}；本次上传未改变 Home Twin 状态。`);
+      }
+    } finally {
+      revokeRescanPreview(lastRescanInput);
+      lastRescanInput = null;
     }
-  };
+  }
+
+  function onRescan(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime,video/x-m4v';
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.append(input);
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files ?? []);
+      input.remove();
+      void handleRescanFiles(files);
+    });
+    input.click();
+  }
 
   panelController = initPanel(data, {
     onSelectHazard: openHazard,
@@ -189,7 +238,7 @@ async function main() {
   });
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   const message = err instanceof Error ? err.message : String(err);
   setHint('初始化失败: ' + message);
