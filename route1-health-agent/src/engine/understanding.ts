@@ -51,13 +51,13 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return 'family_other';
+    return 'unknown';
   }
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'family_other';
+    return unique.length > 1 ? 'unknown' : 'unknown';
   }
 
   return null;
@@ -78,8 +78,10 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
-  if (lastKnownSubject) return lastKnownSubject;
+  // 如果上一分句已经留下未确认的第三人称指向，后续省略主语的事实也必须继续保持未确认，
+  // 不能因为当前分句没有“他/她”字样就错误回退到老人本人。
+  const lastSubject = [...priorSubjects].reverse().find((subject) => subject !== 'self');
+  if (lastSubject) return lastSubject;
 
   return 'self';
 }
@@ -286,8 +288,8 @@ export function acceptedSelfClaims(input: StructuredElderInput): StructuredClaim
     (claim) =>
       claim.subject === 'self' &&
       claim.status === 'occurred' &&
-      (claim.tags.length > 0 || claim.hasHealthValue) &&
-      claim.eventDate !== null,
+      claim.eventDate !== null &&
+      (claim.tags.length > 0 || claim.hasHealthValue),
   );
 }
 
