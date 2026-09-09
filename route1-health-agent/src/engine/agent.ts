@@ -117,7 +117,8 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('neuroChange')) {
     return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ??
+      '先别走动，立即联系家里人并寻求急救。'
     );
   }
   if (newTags.includes('fall')) {
@@ -296,47 +297,61 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 const SYSTEM_PROMPT =
   '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
 const UNSAFE_REPLY_PATTERNS = [
-  /(^|[。！？\s])(诊断为|确诊为)/,
-  /(一定是|肯定是).{0,8}(病|疾病|癌|中风)/,
-  /(停药|加倍|加量|自行调整).{0,8}(药|剂量)/,
-  /(不要去医院|不用去医院|没必要去医院)/,
-  /(保证|绝对不会|一定不会)/,
+  /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
+  /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
+  /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
 ];
 
-function normalizeAgentReply(text: string, fallback: string): string {
-  const normalized = text.trim().replace(/\s+$/g, '');
-  if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return fallback;
-  if (UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized))) return fallback;
-  return normalized;
+export function isSafeAgentReply(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return false;
+  return !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export async function generateAgentReply(
-  systemPrompt: string,
-  userText: string,
+  elderText: string,
+  newTags: SymptomTag[],
   findings: Finding[],
+  isNewFall: boolean,
   context?: AgentContext,
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
-  const parsed = parseElderInput(userText);
-  const fallback = buildRuleBasedReply(parsed.tags, findings, parsed.tags.includes('fall'), context);
+  const safetyFinding = context?.priorityFindings.find(
+    (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
+  );
+  const safetyGuard = safetyFinding
+    ? `当前最高风险等级为 ${safetyFinding.severity}，不要自行提高或降低等级。`
+    : '当前没有可供外部模型使用的更高等级安全信号。';
+  const systemPrompt = `${SYSTEM_PROMPT}\n${safetyGuard}\n已识别标签：${newTags.join(', ') || '无'}。`;
+
   try {
-    const result = await adapter.complete(systemPrompt, userText, context);
-    const modelTags = result.tags.filter((tag) => SYMPTOM_TAG_SET.has(tag));
-    const mergedTags = [...new Set([...parsed.tags, ...modelTags])];
-    const candidate = result.text.trim() || fallback;
-    return normalizeAgentReply(
-      candidate,
-      buildRuleBasedReply(mergedTags, findings, parsed.tags.includes('fall'), context),
-    );
+    const completion = await adapter.complete(systemPrompt, elderText, context);
+    if (isSafeAgentReply(completion.text)) return completion.text.trim();
+    return buildRuleBasedReply(newTags, findings, isNewFall, context);
   } catch {
-    return fallback;
+    return buildRuleBasedReply(newTags, findings, isNewFall, context);
   }
 }
 
-export function getSystemPrompt(): string {
-  return SYSTEM_PROMPT;
+export const QUICK_INPUTS = [
+  '最近腿有点没劲',
+  '最近走路有点喘',
+  '这两天睡不好',
+  '我有点头晕',
+  '药忘记吃了',
+  '刚才摔了一跤',
+];
+
+export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
+  return {
+    id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text,
+    time,
+    persisted,
+  };
 }
 
-export function getSymptomLabels(): Record<SymptomTag, string> {
-  return SYMPTOM_LABELS;
+export function tagLabel(tag: SymptomTag): string {
+  return SYMPTOM_LABELS[tag];
 }
