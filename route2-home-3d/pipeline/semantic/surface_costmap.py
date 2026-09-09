@@ -101,11 +101,20 @@ def make_basis(plane: Plane) -> Basis:
     return Basis(plane.point, u, v, n)
 
 def mark_disk(grid: Grid, u: float, v: float, radius: float, *, blocked=False, cost=0.0) -> None:
-    cx, cy = grid.cell_of(u, v); r = max(0, int(math.ceil(radius/grid.cell)))
-    for y in range(cy-r, cy+r+1):
-        for x in range(cx-r, cx+r+1):
+    """Block/charge every cell whose center lies inside the disk.
+
+    距离必须按连续坐标计算（格心 = min + (i+0.5)*cell），
+    若按格索引差近似会把 disk 中心吸附到格心，产生至多半格的偏差，
+    导致贴近格边界的障碍被漏挡，破坏安全地图的保守性。
+    """
+    r = int(math.ceil(radius / grid.cell)) + 1
+    cx, cy = grid.cell_of(u, v)
+    for y in range(cy - r, cy + r + 1):
+        for x in range(cx - r, cx + r + 1):
             if not grid.inside(x,y): continue
-            d = math.hypot((x-cx)*grid.cell, (y-cy)*grid.cell)
+            gx = grid.min_u + (x + 0.5) * grid.cell
+            gy = grid.min_v + (y + 0.5) * grid.cell
+            d = math.hypot(gx - u, gy - v)
             if d <= radius:
                 i = grid.index(x,y)
                 if blocked: grid.blocked[i] = True
