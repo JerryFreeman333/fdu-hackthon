@@ -23,7 +23,7 @@ interface UseFamilyBindingOptions {
 /**
  * Demo-only family authorization state.
  * Security-sensitive state deliberately lives in React memory and is not restored from localStorage.
- * Health records may remain locally persisted, but role/consent/binding/share grants do not.
+ * Family binding, consent, invite codes, and one-time grants expire with the current browser session.
  */
 export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>('denied');
@@ -35,7 +35,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   const [claimedOneTimeFindingIds, setClaimedOneTimeFindingIds] = useState<string[]>([]);
   const [claimedOneTimeFamilyEventIds, setClaimedOneTimeFamilyEventIds] = useState<string[]>([]);
 
-  function updatePersistentFamilySharing(next: ElderProfile['familySharing']) {
+  function updateFamilySharing(next: ElderProfile['familySharing']) {
     const updatedAt = localIsoTimestamp();
     setFamilySharing(next);
     setConsentUpdatedAt(updatedAt);
@@ -43,7 +43,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   }
 
   function requestFamilyShare() {
-    const updatedAt = updatePersistentFamilySharing('granted');
+    const updatedAt = updateFamilySharing('granted');
     showToast(`已同意在必要时与家属共享。授权记录时间：${updatedAt.slice(0, 10)}`);
   }
 
