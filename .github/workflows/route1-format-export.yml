@@ -1,0 +1,43 @@
+name: route1-format-export
+
+on:
+  push:
+    branches:
+      - route1-security-hardening-2026-09-09
+    paths:
+      - '.github/workflows/route1-format-export.yml'
+      - 'route1-health-agent/**'
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+
+jobs:
+  export-formatted:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Format with repository formatter
+        working-directory: route1-health-agent
+        run: npx --yes prettier@3.5.3 --write .
+      - name: Show changed files
+        run: git -C route1-health-agent diff --name-only
+      - name: Upload formatted Route 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: route1-formatted-${{ github.sha }}
+          path: |
+            route1-health-agent/p0-blackbox/p0-results.json
+            route1-health-agent/p0-blackbox/package.json
+            route1-health-agent/p0-blackbox/run-p0.mjs
+            route1-health-agent/ROUTE1_FINAL_AUDIT.md
+            route1-health-agent/ROUTE1_HUMAN_UI_BLACKBOX_ACCEPTANCE.md
+            route1-health-agent/ROUTE1_P0_EXECUTION_LOG.md
+          if-no-files-found: error
