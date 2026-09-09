@@ -1,5 +1,7 @@
 name: route1-health-agent-ci
 
+# Final verification trigger: this workflow owns the Route 1 build, security, and browser gates.
+
 on:
   push:
     branches:
