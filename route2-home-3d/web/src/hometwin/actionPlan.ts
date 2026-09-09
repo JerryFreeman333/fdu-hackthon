@@ -42,39 +42,24 @@ function parseProvenance(input: unknown): HomePlanProvenance | null {
   const captureId = value.captureId;
   const reconstructionId = value.reconstructionId;
   if (
-    typeof homeId !== 'string' ||
-    !homeId.trim() ||
-    typeof homeVersion !== 'number' ||
-    !Number.isInteger(homeVersion) ||
-    homeVersion < 1 ||
-    typeof riskRuleVersion !== 'string' ||
-    !riskRuleVersion.trim() ||
-    typeof captureId !== 'string' ||
-    !captureId.trim() ||
-    typeof reconstructionId !== 'string' ||
-    !reconstructionId.trim()
-  ) {
-    return null;
-  }
+    typeof homeId !== 'string' || !homeId.trim() ||
+    typeof homeVersion !== 'number' || !Number.isInteger(homeVersion) || homeVersion < 1 ||
+    typeof riskRuleVersion !== 'string' || !riskRuleVersion.trim() ||
+    typeof captureId !== 'string' || !captureId.trim() ||
+    typeof reconstructionId !== 'string' || !reconstructionId.trim()
+  ) return null;
   return {
-    homeId,
-    homeVersion,
-    riskRuleVersion,
+    homeId, homeVersion, riskRuleVersion,
     projectionAsOf: typeof value.projectionAsOf === 'string' ? value.projectionAsOf : undefined,
     generatedAt: typeof value.generatedAt === 'string' ? value.generatedAt : undefined,
-    captureId,
-    reconstructionId,
+    captureId, reconstructionId,
   };
 }
 
 function sameProvenance(a: HomePlanProvenance, b: HomePlanProvenance): boolean {
-  return (
-    a.homeId === b.homeId &&
-    a.homeVersion === b.homeVersion &&
-    a.riskRuleVersion === b.riskRuleVersion &&
-    a.captureId === b.captureId &&
-    a.reconstructionId === b.reconstructionId
-  );
+  return a.homeId === b.homeId && a.homeVersion === b.homeVersion &&
+    a.riskRuleVersion === b.riskRuleVersion && a.captureId === b.captureId &&
+    a.reconstructionId === b.reconstructionId;
 }
 
 export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan | null {
@@ -86,10 +71,9 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
   if (!Array.isArray(value.actions)) return null;
 
   let planProvenance: HomeSafetyActionPlan['provenance'] = undefined;
-  const rawPlanProvenance = value.provenance;
-  if (rawPlanProvenance !== undefined) {
-    if (!rawPlanProvenance || typeof rawPlanProvenance !== 'object') return null;
-    const p = rawPlanProvenance as Record<string, unknown>;
+  if (value.provenance !== undefined) {
+    if (!value.provenance || typeof value.provenance !== 'object') return null;
+    const p = value.provenance as Record<string, unknown>;
     const current = parseProvenance(p.current);
     const previous = p.previous === null ? null : parseProvenance(p.previous);
     if (!current || (p.previous !== null && !previous)) return null;
@@ -104,71 +88,67 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
     if (!closure || typeof closure !== 'object') continue;
     const c = closure as Record<string, unknown>;
     if (
-      typeof a.id !== 'string' ||
-      typeof a.riskId !== 'string' ||
+      typeof a.id !== 'string' || typeof a.riskId !== 'string' ||
       (a.kind !== 'safety_check' && a.kind !== 'observation') ||
-      typeof a.title !== 'string' ||
-      typeof a.description !== 'string' ||
+      typeof a.title !== 'string' || typeof a.description !== 'string' ||
       !['open', 'in_progress', 'completed', 'resolved'].includes(String(a.status)) ||
       typeof a.requiresRescan !== 'boolean' ||
-      c.type !== 'risk-disappears-after-rescan' ||
-      typeof c.riskId !== 'string' ||
+      c.type !== 'risk-disappears-after-rescan' || typeof c.riskId !== 'string' ||
       c.riskId !== a.riskId
-    ) {
-      continue;
-    }
+    ) continue;
 
     const actionProvenance = a.provenance !== undefined ? parseProvenance(a.provenance) : null;
     const resolvedAtProvenance = a.resolvedAtProvenance !== undefined
-      ? parseProvenance(a.resolvedAtProvenance)
-      : null;
+      ? parseProvenance(a.resolvedAtProvenance) : null;
     const status = a.status as HomeActionStatus;
 
     if (status === 'resolved') {
-      // A resolved rescan-dependent action is never accepted without a complete
-      // resolution provenance chain. This blocks forged actionPlan.status values.
       if (!planProvenance?.current || !resolvedAtProvenance) continue;
       if (!sameProvenance(planProvenance.current, resolvedAtProvenance)) continue;
       if (resolvedAtProvenance.riskId !== a.riskId) continue;
     }
-
-    if (actionProvenance && planProvenance?.current && !sameProvenance(actionProvenance, planProvenance.current)) {
-      continue;
-    }
+    if (actionProvenance && planProvenance?.current && !sameProvenance(actionProvenance, planProvenance.current)) continue;
 
     actions.push({
-      id: a.id,
-      riskId: a.riskId,
-      kind: a.kind as HomeSafetyAction['kind'],
-      title: a.title,
-      description: a.description,
-      status,
+      id: a.id, riskId: a.riskId, kind: a.kind as HomeSafetyAction['kind'],
+      title: a.title, description: a.description, status,
       requiresRescan: a.requiresRescan,
       closureRule: { type: 'risk-disappears-after-rescan', riskId: c.riskId },
       provenance: actionProvenance ? { ...actionProvenance, riskId: a.riskId } : undefined,
-      resolvedAtProvenance: resolvedAtProvenance
-        ? { ...resolvedAtProvenance, riskId: a.riskId }
-        : undefined,
+      resolvedAtProvenance: resolvedAtProvenance ? { ...resolvedAtProvenance, riskId: a.riskId } : undefined,
     });
   }
-
-  // If a closure-capable plan contains malformed actions, silently dropping them
-  // would make the UI believe the plan is complete. Fail closed instead.
   if (actions.length !== value.actions.length) return null;
-  if (
-    actions.some((action) => action.status === 'resolved' && action.requiresRescan) &&
-    !planProvenance?.current
-  ) {
-    return null;
-  }
+  if (actions.some((action) => action.status === 'resolved' && action.requiresRescan) && !planProvenance?.current) return null;
 
   return {
-    schemaVersion: 1,
-    type: 'person-home-action-plan',
-    status: value.status,
-    privacyScope: value.privacyScope,
-    actions,
-    provenance: planProvenance,
+    schemaVersion: 1, type: 'person-home-action-plan', status: value.status,
+    privacyScope: value.privacyScope, actions, provenance: planProvenance,
     principle: typeof value.principle === 'string' ? value.principle : undefined,
   };
+}
+
+export function acceptRescanActionPlan(
+  previousPlan: HomeSafetyActionPlan,
+  candidatePlan: HomeSafetyActionPlan,
+): { accepted: true } | { accepted: false; reason: string } {
+  const previous = previousPlan.provenance?.current;
+  const current = candidatePlan.provenance?.current;
+  if (!previous || !current) return { accepted: false, reason: '缺少完整 snapshot provenance' };
+  if (current.homeId !== previous.homeId) return { accepted: false, reason: 'homeId 不一致' };
+  if (current.riskRuleVersion !== previous.riskRuleVersion) return { accepted: false, reason: 'risk rule version 不一致' };
+  if (current.homeVersion <= previous.homeVersion) return { accepted: false, reason: 'candidate snapshot 不是更新版本' };
+  if (current.captureId === previous.captureId) return { accepted: false, reason: 'captureId 未变化' };
+  if (current.reconstructionId === previous.reconstructionId) return { accepted: false, reason: 'reconstructionId 未变化' };
+  if (candidatePlan.provenance?.previous && !sameProvenance(candidatePlan.provenance.previous, previous)) {
+    return { accepted: false, reason: 'candidate previous provenance 与当前基线不一致' };
+  }
+  for (const action of candidatePlan.actions) {
+    if (action.status !== 'resolved' || !action.requiresRescan) continue;
+    const resolution = action.resolvedAtProvenance;
+    if (!resolution || !sameProvenance(resolution, current) || resolution.riskId !== action.riskId) {
+      return { accepted: false, reason: `action ${action.id} 的 resolution provenance 无效` };
+    }
+  }
+  return { accepted: true };
 }
