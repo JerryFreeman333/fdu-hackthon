@@ -1,3 +1,4 @@
+import { parseHomeSafetyActionPlan, type HomePlanProvenance, type HomeSafetyActionPlan } from './actionPlan';
 import type { RescanInputBatch } from './rescanInput';
 
 export type RescanJobStatus = 'queued' | 'processing' | 'ready' | 'failed';
@@ -7,7 +8,8 @@ export interface RescanSubmitResponse {
   jobId?: string;
   message?: string;
   latestRiskIds?: string[];
-  actionPlan?: unknown;
+  actionPlan?: HomeSafetyActionPlan;
+  provenance?: { current: HomePlanProvenance; previous: HomePlanProvenance | null };
 }
 
 export interface RescanUploadOptions {
@@ -29,6 +31,16 @@ function parseResponse(payload: unknown): RescanSubmitResponse {
   if (!['queued', 'processing', 'ready', 'failed'].includes(String(status))) {
     throw new Error('复扫服务返回了无效状态');
   }
+
+  const rawActionPlan = result.actionPlan;
+  const actionPlan = rawActionPlan === undefined ? undefined : parseHomeSafetyActionPlan(rawActionPlan);
+  if (rawActionPlan !== undefined && !actionPlan) {
+    throw new Error('复扫服务返回的行动计划无效，拒绝更新风险状态');
+  }
+  if (actionPlan && !actionPlan.provenance?.current) {
+    throw new Error('复扫服务行动计划缺少当前 provenance，拒绝自动关闭历史风险');
+  }
+
   return {
     status: status as RescanJobStatus,
     jobId: typeof result.jobId === 'string' ? result.jobId : undefined,
@@ -36,7 +48,8 @@ function parseResponse(payload: unknown): RescanSubmitResponse {
     latestRiskIds: Array.isArray(result.latestRiskIds)
       ? result.latestRiskIds.filter((id): id is string => typeof id === 'string')
       : undefined,
-    actionPlan: result.actionPlan,
+    actionPlan: actionPlan ?? undefined,
+    provenance: actionPlan?.provenance,
   };
 }
 
