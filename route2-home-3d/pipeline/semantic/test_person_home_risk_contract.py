@@ -67,7 +67,8 @@ class PersonHomeRiskContractTests(unittest.TestCase):
         refs = risk["evidenceRefs"]
         self.assertEqual(refs[0]["source"], "person-twin")
         self.assertEqual(refs[1]["source"], "home-twin")
-        self.assertEqual(refs[1]["version"], 8)
+        self.assertEqual(refs[1]["homeVersion"], 8)
+        self.assertEqual(result["riskRuleVersion"], "person-home-risk-v1")
         self.assertTrue(any(ref.get("source") == "home-object" and ref.get("sourceId") == "cable-route" for ref in refs))
 
 
