@@ -15,7 +15,7 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
-import { buildFamilyAcknowledgement } from '../engine/userFacing';
+import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../engine/userFacing';
 import {
   acceptedSelfClaims,
   hasDeathReport,
@@ -318,7 +318,9 @@ export function useElderChat({
       ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
       : '';
     const guidance = hasSafetyGuidance ? agentText : '';
-    const sharingReceipt = familyAcknowledgement || sharingNotice;
+    const selfSharingReceipt =
+      canShare && recordSummary ? buildSelfSharingAcknowledgement(recordSummary, shareMode) : '';
+    const sharingReceipt = familyAcknowledgement || selfSharingReceipt || sharingNotice;
     const receiptParts = [
       guidance,
       recordSummary ? `我已经记下：${recordSummary}。${timeNotice}` : '',
