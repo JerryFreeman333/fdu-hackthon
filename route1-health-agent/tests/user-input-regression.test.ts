@@ -31,6 +31,18 @@ runCase('已有明确家属上下文时第三人称可以延续主体', () => {
   assert(acceptedSelfClaims(input).length === 0, '家属事实不能进入本人健康事件流');
 });
 
+runCase('多个家属同时出现时“他”不能猜成其中任何一个', () => {
+  const messages = [
+    { id: 'm1', role: 'elder' as const, text: '我爸今天走路不稳', time: '09-08 09:00' },
+    { id: 'm2', role: 'elder' as const, text: '我老公今天也不舒服', time: '09-08 09:05' },
+  ];
+  const input = understandElderInput('我觉得他喘得厉害', TODAY, messages);
+  assert(input.claims.length === 1, '应识别第三人称事实');
+  assert(input.claims[0].subject === 'unknown', '多个家属上下文时不能武断指定主体');
+  assert(acceptedSelfClaims(input).length === 0, '不明确的第三人称事实不能进入本人档案');
+  assert(Boolean(input.clarificationQuestion), '多个候选主体时应继续要求澄清');
+});
+
 runCase('口语化“我看他……”不会丢掉跌倒事实', () => {
   const input = understandElderInput('我看他今天走路不太稳，摔了一下', TODAY);
   assert(input.claims.length === 2, '逗号后的跌倒事实也应独立提取');
