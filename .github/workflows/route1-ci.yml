@@ -69,7 +69,7 @@ jobs:
             echo 'No formatting changes required.'
             exit 0
           fi
-          git add route1-health-agent
+          git add .
           git commit -m 'style(route1): apply locked prettier formatting'
           branch_name="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq '.headRefName')"
           git push origin "HEAD:${branch_name}"
@@ -204,7 +204,7 @@ jobs:
           if git diff --quiet; then
             echo 'Route 1 verification branch already formatted.'
           else
-            git add route1-health-agent
+            git add .
             git commit -m 'style(route1): apply locked prettier formatting'
             git push origin 'HEAD:route1-final-verify-2026-09-09'
           fi
