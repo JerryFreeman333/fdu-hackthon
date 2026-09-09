@@ -1,0 +1,11 @@
+{
+  "name": "p0-blackbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "blackbox": "node run-blackbox.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}

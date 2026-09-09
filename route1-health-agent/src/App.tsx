@@ -260,7 +260,6 @@ export default function App() {
           tasks={tasks}
           homeSafetyActions={homeSafetyActions}
           records={familyRecords}
-          observations={observations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
@@ -268,6 +267,8 @@ export default function App() {
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}
+          onConsumeFindingShare={consumeSharedFindingIds}
+          onConsumeFamilyEventShare={consumeSharedFamilyEventIds}
           view={familyView}
         />
       </main>

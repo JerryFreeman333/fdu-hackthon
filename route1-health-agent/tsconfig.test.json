@@ -6,10 +6,11 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "outDir": ".test-build",
     "rootDir": ".",
     "noEmitOnError": true
   },
-  "include": ["tests/**/*.ts", "src/engine/**/*.ts", "src/types.ts"],
-  "types": []
+  "include": ["tests/**/*.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "types": ["node"]
 }
