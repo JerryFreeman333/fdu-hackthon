@@ -30,17 +30,20 @@ runCase('conflicting share and refusal fails closed', () => {
   );
 });
 
-runCase('pronoun-based refusal is not lost when the family member was named earlier', () => {
-  const text = '告诉女儿我的头晕，但是爸爸的事情不要告诉她';
-  assert(
-    parsePrivacyIntent(text) === 'private',
-    'pronoun-based refusal must override the share request',
-  );
-  assert(
-    !canShareWithFamily('granted', parsePrivacyIntent(text)),
-    'the whole ambiguous statement must stay private',
-  );
-});
+runCase(
+  'pronoun-based refusal is not lost when the family member was named earlier',
+  () => {
+    const text = '告诉女儿我的头晕，但是爸爸的事情不要告诉她';
+    assert(
+      parsePrivacyIntent(text) === 'private',
+      'pronoun-based refusal must override the share request',
+    );
+    assert(
+      !canShareWithFamily('granted', parsePrivacyIntent(text)),
+      'the whole ambiguous statement must stay private',
+    );
+  },
+);
 
 runCase('no-record remains stronger than conflicting sharing language', () => {
   const text = '告诉女儿这个，但这件事不要记录，也别告诉她';
@@ -123,42 +126,48 @@ runCase('revocation removes persistent family visibility', () => {
   );
 });
 
-runCase('revocation removes one-time visibility and re-grant does not resurrect it', () => {
-  const event = {
-    id: 'family-one-time-withdraw-1',
-    timestamp: '2026-09-08T12:00:00',
-    source: 'chat' as const,
-    subject: 'father' as const,
-    text: '我爸今天血压150/95',
-    tags: [] as const,
-    hasHealthValue: true,
-    status: 'occurred' as const,
-    visibility: 'family_ok' as const,
-    shareMode: 'one_time' as const,
-  };
-  assert(
-    visibleFamilyEvents([event], 'denied', ['family-one-time-withdraw-1']).length === 1,
-    'an explicitly shared one-time event remains visible while its share grant exists',
-  );
-  assert(
-    visibleFamilyEvents([event], 'denied', []).length === 0,
-    'revocation must remove one-time future visibility',
-  );
-  assert(
-    visibleFamilyEvents([event], 'granted', []).length === 0,
-    're-granting persistent sharing must not restore the revoked one-time event',
-  );
-});
+runCase(
+  'revocation removes one-time visibility and re-grant does not resurrect it',
+  () => {
+    const event = {
+      id: 'family-one-time-withdraw-1',
+      timestamp: '2026-09-08T12:00:00',
+      source: 'chat' as const,
+      subject: 'father' as const,
+      text: '我爸今天血压150/95',
+      tags: [] as const,
+      hasHealthValue: true,
+      status: 'occurred' as const,
+      visibility: 'family_ok' as const,
+      shareMode: 'one_time' as const,
+    };
+    assert(
+      visibleFamilyEvents([event], 'denied', ['family-one-time-withdraw-1']).length === 1,
+      'an explicitly shared one-time event remains visible while its share grant exists',
+    );
+    assert(
+      visibleFamilyEvents([event], 'denied', []).length === 0,
+      'revocation must remove one-time future visibility',
+    );
+    assert(
+      visibleFamilyEvents([event], 'granted', []).length === 0,
+      're-granting persistent sharing must not restore the revoked one-time event',
+    );
+  },
+);
 
-runCase('privacy revocation wording is a future stop, not a false historical deletion', () => {
-  const acknowledgement =
-    '已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。';
-  assert(
-    acknowledgement.includes('已经告诉对方的内容'),
-    'revocation must distinguish already-told content',
-  );
-  assert(
-    acknowledgement.includes('不会假装它已经被撤回'),
-    'revocation must never claim an unsupported historical recall',
-  );
-});
+runCase(
+  'privacy revocation wording is a future stop, not a false historical deletion',
+  () => {
+    const acknowledgement =
+      '已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。';
+    assert(
+      acknowledgement.includes('已经告诉对方的内容'),
+      'revocation must distinguish already-told content',
+    );
+    assert(
+      acknowledgement.includes('不会假装它已经被撤回'),
+      'revocation must never claim an unsupported historical recall',
+    );
+  },
+);
