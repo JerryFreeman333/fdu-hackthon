@@ -40,7 +40,9 @@ runCase('correcting the latest utterance preserves an earlier independent event'
   const kept = removeCorrectedChatEvents([firstEvent, secondEvent], [claimIdForMessage(secondText, 0)]);
 
   assert(kept.length === 1, '更正第二条后只能留下第一条');
-  assert(kept[0].observation.text === firstText, '第一条独立跌倒记录必须保留');
+  const remaining = kept[0];
+  assert(remaining?.type === 'observation', '保留的独立记录应该仍然是 observation');
+  assert(remaining.observation.text === firstText, '第一条独立跌倒记录必须保留');
 });
 
 runCase('correcting a measurement removes the measurement lineage without deleting another reading', () => {
@@ -70,17 +72,16 @@ runCase('correcting a measurement removes the measurement lineage without deleti
 
   const kept = removeCorrectedChatEvents([firstMeasurement, secondMeasurement], [secondClaimId]);
   assert(kept.length === 1, '更正168后应只剩130这次测量');
-  assert(kept[0].measurement.value === 130, '保留的测量必须是第一条130');
+  const remaining = kept[0];
+  assert(remaining?.type === 'measurement', '保留的独立记录应该仍然是 measurement');
+  assert(remaining.measurement.value === 130, '保留的测量必须是第一条130');
 });
 
 runCase('correction changes the downstream detection state instead of leaving a ghost fall finding', () => {
   const text = '我今天摔了一下';
   const event = selfObservation(text);
   const before = runDetection([event], TODAY);
-  assert(
-    before.some((finding) => finding.ruleId === 'safety.fall'),
-    '更正前应存在跌倒发现',
-  );
+  assert(before.some((finding) => finding.ruleId === 'safety.fall'), '更正前应存在跌倒发现');
 
   const after = removeCorrectedChatEvents([event], [claimIdForMessage(text, 0)]);
   assert(after.length === 0, '对应 claim 的事件应全部撤销');
