@@ -59,13 +59,16 @@ runCase('correction removes only chat events attached to the corrected claims', 
     },
     source: 'chat',
   };
-  const removed = removeCorrectedChatEvents(
-    [keepMeasurement, removeMeasurement, removeObservation],
-    [firstClaimId, secondClaimId],
-  );
+  const removed = removeCorrectedChatEvents([keepMeasurement, removeMeasurement, removeObservation], [
+    firstClaimId,
+    secondClaimId,
+  ]);
 
   assert(removed.length === 1, 'only unrelated chat events should remain');
-  assert(removed[0].type === 'measurement' && removed[0].measurement.id === 'measurement-keep', 'unrelated event must survive');
+  assert(
+    removed[0].type === 'measurement' && removed[0].measurement.id === 'measurement-keep',
+    'unrelated event must survive',
+  );
 });
 
 runCase('legacy chat events without claim ids fail closed and are not guessed away', () => {
