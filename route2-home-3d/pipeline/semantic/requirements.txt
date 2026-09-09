@@ -1,0 +1,4 @@
+# Route 2 local semantic perception stack.
+# PyTorch is installed by the existing gaussian-splatting setup; keep it environment-managed.
+ultralytics>=8.3,<9
+Pillow>=10,<12

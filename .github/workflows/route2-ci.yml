@@ -1,0 +1,61 @@
+name: route2-home-3d-ci
+
+on:
+  push:
+    branches:
+      - main
+      - 'route2/**'
+      - 'route2-*'
+    paths:
+      - 'route2-home-3d/**'
+      - '.github/workflows/route2-ci.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'route2-home-3d/**'
+      - '.github/workflows/route2-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: route2-home-3d-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-route2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: route2-home-3d/web
+
+    steps:
+      - name: Checkout revision under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route2-home-3d/web/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run data contract tests
+        run: npm test
+
+      - name: Compile semantic Python pipeline
+        working-directory: route2-home-3d
+        run: python -m py_compile pipeline/semantic/topology.py pipeline/semantic/detect_and_localize.py
+
+      - name: Typecheck and production build
+        run: npm run build
+
+      - name: Verify generated bundle exists
+        run: test -f dist/index.html

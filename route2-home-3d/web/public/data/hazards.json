@@ -1,7 +1,11 @@
 {
   "meta": {
-    "note": "demoPos 用于合成演示场景；训练完成后把 realPos 标定为真实模型内坐标（单位: 米，y 向上），null 表示未标定",
-    "levels": { "high": "高风险", "medium": "中风险", "low": "低风险" }
+    "note": "demoPos 用于合成演示场景；realPos/realPoints 用于真实模型人工空间标定，null 表示尚未标定",
+    "levels": { "high": "高风险", "medium": "中风险", "low": "低风险" },
+    "datasetVersion": 1,
+    "capturedAt": "2026-09-09T00:00:00Z",
+    "provenance": "demo",
+    "scaleConfidence": 0.85
   },
   "hazards": [
     {
