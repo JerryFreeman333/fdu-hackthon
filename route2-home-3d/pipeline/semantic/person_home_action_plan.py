@@ -1,7 +1,8 @@
-"""Person Twin × Home Twin action planning with explicit rescan closure."""
+"""Person Twin × Home Twin action planning with explicit rescan provenance."""
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,14 @@ def validate_projection(p: dict[str, Any]) -> None:
                 raise RuntimeError(f"risk 缺少字段: {key}")
 
 
+def _projection_provenance(projection: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "projectionAsOf": projection.get("personAsOf"),
+        "homeVersion": projection.get("homeVersion"),
+        "recordedAt": projection.get("generatedAt"),
+    }
+
+
 def _action_from_risk(risk: dict[str, Any]) -> dict[str, Any]:
     action_kind, title, description = ACTION_MAP.get(
         risk["kind"], ("observation", "复核家庭环境", risk["action"])
@@ -41,28 +50,35 @@ def _action_from_risk(risk: dict[str, Any]) -> dict[str, Any]:
         "status": "open",
         "requiresRescan": True,
         "closureRule": {"type": "risk-disappears-after-rescan", "riskId": risk["id"]},
+        "provenance": {},
     }
 
 
 def build_action_plan(projection: dict[str, Any]) -> dict[str, Any]:
     validate_projection(projection)
+    provenance = _projection_provenance(projection)
     actions = [_action_from_risk(risk) for risk in projection.get("risks", [])]
+    for action in actions:
+        action["provenance"] = dict(provenance)
     return {
         "schemaVersion": 1,
         "type": "person-home-action-plan",
         "status": "open" if actions else "clear",
         "privacyScope": projection["privacyScope"],
         "actions": actions,
+        "provenance": {"current": provenance, "previous": None},
         "principle": "先形成可执行的家庭行动，再由复扫结果决定风险是否关闭。",
     }
 
 
 def merge_rescan_plan(previous_plan: dict[str, Any], latest_projection: dict[str, Any]) -> dict[str, Any]:
     validate_projection(latest_projection)
-    previous = json.loads(json.dumps(previous_plan, ensure_ascii=False))
+    previous = copy.deepcopy(previous_plan)
     current_risks = {risk["id"]: risk for risk in latest_projection.get("risks", [])}
     previous_actions = previous.get("actions", [])
     previous_by_risk = {action.get("riskId"): action for action in previous_actions if action.get("riskId")}
+    latest_provenance = _projection_provenance(latest_projection)
+    previous_provenance = previous.get("provenance", {}).get("current")
     merged: list[dict[str, Any]] = []
 
     for action in previous_actions:
@@ -70,14 +86,18 @@ def merge_rescan_plan(previous_plan: dict[str, Any], latest_projection: dict[str
         if risk_id not in current_risks and action.get("status") not in {"completed", "resolved"}:
             action["status"] = "resolved"
             action["resolvedBy"] = "rescan"
+            action["resolvedAtProvenance"] = dict(latest_provenance)
         merged.append(action)
 
     for risk_id, risk in current_risks.items():
         if risk_id not in previous_by_risk:
-            merged.append(_action_from_risk(risk))
+            action = _action_from_risk(risk)
+            action["provenance"] = dict(latest_provenance)
+            merged.append(action)
 
     previous["privacyScope"] = latest_projection["privacyScope"]
     previous["actions"] = merged
+    previous["provenance"] = {"current": latest_provenance, "previous": previous_provenance}
     previous["status"] = (
         "open"
         if any(action.get("status") in {"open", "in_progress"} for action in merged)
