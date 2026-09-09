@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { resolve, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -11,6 +14,7 @@ const workflowPath = resolve(here, '../src/hometwin/rescanWorkflow.ts');
 const clientPath = resolve(here, '../src/hometwin/rescanClient.ts');
 const resultPath = resolve(here, '../src/hometwin/rescanResult.ts');
 const fixturePath = resolve(here, '../public/data/family-action-plan.json');
+const execFileAsync = promisify(execFile);
 
 async function source(path) { return readFile(path, 'utf8'); }
 
@@ -32,6 +36,34 @@ test('snapshot acceptance rejects stale and replayed results even after a newer 
   assert.match(text, /candidate previous provenance does not match current snapshot/);
   assert.match(text, /captureId === previous\.captureId/);
   assert.match(text, /reconstructionId === previous\.reconstructionId/);
+});
+
+test('compiled actionPlan enforces N→N+2 accepted then delayed N+1 rejected', async () => {
+  const output = resolve(tmpdir(), `route2-actionPlan-${process.pid}-${Date.now()}.mjs`);
+  try {
+    await execFileAsync(resolve(here, '../node_modules/.bin/esbuild'), [
+      actionPlanPath, '--format=esm', '--platform=neutral', '--outfile=' + output,
+    ]);
+    const { parseHomeSafetyActionPlan, acceptRescanActionPlan } = await import(output + `?t=${Date.now()}`);
+    const provenance = (homeVersion, captureId, reconstructionId, previous = undefined) => ({
+      current: { homeId: 'home-a', homeVersion, riskRuleVersion: 'rule-v1', captureId, reconstructionId },
+      previous,
+    });
+    const plan = (p) => parseHomeSafetyActionPlan({
+      schemaVersion: 1, type: 'person-home-action-plan', status: 'open', privacyScope: 'local-device',
+      actions: [], provenance: p,
+    });
+    const n = plan(provenance(1, 'capture-n', 'recon-n'));
+    const n1 = plan(provenance(2, 'capture-n1', 'recon-n1', n.provenance.current));
+    const n2 = plan(provenance(3, 'capture-n2', 'recon-n2', n1.provenance.current));
+    assert.ok(n && n1 && n2);
+    assert.deepEqual(acceptRescanActionPlan(n, n1), { accepted: true });
+    assert.deepEqual(acceptRescanActionPlan(n1, n2), { accepted: true });
+    assert.match(acceptRescanActionPlan(n2, n1).reason, /candidate snapshot 不是更新版本/);
+    assert.match(acceptRescanActionPlan(n2, n2).reason, /candidate snapshot 不是更新版本/);
+  } finally {
+    await rm(output, { force: true });
+  }
 });
 
 test('frontend rescan flow rejects riskId-only fallback, duplicate and stale responses', async () => {
