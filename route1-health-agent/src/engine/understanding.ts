@@ -43,8 +43,70 @@ function splitClauses(text: string): string[] {
     .filter(Boolean);
 }
 
+interface SubjectMention {
+  subject: ElderSubject;
+  index: number;
+  text: string;
+}
+
+const EXPLICIT_FAMILY_SUBJECT_PATTERNS: Array<[ElderSubject, RegExp]> = [
+  ['spouse', /(我老公|我丈夫|老公|丈夫|爱人)/g],
+  ['father', /(我爸|我父亲|爸爸|父亲)/g],
+  ['mother', /(我妈|我母亲|妈妈|母亲)/g],
+  [
+    'family_other',
+    /(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/g,
+  ],
+];
+
+function explicitSubjectMentions(clause: string): SubjectMention[] {
+  const mentions: SubjectMention[] = [];
+
+  for (const [subject, pattern] of EXPLICIT_FAMILY_SUBJECT_PATTERNS) {
+    for (const match of clause.matchAll(pattern)) {
+      mentions.push({ subject, index: match.index ?? 0, text: match[0] });
+    }
+  }
+
+  // “我”必须排除已经被更具体的“我爸/我妈/我老公”等人物短语覆盖的情况。
+  const familySpans = mentions.map((mention) => [mention.index, mention.index + mention.text.length] as const);
+  for (const match of clause.matchAll(/(我自己|本人|我的|我)/g)) {
+    const index = match.index ?? 0;
+    const insideFamilySpan = familySpans.some(([start, end]) => index >= start && index < end);
+    if (!insideFamilySpan) mentions.push({ subject: 'self', index, text: match[0] });
+  }
+
+  return mentions.sort((a, b) => a.index - b.index);
+}
+
+function subjectAfterRelationCue(clause: string, mentions: SubjectMention[]): ElderSubject | null {
+  if (mentions.length < 2) return null;
+
+  const relationCue = /(?:说|告诉|跟我说|跟我提到|提到|觉得|认为|担心|发现|看到|看见|提醒|劝|让|叫)/g;
+  const cues = [...clause.matchAll(relationCue)].map((match) => match.index ?? 0);
+  if (cues.length === 0) return null;
+
+  for (const cue of cues) {
+    const left = mentions.filter((mention) => mention.index < cue).at(-1);
+    const right = mentions.find((mention) => mention.index > cue);
+    if (left && right) return right.subject;
+  }
+
+  return null;
+}
+
 function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
   if (!/(他|她|他们|她们)/.test(clause)) return null;
+
+  // 先处理同一句里的“我爸告诉我她……”/“我妈说他……”：
+  // 如果代词出现在明确家属之后且没有另一个明确人物，优先继承该家属。
+  const explicitMentions = explicitSubjectMentions(clause).filter((mention) => mention.subject !== 'self');
+  const pronounMatches = [...clause.matchAll(/(?:他|她|他们|她们)/g)];
+  if (explicitMentions.length === 1 && pronounMatches.length > 0) {
+    const explicit = explicitMentions[0];
+    const pronoun = pronounMatches[0];
+    if (pronoun.index !== undefined && pronoun.index > explicit.index) return explicit.subject;
+  }
 
   // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
   // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
@@ -66,15 +128,24 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
-  if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
-  if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
-  if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
+  const mentions = explicitSubjectMentions(clause);
+
+  // “我爸说我妈喘”“我妈告诉我我爸胸痛”“我妈让我自己去量血压”这类关系句里，
+  // 健康事实主体通常是关系词后面的人，而不是句首的说话者/信息来源。
+  const relationSubject = subjectAfterRelationCue(clause, mentions);
+  if (relationSubject) return relationSubject;
+
+  if (mentions.length === 1) return mentions[0].subject;
 
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
+  // 同一句无明确关系结构却点名多个人时，宁可 unknown，也不猜测谁是健康事实主体。
+  const uniqueSubjects = [...new Set(mentions.map((mention) => mention.subject))];
+  if (uniqueSubjects.length > 1) return 'unknown';
+  if (uniqueSubjects.length === 1) return uniqueSubjects[0];
+
+  // 只有确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
   const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
