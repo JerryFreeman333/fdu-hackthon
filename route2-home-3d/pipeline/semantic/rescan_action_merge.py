@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,15 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def action_from_risk(risk: dict[str, Any]) -> dict[str, Any]:
+def provenance(risk_projection: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'projectionAsOf': risk_projection.get('personAsOf'),
+        'homeVersion': risk_projection.get('homeVersion'),
+        'recordedAt': risk_projection.get('generatedAt'),
+    }
+
+
+def action_from_risk(risk: dict[str, Any], source: dict[str, Any] | None = None) -> dict[str, Any]:
     kind = risk.get('kind', 'observation')
     titles = {
         'trip-hazard': ('safety_check', '处理绊倒障碍'),
@@ -29,15 +38,19 @@ def action_from_risk(risk: dict[str, Any]) -> dict[str, Any]:
         'status': 'open',
         'requiresRescan': True,
         'closureRule': {'type': 'risk-disappears-after-rescan', 'riskId': risk['id']},
+        'provenance': dict(source or {}),
     }
 
 
 def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, Any]:
     if latest_risk.get('schemaVersion') != 1 or latest_risk.get('type') != 'person-home-risk-projection':
         raise RuntimeError('复扫风险投影 schema 无效')
+    previous_copy = copy.deepcopy(previous)
     latest = {risk['id']: risk for risk in latest_risk.get('risks', [])}
-    actions = [dict(action) for action in previous.get('actions', [])]
+    actions = previous_copy.get('actions', [])
     existing = {action.get('riskId') for action in actions}
+    latest_provenance = provenance(latest_risk)
+    previous_provenance = previous_copy.get('provenance', {}).get('current')
 
     for action in actions:
         risk_id = action.get('riskId')
@@ -49,18 +62,19 @@ def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, An
         ):
             action['status'] = 'resolved'
             action['resolvedBy'] = 'rescan'
+            action['resolvedAtProvenance'] = dict(latest_provenance)
 
     for risk_id, risk in latest.items():
         if risk_id not in existing:
-            actions.append(action_from_risk(risk))
+            actions.append(action_from_risk(risk, latest_provenance))
 
-    result = dict(previous)
-    result['schemaVersion'] = 1
-    result['type'] = 'person-home-action-plan'
-    result['privacyScope'] = latest_risk.get('privacyScope', previous.get('privacyScope', 'family_ok'))
-    result['actions'] = actions
-    result['status'] = 'open' if any(a.get('status') != 'resolved' for a in actions) else 'clear'
-    return result
+    previous_copy['schemaVersion'] = 1
+    previous_copy['type'] = 'person-home-action-plan'
+    previous_copy['privacyScope'] = latest_risk.get('privacyScope', previous_copy.get('privacyScope', 'family_ok'))
+    previous_copy['actions'] = actions
+    previous_copy['provenance'] = {'current': latest_provenance, 'previous': previous_provenance}
+    previous_copy['status'] = 'open' if any(a.get('status') != 'resolved' for a in actions) else 'clear'
+    return previous_copy
 
 
 def main() -> int:
