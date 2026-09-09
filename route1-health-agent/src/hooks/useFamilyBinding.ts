@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
 import { TODAY, profile } from '../data/demo';
 
@@ -186,28 +186,34 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
-  async function claimOneTimeShares(): Promise<void> {
+  const claimOneTimeShares = useCallback(async (): Promise<void> => {
     const locks = getWebLocks();
     if (!locks) {
       // Fail closed on browsers without cross-tab atomic locking support.
       return;
     }
 
-    await locks.request('ankang-route1-one-time-share-claim', async () => {
-      const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY);
-      const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY);
-      if (findingIds.length === 0 && familyEventIds.length === 0) return;
+    try {
+      await locks.request('ankang-route1-one-time-share-claim', async () => {
+        const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY);
+        const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY);
+        if (findingIds.length === 0 && familyEventIds.length === 0) return;
 
-      window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify([]));
-      window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify([]));
-      setClaimedOneTimeFindingIds((current) => [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS));
-      setClaimedOneTimeFamilyEventIds((current) => [
-        ...new Set([...current, ...familyEventIds]),
-      ].slice(-MAX_PENDING_ONE_TIME_IDS));
-      setSharedFindingIds([]);
-      setSharedFamilyEventIds([]);
-    });
-  }
+        window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify([]));
+        window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify([]));
+        setClaimedOneTimeFindingIds((current) =>
+          [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+        );
+        setClaimedOneTimeFamilyEventIds((current) =>
+          [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+        );
+        setSharedFindingIds([]);
+        setSharedFamilyEventIds([]);
+      });
+    } catch {
+      // Lock/Storage failure must not turn into a visible one-time share.
+    }
+  }, []);
 
   return {
     familySharing,
