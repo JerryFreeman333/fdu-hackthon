@@ -5,7 +5,7 @@ import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
 import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
-import { submitRescanBatch } from './hometwin/rescanClient';
+import { submitRescanBatch, waitForRescanJob, type RescanSubmitResponse } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
 import { buildDemoRoom } from './scene/demoRoom';
 import { createHazardMarkers, createItemRings } from './scene/markers';
@@ -14,8 +14,7 @@ import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 
 const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
-const RESCAN_RISK_URL = 'data/family-action-rescan.json';
-const RESCAN_ENDPOINT = '/api/route2/rescan';
+const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
 
 type RiskProjection = {
   schemaVersion: 1;
@@ -46,10 +45,6 @@ async function loadJson<T>(url: string): Promise<T | null> {
   }
 }
 
-function latestRiskIdsFromResult(result: RiskProjection | null): string[] {
-  return result?.risks.map((risk) => risk.id) ?? [];
-}
-
 async function main() {
   const dataResponse = await fetch('data/hazards.json');
   if (!dataResponse.ok) throw new Error(`无法读取场景数据: HTTP ${dataResponse.status}`);
@@ -57,7 +52,6 @@ async function main() {
   const mode: SceneMode = (await hasRealModel()) ? 'real' : 'demo';
 
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
-  const rescanRisk = await loadJson<RiskProjection>(RESCAN_RISK_URL);
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
 
@@ -175,7 +169,15 @@ async function main() {
     const batch = input.batch;
     setHint(`已选择 ${batch.files.length} 个复扫文件。正在提交到 Home Twin…`);
     try {
-      const result = await submitRescanBatch(batch, files, { endpoint: RESCAN_ENDPOINT });
+      let result: RescanSubmitResponse = await submitRescanBatch(batch, files, { endpoint: RESCAN_ENDPOINT });
+      if (result.status === 'queued' || result.status === 'processing') {
+        setHint(`复扫已排队：${result.jobId ?? batch.id}。正在等待新的空间证据…`);
+        if (!result.jobId) throw new Error('复扫服务未返回 jobId');
+        result = await waitForRescanJob(result.jobId, { endpoint: RESCAN_ENDPOINT, maxAttempts: 90, intervalMs: 1000 });
+      }
+      if (result.status === 'failed') {
+        throw new Error(result.message ?? '复扫处理失败');
+      }
       if (result.actionPlan) {
         const parsed = parseHomeSafetyActionPlan(result.actionPlan);
         if (parsed) currentActionPlan = parsed;
@@ -183,16 +185,10 @@ async function main() {
         currentActionPlan = applyRescan(currentActionPlan, result.latestRiskIds);
       }
       panelController.updateActionPlan(currentActionPlan);
-      setHint(result.status === 'ready'
-        ? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`
-        : `复扫已提交：${result.jobId ?? batch.id}，等待 Home Twin 重建。`);
+      setHint(result.message ?? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      if (rescanRisk && currentActionPlan) {
-        setHint(`${detail}；未使用预置复扫结果，因此不会伪造“风险已消失”。`);
-      } else {
-        setHint(`${detail}；本次上传未改变 Home Twin 状态。`);
-      }
+      setHint(`${detail}；本次复扫未改变现有风险/行动状态。`);
     } finally {
       revokeRescanPreview(lastRescanInput);
       lastRescanInput = null;
