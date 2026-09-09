@@ -12,7 +12,7 @@
     "rootDir": ".",
     "noEmitOnError": true
   },
-  "include": ["tests/**/*.ts", "src/**/*.ts", "src/App.tsx", "src/components/**/*.tsx"],
+  "include": ["tests/**/*.ts", "src/**/*.ts"],
   "exclude": ["src/hooks/useElderChat.ts"],
   "types": ["node"]
 }
