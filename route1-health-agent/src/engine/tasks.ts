@@ -45,11 +45,7 @@ export function createTaskFromFinding(finding: Finding, today: string): CareTask
 export function ensureMedicationCheckTask(tasks: CareTask[], today: string, createdAt: string): CareTask[] {
   const taskId = `task-medication-${today}`;
   if (tasks.some((task) => task.id === taskId)) return tasks;
-  if (
-    tasks.some(
-      (task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending',
-    )
-  ) {
+  if (tasks.some((task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending')) {
     return tasks;
   }
 
