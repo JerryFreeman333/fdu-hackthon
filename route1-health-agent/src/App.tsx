@@ -130,10 +130,32 @@ export default function App() {
   useEffect(() => {
     if (role !== 'family' || familyLink?.status !== 'active' || familyClaimAttempted.current) return;
     familyClaimAttempted.current = true;
-    const candidateFindingIds = sharedFindingIds.slice(0, MAX_FAMILY_FINDINGS_PER_VIEW);
-    const candidateFamilyEventIds = sharedFamilyEventIds.slice(0, MAX_FAMILY_EVENTS_PER_VIEW);
+    const candidateFindingIds = findings
+      .filter(
+        (finding) =>
+          sharedFindingIds.includes(finding.id) &&
+          finding.familyEligible === true &&
+          (finding.severity === 'alert' || finding.severity === 'urgent') &&
+          Boolean(finding.familyMessage),
+      )
+      .map((finding) => finding.id)
+      .slice(0, MAX_FAMILY_FINDINGS_PER_VIEW);
+    const candidateFamilyEventIds = familyEvents
+      .filter(
+        (event) => sharedFamilyEventIds.includes(event.id) && event.visibility !== 'private' && event.shareMode === 'one_time',
+      )
+      .map((event) => event.id)
+      .slice(0, MAX_FAMILY_EVENTS_PER_VIEW);
     void claimOneTimeShares(candidateFindingIds, candidateFamilyEventIds);
-  }, [role, familyLink?.status, sharedFindingIds, sharedFamilyEventIds, claimOneTimeShares]);
+  }, [
+    role,
+    familyLink?.status,
+    findings,
+    familyEvents,
+    sharedFindingIds,
+    sharedFamilyEventIds,
+    claimOneTimeShares,
+  ]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
