@@ -9,7 +9,7 @@ const demoTask: CareTask = {
   title: '确认今天是否按原来的医生方案服药',
   description: '不要自行加倍或调整药量，只确认并按原方案处理。',
   dueDate: '2026-09-09',
-  status: 'done',
+  status: 'pending',
   createdAt: '2026-09-09T08:00:00.000Z',
   kind: 'medication_check',
 };
