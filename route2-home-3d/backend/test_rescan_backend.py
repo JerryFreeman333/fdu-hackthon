@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.capture import BrowserUploadCaptureSource, CaptureFile
-from backend.processor import SafeQueueProcessor
+from backend.processor import LocalPipelineProcessor, SafeQueueProcessor
 
 
 class RescanBackendTests(unittest.TestCase):
@@ -80,6 +80,13 @@ class RescanBackendTests(unittest.TestCase):
         self.assertEqual(result.status, "ready")
         self.assertIsNone(result.latest_risk_ids)
         self.assertIsNone(result.action_plan)
+
+    def test_local_pipeline_points_to_pipeline_scripts(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        processor = LocalPipelineProcessor(repo_root)
+        expected = repo_root / "pipeline" / "scripts" / "12_rescan_home.ps1"
+        self.assertEqual(processor.script, expected)
+        self.assertTrue(processor.script.is_file())
 
 
 if __name__ == "__main__":
