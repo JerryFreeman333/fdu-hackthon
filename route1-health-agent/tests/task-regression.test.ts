@@ -25,6 +25,17 @@ async function main(): Promise<void> {
     'family-eligible findings with a family message must create contact_family tasks',
   );
 
+  const unspecifiedFamilyEligibility: Finding = {
+    ...sharedAlert,
+    id: 'finding-unspecified-family-eligibility',
+    familyEligible: undefined,
+  };
+  const unspecifiedTask = createTaskFromFinding(unspecifiedFamilyEligibility, '2026-09-07');
+  assert(
+    unspecifiedTask?.kind !== 'contact_family',
+    'a finding without explicit family eligibility must never create a contact_family task',
+  );
+
   const privateUrgent: Finding = {
     ...sharedAlert,
     id: 'finding-private-urgent',
@@ -66,7 +77,7 @@ async function main(): Promise<void> {
   const withRepeat = ensureMedicationCheckTask(withPending, '2026-09-08', '2026-09-08T10:00:00');
   assert(withRepeat.length === 1, 'repeated medication reminders must be idempotent');
 
-  console.log('PASS: contact_family task path, photo privacy, and medication-task idempotency regressions');
+  console.log('PASS: family-task eligibility, contact_family path, photo privacy, and medication-task idempotency regressions');
 }
 
 void main();
