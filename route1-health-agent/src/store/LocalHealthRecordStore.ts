@@ -1,81 +1,43 @@
-import type { ChatMessage, DayRecord, FamilyHealthEvent, HealthMeasurement, LabResult, Observation } from '../types';
-import { legacySnapshotToEvents, type HealthEvent } from '../pipeline/events';
+import type { ChatMessage, FamilyHealthEvent } from '../types';
+import type { HealthEvent } from '../pipeline/events';
 import type { HealthRecordSnapshot, HealthRecordStore } from './HealthRecordStore';
-
-const STORAGE_KEY = 'ankang-route1-health-records-v2';
-const LEGACY_STORAGE_KEY = 'ankang-route1-health-records-v1';
 
 const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], chat: [] };
 
-interface PersistedHealthData {
-  events?: unknown;
-  familyEvents?: unknown;
-  chat?: unknown;
-  records?: unknown;
-  observations?: unknown;
-  labResults?: unknown;
-  measurements?: unknown;
-}
-
-function normalizeFamilyEvents(raw: unknown): FamilyHealthEvent[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((item): item is FamilyHealthEvent => {
-      if (!item || typeof item !== 'object') return false;
-      const event = item as Partial<FamilyHealthEvent>;
-      return (
-        typeof event.id === 'string' &&
-        typeof event.timestamp === 'string' &&
-        typeof event.source === 'string' &&
-        typeof event.subject === 'string' &&
-        Array.isArray(event.tags) &&
-        typeof event.status === 'string' &&
-        (event.visibility === 'private' || event.visibility === 'family_ok' || event.visibility === undefined)
-      );
-    })
-    .map((event) => ({
-      ...event,
-      hasHealthValue: typeof event.hasHealthValue === 'boolean' ? event.hasHealthValue : event.tags.length > 0,
-      // Data written before shareMode/visibility hardening is treated conservatively as one-time + private.
-      visibility: event.visibility === 'family_ok' ? 'family_ok' : 'private',
-      shareMode: event.shareMode === 'persistent' || event.shareMode === 'private' ? event.shareMode : 'one_time',
-    }));
-}
-
+/**
+ * Demo-only session store.
+ *
+ * Route 1 health data is sensitive and must not survive a browser/session boundary.
+ * Keeping this store in JS memory means a fresh page load starts from a clean demo
+ * account, while an elder/family role switch in the same page still shares the
+ * current session's data.
+ *
+ * Production must replace this with a server-side account-scoped data store and
+ * enforce authorization on the server; this in-memory adapter is deliberately not
+ * an authentication or persistence mechanism.
+ */
 export class LocalHealthRecordStore implements HealthRecordStore {
+  private snapshot: HealthRecordSnapshot = cloneSnapshot(EMPTY);
+
   load(): HealthRecordSnapshot {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (!raw) return EMPTY;
-      const parsed = JSON.parse(raw) as PersistedHealthData;
-      const chat = Array.isArray(parsed.chat) ? (parsed.chat as ChatMessage[]) : [];
-      const familyEvents = normalizeFamilyEvents(parsed.familyEvents);
-
-      if (Array.isArray(parsed.events)) return { events: parsed.events as HealthEvent[], familyEvents, chat };
-
-      return {
-        events: legacySnapshotToEvents({
-          records: Array.isArray(parsed.records) ? (parsed.records as DayRecord[]) : [],
-          observations: Array.isArray(parsed.observations) ? (parsed.observations as Observation[]) : [],
-          labResults: Array.isArray(parsed.labResults) ? (parsed.labResults as LabResult[]) : [],
-          measurements: Array.isArray(parsed.measurements) ? (parsed.measurements as HealthMeasurement[]) : [],
-        }),
-        familyEvents,
-        chat,
-      };
-    } catch {
-      return EMPTY;
-    }
+    return cloneSnapshot(this.snapshot);
   }
 
   save(snapshot: HealthRecordSnapshot): void {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    this.snapshot = cloneSnapshot(snapshot);
   }
 
   clear(): void {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    this.snapshot = cloneSnapshot(EMPTY);
   }
+}
+
+function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
+  return {
+    events: snapshot.events.map((event) => ({ ...event, evidence: [...event.evidence] })),
+    familyEvents: snapshot.familyEvents.map((event) => ({ ...event, tags: [...event.tags] })),
+    chat: snapshot.chat.map((message) => ({ ...message })),
+  };
 }
 
 export const healthRecordStore = new LocalHealthRecordStore();
