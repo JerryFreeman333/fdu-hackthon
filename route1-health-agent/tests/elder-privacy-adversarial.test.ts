@@ -27,7 +27,10 @@ runCase('conflicting share and refusal fails closed', () => {
 runCase('pronoun-based refusal is not lost when the family member was named earlier', () => {
   const text = '告诉女儿我的头晕，但是爸爸的事情不要告诉她';
   assert(parsePrivacyIntent(text) === 'private', 'pronoun-based refusal must override the share request');
-  assert(!canShareWithFamily('granted', parsePrivacyIntent(text)), 'the whole ambiguous statement must stay private');
+  assert(
+    !canShareWithFamily('granted', parsePrivacyIntent(text)),
+    'the whole ambiguous statement must stay private',
+  );
 });
 
 runCase('no-record remains stronger than conflicting sharing language', () => {
@@ -54,7 +57,10 @@ runCase('mixed privacy claims produce no persistence candidates', () => {
 
 runCase('clean explicit one-time share still yields a persistence candidate', () => {
   const input = understandElderInput('这次告诉女儿我今天头晕', TODAY);
-  assert(input.claims.length > 0, 'clean one-time share must not be blocked by the mixed-privacy guard');
+  assert(
+    input.claims.length > 0,
+    'clean one-time share must not be blocked by the mixed-privacy guard',
+  );
   assert(input.claims.some((claim) => claim.subject === 'self'), 'the claim should still belong to the elder');
 });
 
@@ -72,7 +78,10 @@ runCase('revocation removes persistent family visibility', () => {
     shareMode: 'persistent' as const,
   };
   assert(visibleFamilyEvents([event], 'granted').length === 1, 'granted state should expose persistent event');
-  assert(visibleFamilyEvents([event], 'denied').length === 0, 'revoked state must stop future persistent visibility');
+  assert(
+    visibleFamilyEvents([event], 'denied').length === 0,
+    'revoked state must stop future persistent visibility',
+  );
 });
 
 runCase('revocation removes one-time visibility and re-grant does not resurrect it', () => {
@@ -103,7 +112,11 @@ runCase('revocation removes one-time visibility and re-grant does not resurrect 
 });
 
 runCase('privacy revocation wording is a future stop, not a false historical deletion', () => {
-  const acknowledgement = '已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。';
+  const acknowledgement =
+    '已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。';
   assert(acknowledgement.includes('已经告诉对方的内容'), 'revocation must distinguish already-told content');
-  assert(acknowledgement.includes('不会假装它已经被撤回'), 'revocation must never claim an unsupported historical recall');
+  assert(
+    acknowledgement.includes('不会假装它已经被撤回'),
+    'revocation must never claim an unsupported historical recall',
+  );
 });
