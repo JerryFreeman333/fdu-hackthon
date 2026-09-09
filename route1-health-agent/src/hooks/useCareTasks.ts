@@ -3,21 +3,26 @@ import type { CareTask, Finding } from '../types';
 import { TODAY } from '../data/demo';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../engine/tasks';
 
-const TASK_KEY = 'ankang-route1-tasks-v2';
+const LEGACY_TASK_KEY = 'ankang-route1-tasks-v2';
+let sessionTasks: CareTask[] | null = null;
 
 type StoredTask = CareTask;
 
+function cloneTasks(tasks: CareTask[]): CareTask[] {
+  return tasks.map((task) => ({ ...task }));
+}
+
 function loadTasks(): CareTask[] {
-  try {
-    const raw = window.localStorage.getItem(TASK_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as StoredTask[];
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // use an empty task list rather than inventing daily work
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(LEGACY_TASK_KEY);
   }
-  return buildInitialTasks(TODAY);
+  if (sessionTasks) return cloneTasks(sessionTasks);
+  sessionTasks = buildInitialTasks(TODAY);
+  return cloneTasks(sessionTasks);
+}
+
+function saveTasks(tasks: CareTask[]): void {
+  sessionTasks = cloneTasks(tasks);
 }
 
 interface UseCareTasksOptions {
@@ -28,7 +33,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
   const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
 
   useEffect(() => {
-    window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
+    saveTasks(tasks);
   }, [tasks]);
 
   useEffect(() => {
