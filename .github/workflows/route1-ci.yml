@@ -22,9 +22,59 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  route1-format-recovery:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/route1-format' &&
+      github.event.comment.user.login == 'JerryFreeman333'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ format('refs/pull/{0}/head', github.event.issue.number) }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Format with locked Prettier
+        run: npx --yes prettier@3.5.3 --write .
+
+      - name: Commit formatting fixes to PR branch
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then
+            echo 'No formatting changes required.'
+            exit 0
+          fi
+          git add route1-health-agent
+          git commit -m 'style(route1): apply locked prettier formatting'
+          branch_name="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq '.headRefName')"
+          git push origin "HEAD:${branch_name}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build-route1:
     if: >-
       github.event_name != 'issue_comment' ||
