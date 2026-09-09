@@ -1,4 +1,4 @@
-import { observationToEvent, measurementToEvent, type HealthEvent } from '../src/pipeline/events';
+import { measurementToEvent, observationToEvent, type HealthEvent } from '../src/pipeline/events';
 import { runDetection } from '../src/engine/detect';
 import { claimIdForMessage, removeCorrectedChatEvents } from '../src/engine/claimLineage';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
@@ -37,10 +37,7 @@ runCase('correcting the latest utterance preserves an earlier independent event'
 
   const firstEvent = selfObservation(firstText);
   const secondEvent = selfObservation(secondText);
-  const kept = removeCorrectedChatEvents(
-    [firstEvent, secondEvent],
-    [claimIdForMessage(secondText, 0)],
-  );
+  const kept = removeCorrectedChatEvents([firstEvent, secondEvent], [claimIdForMessage(secondText, 0)]);
 
   assert(kept.length === 1, '更正第二条后只能留下第一条');
   assert(kept[0].observation.text === firstText, '第一条独立跌倒记录必须保留');
