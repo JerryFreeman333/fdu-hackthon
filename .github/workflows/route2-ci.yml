@@ -52,7 +52,7 @@ jobs:
 
       - name: Compile semantic Python pipeline
         working-directory: route2-home-3d
-        run: python -m py_compile pipeline/semantic/topology.py pipeline/semantic/detect_and_localize.py pipeline/semantic/walkability.py
+        run: python -m py_compile pipeline/semantic/topology.py pipeline/semantic/detect_and_localize.py pipeline/semantic/walkability.py pipeline/semantic/surface_costmap.py pipeline/semantic/personalized_surface_route.py
 
       - name: Run walkability algorithm tests
         working-directory: route2-home-3d
