@@ -24,10 +24,13 @@
 | 重新开启长期共享                  | 已被撤销的旧 one-time event 不得因为重新 grant 而自动复活             | `tests/family-sharing-state.test.ts`                                        |
 | 同一天重复服药提醒                | 必须复用当天 `task-medication-${today}`，不得生成重复任务             | `tests/task-regression.test.ts`                                             |
 | 服药任务已完成后再次提醒          | 不得克隆新任务                                                        | `tests/task-regression.test.ts`                                             |
-| 刷新页面                           | 不得从旧 `localStorage` 恢复角色、家庭授权、绑定或 one-time grant     | App / `useFamilyBinding` 代码审查 + security policy check                   |
-| 修改旧 `ROLE_KEY`                  | 不得直接把浏览器持久化字段变成新的身份                                | App 代码审查 + security policy check                                        |
+| 刷新页面                           | 不得从旧浏览器存储恢复角色、家庭授权、绑定、one-time grant 或健康档案 | App / store 代码审查 + security policy check                               |
+| 修改旧 `ROLE_KEY`                 | 不得直接把浏览器持久化字段变成新的身份                                | App 代码审查 + security policy check                                        |
 | 修改旧 consent / family-link keys | 不得恢复家庭共享或绑定权限                                             | `useFamilyBinding` 代码审查 + security policy check                         |
-| 一次性共享跨标签页并发             | 当前 Demo 不依赖 localStorage 做共享授权；授权只存在当前 React 会话   | `useFamilyBinding` session-only design                                       |
+| 新建 Demo 会话                     | 不得继承上一会话的 events / familyEvents / chat                        | `tests/health-store-isolation.test.ts`                                      |
+| 会话内切换老人/家属                 | 当前页面内仍可共享同一会话数据，不产生跨会话残留                      | `LocalHealthRecordStore` session-only design                                |
+| 清空会话健康数据                   | `clear()` 后 events / familyEvents / chat 均为空                       | `tests/health-store-isolation.test.ts`                                      |
+| 加载数据后的外部 mutation          | store 返回值不能暴露内部可变数组引用                                  | `tests/health-store-isolation.test.ts`                                      |
 
 ## B. 当前 CI 状态
 
@@ -63,7 +66,8 @@
 
 当前最重要的工程边界是：
 
-- `localStorage` 只能用于 Demo 健康数据持久化，不能承担身份或授权。
+- 浏览器 `localStorage` 不再承载身份、家庭绑定、共享同意、邀请码、one-time grant 或健康档案。
+- 健康记录 Demo 现在是会话内存存储；新页面/新 JS 会话不会继承上一会话的数据。
 - 当前角色、家庭绑定、共享同意、邀请码和 one-time grant 均为会话状态。
 - one-time sharing 不再是持久 whitelist；claim 后不能通过刷新恢复。
 - 不支持真正认证的 Demo 不能被文档或 UI 描述为“安全登录”。
@@ -71,8 +75,8 @@
 
 ## D. 本轮新增问题的处理结论
 
-本轮发现并修复的是“浏览器 localStorage 可伪造身份/授权”问题。
+本轮的主问题是“本地健康数据残留/跨会话串档”：上一位演示用户的健康 events、family events 和 chat 可能长期留在浏览器本地存储，并在下一次 Demo 会话重新加载。
 
-修复后，旧的持久化 role / consent / family-link / one-time-share 状态不再作为访问控制依据；刷新页面会重新进入身份选择。与此同时，撤销共享不会误删除已经建立的家属关系，避免安全修复破坏正常的再次授权流程。
+修复后，`LocalHealthRecordStore` 不再读写 `localStorage`，而改为会话内存存储。应用在同一页面内切换老人/家属身份时仍可继续使用当前会话数据；但刷新、重新打开页面或创建新的 store 实例时，不会继承上一会话的敏感健康数据。旧 v1/v2 `localStorage` 数据也不再进行迁移。
 
-这解决了 Demo 层最危险的“把浏览器存储误当权限系统”问题，但**不等同于生产级身份认证**。任何真实上线版本都仍必须在服务端重新验证用户身份、家庭关系、共享范围和数据可见性。
+这样解决了 Demo 层的本地健康数据串档与残留问题，同时保留了生产迁移所需的 `HealthRecordStore` 抽象边界。真实产品仍应使用服务端账号/租户/老人 ID 做数据隔离，并在服务端执行授权过滤。
