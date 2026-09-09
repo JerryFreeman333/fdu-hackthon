@@ -12,7 +12,15 @@
       "description": "固定或移除床到卫生间路线上的地毯/门槛，并重新扫描。",
       "status": "open",
       "requiresRescan": true,
-      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-surface" }
+      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-surface" },
+      "provenance": {
+        "homeId": "demo-home-001",
+        "homeVersion": 1,
+        "riskRuleVersion": "person-home-risk-v1",
+        "captureId": "demo-capture-001",
+        "reconstructionId": "demo-reconstruction-001",
+        "riskId": "person-home-surface"
+      }
     },
     {
       "id": "action-person-home-night-route",
@@ -22,8 +30,26 @@
       "description": "检查夜间照明和床到卫生间路线上的障碍，完成后重新扫描。",
       "status": "open",
       "requiresRescan": true,
-      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-night-route" }
+      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-night-route" },
+      "provenance": {
+        "homeId": "demo-home-001",
+        "homeVersion": 1,
+        "riskRuleVersion": "person-home-risk-v1",
+        "captureId": "demo-capture-001",
+        "reconstructionId": "demo-reconstruction-001",
+        "riskId": "person-home-night-route"
+      }
     }
   ],
+  "provenance": {
+    "current": {
+      "homeId": "demo-home-001",
+      "homeVersion": 1,
+      "riskRuleVersion": "person-home-risk-v1",
+      "captureId": "demo-capture-001",
+      "reconstructionId": "demo-reconstruction-001"
+    },
+    "previous": null
+  },
   "principle": "先形成可执行的家庭行动，再由复扫结果决定风险是否关闭。"
 }
