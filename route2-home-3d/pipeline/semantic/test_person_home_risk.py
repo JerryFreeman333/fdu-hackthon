@@ -69,8 +69,8 @@ class PersonHomeRiskContractTests(unittest.TestCase):
         risk = result["risks"][0]
         self.assertEqual(risk["id"], "person-home-cable")
         refs = risk["evidenceRefs"]
-        self.assertIn({"source": "home-object", "sourceId": "cable-1", "category": "cable", "observedAt": "2026-09-09T10:00:00Z", "evidence": {"imageIds": ["img-12"], "annotationId": "ann-12"}}, refs)
-        self.assertEqual(next(ref for ref in refs if ref["source"] == "home-twin")["version"], 7)
+        self.assertIn({"source": "home-object", "sourceId": "cable-1", "category": "cable", "observedAt": "2026-09-09T10:00:00Z", "evidence": {"imageIds": ["img-12"], "annotationId": "ann-12"}, "localization": None}, refs)
+        self.assertEqual(next(ref for ref in refs if ref["source"] == "home-twin")["homeVersion"], 7)
 
     def test_unknown_route_coverage_blocks_night_route_risk(self):
         person = person_profile(nightActivity="declining")
