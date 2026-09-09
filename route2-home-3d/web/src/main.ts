@@ -3,7 +3,7 @@ import './style.css';
 import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
-import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
+import { parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
 import { submitRescanBatch, waitForRescanJob, type RescanSubmitResponse } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
@@ -173,9 +173,10 @@ async function main() {
       }
       if (result.actionPlan) {
         const parsed = parseHomeSafetyActionPlan(result.actionPlan);
-        if (parsed) currentActionPlan = parsed;
-      } else if (result.latestRiskIds && currentActionPlan) {
-        currentActionPlan = applyRescan(currentActionPlan, result.latestRiskIds);
+        if (!parsed) throw new Error('复扫行动计划缺少完整 provenance，拒绝自动更新风险状态');
+        currentActionPlan = parsed;
+      } else {
+        throw new Error('复扫服务未返回可验证的行动计划，拒绝仅凭 riskId 自动关闭历史风险');
       }
       panelController.updateActionPlan(currentActionPlan);
       setHint(result.message ?? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`);
