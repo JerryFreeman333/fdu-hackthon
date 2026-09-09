@@ -20,7 +20,7 @@ def validate_projection(risk_projection: dict[str, Any]) -> None:
         if key not in risk_projection:
             raise RuntimeError(f'复扫风险投影缺少 provenance 字段: {key}')
     if risk_projection.get('riskRuleVersion') != RISK_RULE_VERSION:
-        raise RuntimeError('risk rule version 不受支持')
+        raise RuntimeError('risk rule version 不一致或不受支持')
     home_provenance = risk_projection['homeProvenance']
     if not isinstance(home_provenance, dict) or home_provenance.get('homeId') != risk_projection.get('homeId') or home_provenance.get('homeVersion') != risk_projection.get('homeVersion'):
         raise RuntimeError('Home Twin provenance 与 risk projection 不一致')
