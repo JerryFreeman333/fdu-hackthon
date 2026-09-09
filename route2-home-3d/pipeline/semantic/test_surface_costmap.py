@@ -31,8 +31,11 @@ class SurfaceCostmapTests(unittest.TestCase):
 
     def test_semantic_cable_blocks_cells(self):
         plane = Plane((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+        # make_basis 对 z 向上平面取 u=(0,-1,0), v=(1,0,0)，
+        # 世界点 (2,1,0) 投影为 (u,v)=(-1,2)。min_u=-1.5, min_v=0.5
+        # 使投影点恰好是格 (0,1) 的格心，disk 真正覆盖地面格。
         grid = __import__('surface_costmap').Grid(
-            min_u=0.0, min_v=0.0, cell=1.0, width=5, height=3,
+            min_u=-1.5, min_v=0.5, cell=1.0, width=5, height=3,
             cost=[1.0] * 15, blocked=[False] * 15, ground=[True] * 15,
         )
         stats = apply_semantic_hazards(
