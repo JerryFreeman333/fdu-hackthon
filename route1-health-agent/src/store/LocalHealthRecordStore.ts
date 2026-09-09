@@ -34,10 +34,43 @@ export class LocalHealthRecordStore implements HealthRecordStore {
 
 function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
   return {
-    events: snapshot.events.map((event) => ({ ...event, evidence: [...event.evidence] })),
+    events: snapshot.events.map(cloneHealthEvent),
     familyEvents: snapshot.familyEvents.map((event) => ({ ...event, tags: [...event.tags] })),
     chat: snapshot.chat.map((message) => ({ ...message })),
   };
+}
+
+function cloneHealthEvent(event: HealthEvent): HealthEvent {
+  switch (event.type) {
+    case 'measurement':
+      return {
+        ...event,
+        measurement: {
+          ...event.measurement,
+          metadata: event.measurement.metadata ? { ...event.measurement.metadata } : event.measurement.metadata,
+        },
+      };
+    case 'observation':
+      return {
+        ...event,
+        observation: {
+          ...event.observation,
+          tags: [...event.observation.tags],
+          measurements: event.observation.measurements
+            ? event.observation.measurements.map((measurement) => ({
+                ...measurement,
+                metadata: measurement.metadata ? { ...measurement.metadata } : measurement.metadata,
+              }))
+            : event.observation.measurements,
+          labResults: event.observation.labResults?.map((labResult) => ({ ...labResult })),
+        },
+      };
+    case 'labResult':
+      return {
+        ...event,
+        labResult: { ...event.labResult },
+      };
+  }
 }
 
 export const healthRecordStore = new LocalHealthRecordStore();
