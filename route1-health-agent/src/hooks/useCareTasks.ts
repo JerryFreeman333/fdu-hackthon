@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CareTask, Finding } from '../types';
 import { TODAY } from '../data/demo';
-import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../engine/tasks';
+import { buildInitialTasks, createTaskFromFinding, ensureMedicationCheckTask, updateTaskStatus } from '../engine/tasks';
 
 const TASK_KEY = 'ankang-route1-tasks-v2';
 
@@ -52,25 +52,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
   }
 
   function ensureMedicationCheck(createdAt: string) {
-    setTasks((current) => {
-      if (
-        current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')
-      ) {
-        return current;
-      }
-      return [
-        ...current,
-        {
-          id: `task-medication-${TODAY}`,
-          title: '确认今天是否按原来的医生方案服药',
-          description: '不要自行加倍或调整药量，只确认并按原方案处理。',
-          dueDate: TODAY,
-          status: 'pending',
-          createdAt,
-          kind: 'medication_check',
-        },
-      ];
-    });
+    setTasks((current) => ensureMedicationCheckTask(current, TODAY, createdAt));
   }
 
   return { tasks, updateStatus, ensureMedicationCheck };
