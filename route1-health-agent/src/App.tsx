@@ -29,6 +29,23 @@ import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
 const HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
+const LEGACY_SESSION_KEYS = [
+  'ankang-route1-role-v3',
+  'ankang-route1-consent-v2',
+  'ankang-route1-family-link-v1',
+  'ankang-route1-shared-findings-v1',
+  'ankang-route1-shared-family-events-v1',
+];
+const LEGACY_INVITE_PREFIX = 'ankang-route1-invite:';
+
+function clearLegacySecuritySessionStorage() {
+  if (typeof window === 'undefined') return;
+  for (const key of LEGACY_SESSION_KEYS) window.localStorage.removeItem(key);
+  for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(LEGACY_INVITE_PREFIX)) window.localStorage.removeItem(key);
+  }
+}
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   const stored = healthRecordStore.load();
@@ -121,6 +138,10 @@ export default function App() {
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
+
+  useEffect(() => {
+    clearLegacySecuritySessionStorage();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
