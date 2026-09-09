@@ -10,8 +10,9 @@ export interface HealthRecordSnapshot {
 }
 
 /**
- * 持久化边界。
- * 当前使用浏览器本地存储；未来替换成后端 API/数据库时，Agent/Detection 不需要改变。
+ * 健康数据存储抽象。
+ * Demo 当前实现为会话内存存储，避免敏感健康数据跨浏览器会话残留。
+ * 未来替换成后端 API/数据库时，Agent/Detection 不需要改变；生产实现必须按账号/老人身份做服务端隔离与授权校验。
  */
 export interface HealthRecordStore {
   load(): HealthRecordSnapshot;
@@ -19,7 +20,7 @@ export interface HealthRecordStore {
   clear(): void;
 }
 
-/** 仅用于旧 localStorage 数据迁移的兼容类型。 */
+/** 仅用于保留旧版结构定义；当前 Demo 不再从 localStorage 迁移健康数据。 */
 export interface LegacyHealthRecordSnapshot {
   records?: DayRecord[];
   observations?: Observation[];
