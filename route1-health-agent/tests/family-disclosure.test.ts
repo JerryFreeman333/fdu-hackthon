@@ -1,5 +1,10 @@
 import { collectFamilyNotifications } from '../src/engine/escalate';
-import { familyVisibleFindings, familyVisibleTasks, consumeOneTimeShareIds } from '../src/engine/familyDisclosure';
+import {
+  familyVisibleFindings,
+  familyVisibleTasks,
+  familyVisibleTasksForSharing,
+  consumeOneTimeShareIds,
+} from '../src/engine/familyDisclosure';
 import { createTaskFromFinding } from '../src/engine/tasks';
 import type { CareTask, Finding } from '../src/types';
 
@@ -70,6 +75,7 @@ const tasks: CareTask[] = [
     description: '家属协同',
     dueDate: '2026-09-09',
     status: 'pending',
+    createdAt: '2026-09-09T08:00:00Z',
     kind: 'contact_family',
   },
   {
@@ -133,6 +139,17 @@ runCase('family task disclosure excludes unlinked and private tasks', () => {
   assert(ids.includes('visible-linked'), 'task linked to a visible finding should remain visible');
   assert(!ids.includes('private-safety'), 'safety task linked to a private finding must stay hidden');
   assert(!ids.includes('private-linked'), 'task linked to a private finding must stay hidden');
+});
+
+runCase('revoked family sharing hides every family task, including generic safety tasks', () => {
+  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'granted').length === 3, 'granted sharing should expose only three allowed tasks');
+  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'ask').length === 0, 'ask state must expose no family tasks');
+  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'denied').length === 0, 'denied state must expose no family tasks');
+});
+
+runCase('revocation cannot be bypassed by a stale visible finding list', () => {
+  const staleVisibleFindings = [visibleFinding];
+  assert(familyVisibleTasksForSharing(tasks, staleVisibleFindings, 'denied').length === 0, 'denied state must override stale derived findings');
 });
 
 runCase('one-time share consumption removes only consumed ids', () => {
