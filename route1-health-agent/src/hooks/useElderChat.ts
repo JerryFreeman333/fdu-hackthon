@@ -3,7 +3,9 @@ import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Findin
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
-import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
+import { selectImageParser } from '../adapters/parserSelector';
+import { ImageParserError, type ImageHealthParser, type PendingPhotoImport } from '../adapters/ImageHealthParser';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -33,6 +35,12 @@ const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
+
+// 图片解析器在模块初始化时确定一次：开发模式/无后端 → Demo；
+// 配置了 VITE_HEALTH_VISION_ENDPOINT → 真实 HTTP Vision Provider。
+const imageSelection = selectImageParser();
+export const imageParserMode = imageSelection.mode;
+const imageHealthParser: ImageHealthParser = imageSelection.parser;
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
@@ -383,39 +391,114 @@ export function useElderChat({
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
   }
 
-  async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+  /**
+   * 拍照入口（第一步）：调用 parser，但**不写入** HealthEvent。
+   * 返回一个 PendingPhotoImport，由 UI 展示给用户并等待确认。
+   * 用户点击"确认保存"才真正写入；点击"重新识别"则丢弃；点击"取消"则丢弃且不解析。
+   */
+  async function handlePhotoImport(
+    file: Blob,
+    kind: DemoImageKind,
+  ): Promise<PendingPhotoImport | null> {
+    const capturedAt = localIsoTimestamp();
     try {
-      const capturedAt = localIsoTimestamp();
-      const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
-      const incomingEvents: HealthEvent[] = [
-        ...parsed.measurements.map((measurement) => measurementToEvent({ ...measurement, visibility })),
-        ...parsed.labResults.map((result) => ({
-          id: `labResult:${result.id}`,
-          type: 'labResult' as const,
-          timestamp: result.timestamp,
-          source: result.source,
-          labResult: { ...result, visibility },
-        })),
-      ];
-      if (parsed.tags.length > 0 || parsed.rawText) {
-        incomingEvents.push(
-          observationToEvent({
-            id: `photo-obs-${Date.now()}`,
-            date: TODAY,
-            source: 'photo',
-            text: parsed.rawText ?? '拍照录入（演示）',
-            tags: parsed.tags,
-            visibility,
-          }),
-        );
+      const parsed = await imageHealthParser.parse(file, {
+        userId: DEMO_ELDER_ID,
+        capturedAt,
+        kind,
+      });
+      return {
+        draftId: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        detectedKind: parsed.parseMeta?.detectedKind ?? 'unknown',
+        capturedAt,
+        measurements: parsed.measurements,
+        labResults: parsed.labResults,
+        tags: parsed.tags,
+        rawText: parsed.rawText,
+        provider: parsed.parseMeta?.provider ?? 'unknown',
+        overallConfidence: parsed.parseMeta?.overallConfidence ?? 0,
+        warnings: parsed.parseMeta?.warnings ?? [],
+        image: file,
+      };
+    } catch (error) {
+      if (error instanceof ImageParserError) {
+        const friendly = friendlyParseError(error.code);
+        showToast(friendly);
+      } else {
+        showToast('这张图片暂时无法处理，请换一张或直接告诉我数据。');
       }
-      setEvents((current) => appendHealthEvents(current, incomingEvents));
-      showToast(`${parsed.rawText ?? '拍照录入完成'}；数据按当前共享设置处理，这是 Demo 示例，请人工确认。`);
-    } catch {
-      showToast('这张图片暂时无法处理，请换一张或直接告诉我数据。');
+      return null;
     }
   }
 
-  return { handleElderSend, handlePhotoImport, quickInputs: QUICK_INPUTS };
+  /**
+   * 拍照入口（第二步）：用户点击"确认保存"后把 PendingPhotoImport 写入 HealthEvent。
+   * 注意：必须由 UI 显式调用，parser 输出不会自动入库。
+   */
+  function commitPendingPhotoImport(pending: PendingPhotoImport): boolean {
+    if (!pending || pending.measurements.length === 0 && pending.labResults.length === 0) {
+      showToast('这次识别没有可用数据，请重新拍照或直接告诉我数值。');
+      return false;
+    }
+    const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
+    const incomingEvents: HealthEvent[] = [
+      ...pending.measurements.map((measurement) => measurementToEvent({ ...measurement, visibility })),
+      ...pending.labResults.map((result) => ({
+        id: `labResult:${result.id}`,
+        type: 'labResult' as const,
+        timestamp: result.timestamp,
+        source: result.source,
+        labResult: { ...result, visibility },
+      })),
+    ];
+    if (pending.tags.length > 0 || pending.rawText) {
+      incomingEvents.push(
+        observationToEvent({
+          id: `photo-obs-${Date.now()}`,
+          date: TODAY,
+          source: 'photo',
+          text: pending.rawText ?? '拍照录入',
+          tags: pending.tags,
+          visibility,
+        }),
+      );
+    }
+    setEvents((current) => appendHealthEvents(current, incomingEvents));
+    const summary = pending.measurements
+      .map((m) => `${METRICS[m.metric].label} ${m.value}${m.unit}`)
+      .join('、');
+    showToast(`已保存：${summary || pending.rawText || '拍照录入'}；按当前共享设置处理。`);
+    return true;
+  }
+
+  return { handleElderSend, handlePhotoImport, commitPendingPhotoImport, quickInputs: QUICK_INPUTS, imageParserMode };
+}
+
+function friendlyParseError(code: import('../adapters/ImageHealthParser').ImageParseError): string {
+  switch (code) {
+    case 'empty_image':
+      return '这张图片是空的，请重新拍一张。';
+    case 'unsupported_format':
+      return '这张图片的格式暂时不支持，请换成 JPG/PNG/WebP 重试。';
+    case 'image_unreadable':
+      return '这张图片似乎损坏了，请重新拍一张。';
+    case 'missing_values':
+      return '这张图片没有识别到完整的数值，请重新拍或直接告诉我数字。';
+    case 'missing_unit':
+      return '这张图片里某个数字缺少单位，请重拍或在预览里手动补充。';
+    case 'low_confidence':
+      return '这张图片识别置信度过低，请再拍一张更清楚的。';
+    case 'malformed_json':
+      return '识别服务返回的数据格式异常，请稍后再试。';
+    case 'unknown_image':
+      return '这张图片没能识别成血压计/体重秤/报告，请重新拍摄。';
+    case 'invalid_blood_pressure':
+      return '血压数字不完整或不合理，请再拍一张或直接告诉我数字。';
+    case 'invalid_weight':
+      return '体重数字看起来不合理，请重拍或直接告诉我数字。';
+    case 'aborted':
+      return '已取消这次识别。';
+    default:
+      return '这张图片暂时无法处理，请换一张或直接告诉我数据。';
+  }
 }

@@ -10,6 +10,12 @@
     "rootDir": ".",
     "noEmitOnError": true
   },
-  "include": ["tests/**/*.ts", "src/engine/**/*.ts", "src/types.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "src/engine/**/*.ts",
+    "src/adapters/**/*.ts",
+    "src/pipeline/**/*.ts",
+    "src/types.ts"
+  ],
   "types": []
 }
