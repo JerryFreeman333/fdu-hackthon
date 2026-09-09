@@ -24,7 +24,6 @@ DATA_ROOT = APP_ROOT / ".data"
 MAX_FILE_BYTES = int(os.getenv("ROUTE2_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
 MAX_TOTAL_BYTES = int(os.getenv("ROUTE2_MAX_TOTAL_BYTES", str(200 * 1024 * 1024)))
 MAX_FILES = int(os.getenv("ROUTE2_MAX_FILES", "60"))
-JOB_TTL_SECONDS = int(os.getenv("ROUTE2_JOB_TTL_SECONDS", "3600"))
 SUPPORTED_SUFFIXES = {
     ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif",
     ".mp4", ".webm", ".mov", ".m4v",
@@ -107,12 +106,11 @@ def _sanitize_filename(name: str, index: int) -> str:
 
 def _cleanup_job(job_dir: Path) -> None:
     if os.getenv("ROUTE2_KEEP_INPUT", "0") != "1":
-        shutil.rmtree(job_dir / "input", ignore_errors=True)
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 def _run_job(job_id: str, batch_payload: dict[str, Any]) -> None:
     job_dir = DATA_ROOT / "jobs" / job_id
-    input_dir = job_dir / "input"
     try:
         with _jobs_lock:
             _jobs[job_id]["status"] = "processing"
