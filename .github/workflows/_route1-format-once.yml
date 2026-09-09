@@ -1,0 +1,47 @@
+name: route1-format-once
+
+on:
+  push:
+    branches:
+      - route1/ci-green-blackbox-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Format with repository-pinned Prettier
+        run: npx --yes prettier@3.5.3 --write .
+      - name: Remove one-time formatter
+        working-directory: .
+        run: rm -f .github/workflows/_route1-format-once.yml
+      - name: Commit formatted tree
+        working-directory: .
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No formatting changes required.'
+            exit 0
+          fi
+          git commit -m 'style(route1): apply canonical prettier formatting'
+          git push
