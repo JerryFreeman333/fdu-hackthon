@@ -4,12 +4,13 @@
 
 ## 当前真实能力边界
 
-本目录目前包含两条能力链：
+本目录目前包含三层能力：
 
-1. **合成演示链**：用于比赛演示，场景中的危险点、动线和物品来自预置数据，不代表系统已经自动识别真实家庭。
-2. **真实重建链**：手机拍摄 → COLMAP → Gaussian Splatting → Web 加载真实 3D 模型。真实模型中的危险点、路线和物品目前仍需要空间标定；未标定的数据不会被 Web 端伪造成已知结果。
+1. **合成演示链**：场景中的危险点、动线和物品来自预置数据，只用于验证交互。
+2. **真实重建链**：手机拍摄 → COLMAP → Gaussian Splatting → Web 加载真实 3D 模型。
+3. **真实语义定位链**：输入图像 → YOLO-World 六类开放词汇检测 → COLMAP 2D track → 3D anchor → `HomeTwinSnapshot`。只有获得足够稀疏重建支持的对象才会拥有 3D 坐标。
 
-因此当前版本应称为“Home Twin 原型”，而不是“已经自动理解家庭的 AI 系统”。
+因此当前版本仍应称为“Home Twin 原型”，不宣称已经完成老人家庭环境的高精度自动理解。
 
 ## 目录
 
@@ -17,6 +18,10 @@
 route2-home-3d/
 ├── docs/capture-guide.md
 ├── pipeline/
+│   ├── semantic/
+│   │   ├── requirements.txt
+│   │   ├── README.md
+│   │   └── detect_and_localize.py
 │   └── scripts/
 │       ├── 00_check_env.ps1
 │       ├── 01_setup.ps1
@@ -24,11 +29,16 @@ route2-home-3d/
 │       ├── 03_run_colmap.ps1
 │       ├── 04_train_3dgs.ps1
 │       ├── 05_export_web.ps1
+│       ├── 06_detect_semantics.ps1
 │       └── run_all.ps1
 └── web/
     ├── public/data/hazards.json
+    ├── public/data/semantic-targets.json
     └── src/
         ├── hometwin/model.ts
+        ├── hometwin/semantic.ts
+        ├── hometwin/importSemantic.ts
+        ├── hometwin/routePlanner.ts
         ├── hometwin/fromHazardData.ts
         ├── scene/
         └── ui/
@@ -46,9 +56,9 @@ npm run dev
 
 没有 `public/models/home.ply` 时，网页自动进入合成演示模式；此模式只用于验证交互，不用于证明真实空间识别准确率。
 
-有真实 `home.ply` 时，进入真实重建模式。此时只有已经完成 `realPos` / `realPoints` 标定的数据才会进入交互；未标定结果会显示为“尚未完成真实空间标定”。
+有真实 `home.ply` 时，进入真实重建模式。未完成真实空间定位的数据不会被 Web 端伪造成已知结果。
 
-## 真实 3D 重建管线
+## 真实 3D + 语义定位管线
 
 ### 环境
 
@@ -67,7 +77,7 @@ powershell -ExecutionPolicy Bypass -File 00_check_env.ps1
 powershell -ExecutionPolicy Bypass -File 01_setup.ps1
 ```
 
-之后运行：
+之后运行完整管线：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File run_all.ps1 -Video "C:\path\home.mp4" -Scene home
@@ -79,21 +89,42 @@ powershell -ExecutionPolicy Bypass -File run_all.ps1 -Video "C:\path\home.mp4" -
 powershell -ExecutionPolicy Bypass -File run_all.ps1 -Photos "C:\path\photos" -Scene home
 ```
 
-每次数据准备都会清理该 `Scene` 的旧输入、COLMAP 数据库和中间结果，避免重复扫描相互污染。
+完整流程现在是：
 
-## 真实模型标定
+`照片/视频 → 数据准备 → COLMAP → YOLO-World 六类语义检测 → COLMAP 3D anchor → Gaussian Splatting → Web 导出`
 
-训练结束以后，当前版本仍需要人工把真实模型中的关键数据与坐标对应起来：
+也可以单独运行语义层：
 
-- `hazards[].realPos`
-- `paths[].realPoints`
-- `items[].realPos`
+```powershell
+powershell -ExecutionPolicy Bypass -File 06_detect_semantics.ps1 -Scene home
+```
 
-这是**显式的人机校正步骤**，不是自动识别。该步骤的存在是刻意的：黑客松阶段宁可让人确认关键空间数据，也不应把低可信的视觉结果伪装成确定事实。
+输出：
+
+`pipeline/data/<Scene>/semantic/hometwin-semantic.json`
+
+### 六类核心对象
+
+第一版只固定六类，避免开放词汇结果无限扩散：
+
+- `bed` 床
+- `door` 门/出入口
+- `rug` 地毯
+- `cable` 地面电线
+- `threshold` 门槛/台阶
+- `toilet` 卫生间/马桶区域
+
+### 为什么先采用“2D 检测 + COLMAP track → 3D anchor”
+
+当前阶段最需要的是把视觉证据和三维坐标建立可靠连接，而不是立即做复杂的端到端 3D 语义模型。检测框中的 COLMAP 稀疏轨迹可以作为第一版可审计的 3D 支撑；没有轨迹支持时，系统保持“未定位”。
+
+### 尺度限制
+
+当前 `scaleConfidence = 0`。COLMAP SfM 输出的是重建坐标系，并不能自动保证绝对米制尺度。因此现在可以比较同一场景内对象的相对位置，但**不能把坐标差直接解释为多少米**。后续必须增加实测标尺/已知尺寸锚点，再把尺度置信度写入 Home Twin。
 
 ## Home Twin 数据契约
 
-`web/src/hometwin/model.ts` 定义了后续统一使用的数据结构：
+`web/src/hometwin/model.ts` 统一承载：
 
 - `HomeRoom`：房间及功能标签
 - `HomeObject`：物体、位置、所属房间、来源、时间、置信度
@@ -101,31 +132,21 @@ powershell -ExecutionPolicy Bypass -File run_all.ps1 -Photos "C:\path\photos" -S
 - `HomeRoute`：高价值生活路线及风险点
 - `HomeTwinSnapshot`：家庭版本、采集时间、尺度可信度和上述数据的统一快照
 
-下一阶段应把视觉识别输出转换成这个结构，而不是继续把新功能直接塞进 `hazards.json`。
+语义感知层输出的对象可以进入这个契约，但不会自动伪造 `connects / blocks / on-route` 关系；路线规划只有在具备足够空间关系证据时才允许执行。
 
-## 当前明确不做的事情
+## 当前仍未完成
 
-- 不把 Gaussian Splatting 本身当成“AI 理解”
-- 不把预置危险点当成真实视觉检测结果
-- 不把 Catmull-Rom 曲线当成真正的最优/安全路径规划算法
-- 不把 3DGS 输出当成厘米级测量结果
-- 不在未标定时给出确定的真实位置
-- 不在路线二内部直接做 Person Twin 的个体化健康诊断
+- 房间自动分区与门/通道拓扑
+- 视觉对象的稳定跨帧 ID
+- 从 3D 对象自动推导可靠的 `connects / blocks / on-route`
+- 真正米制尺度标定
+- 安全路线而不仅是几何最短路线
+- 环境变化检测
+- Person × Home 个体化风险计算
+- 面向老人和家属的最终产品 UI
 
-## 下一阶段优先级
-
-### P0
-
-真实模型语义识别 → 关键物体定位 → 房间/物体/通道关系 → Bed → Toilet 结构化路线。
-
-### P1
-
-环境变化检测、Home Twin 版本管理、人工校正、置信度和质量报告。
-
-### P2
-
-与 Route 1 Person Twin / Risk Engine 对接，形成 Person × Home 的个性化风险判断。
+这些属于下一阶段，而不是用静态数据假装已经完成。
 
 ## 隐私
 
-拍摄素材、COLMAP 中间数据、训练产物和模型文件默认不入库；卫生间等高度敏感区域应尽量减少拍摄范围。真实产品版本还需要进一步加入家庭空间访问授权、分享控制、删除和审计机制；这些能力尚未在当前原型中完成。
+拍摄素材、COLMAP 中间数据、训练产物和模型文件默认不入库；卫生间等高度敏感区域应尽量减少拍摄范围。真实产品版本还需要家庭空间访问授权、分享控制、删除和审计机制；这些能力尚未在当前原型中完成。
