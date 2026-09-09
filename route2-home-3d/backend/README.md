@@ -1,0 +1,55 @@
+# Route 2 Rescan Backend
+
+本地 FastAPI 后端只负责 **复扫输入接收、任务排队、处理状态和结果回传**。真实摄像头/深度设备不直接写入业务逻辑，而是未来实现 `CaptureSource` 接口，把照片/视频帧转换成相同的 `CaptureBatch`。
+
+## 本地运行
+
+```bash
+cd route2-home-3d/backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app:app --host 127.0.0.1 --port 8010 --reload
+```
+
+Windows PowerShell：
+
+```powershell
+cd route2-home-3d/backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn app:app --host 127.0.0.1 --port 8010 --reload
+```
+
+默认 `ROUTE2_PROCESSOR_MODE=queue`：真实媒体会经过完整上传、校验、落盘和任务状态链路，但**不会伪造新的空间风险结果**。因此上传成功不会自动关闭旧行动。
+
+在已准备好 Windows + PowerShell + COLMAP/3DGS 环境后，可以显式启用真实 pipeline：
+
+```powershell
+$env:ROUTE2_PROCESSOR_MODE="local-pipeline"
+$env:ROUTE2_ENABLE_PIPELINE="1"
+python -m uvicorn app:app --host 127.0.0.1 --port 8010
+```
+
+真实 pipeline 使用现有 `scripts/12_rescan_home.ps1`，结果仍经过 `person-home-risk.json` 与 `person-home-action-plan.rescan.json` 才能更新前端行动状态。
+
+## API
+
+`GET /api/route2/health`
+
+返回处理器模式与硬件适配状态。
+
+`POST /api/route2/rescan`
+
+`multipart/form-data` 字段：`batchId`、`capturedAt`、`mediaKind`、`manifest`、`files[]`。成功返回 HTTP 202 与 `jobId`。
+
+`GET /api/route2/rescan/{jobId}`
+
+轮询 `queued → processing → ready/failed`；只有 `ready` 且存在新的风险投影时，前端才会应用新的风险/行动状态。
+
+## 隐私与留存
+
+原始上传默认写入 `backend/.data/jobs/<jobId>/`，任务处理结束后自动删除 `input/`。设置 `ROUTE2_KEEP_INPUT=1` 才保留输入供本地调试。`.data/` 永不提交到 Git。
+
+本服务不接收 Route 1 原始聊天、原始健康事件或其他私密对话内容；Person Twin 仅通过显式配置的结构化文件提供功能状态字段。
