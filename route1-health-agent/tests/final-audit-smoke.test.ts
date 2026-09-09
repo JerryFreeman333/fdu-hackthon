@@ -23,8 +23,8 @@ const oneTimeEvent: FamilyHealthEvent = {
 const persistentEvent: FamilyHealthEvent = { ...oneTimeEvent, id: 'audit-family-2', shareMode: 'persistent' };
 
 const thirdPerson = understandElderInput('我觉得他喘得厉害', TODAY);
-assert(thirdPerson.claims[0]?.subject === 'family_other', 'third-person concern must not become self');
-assert(acceptedSelfClaims(thirdPerson).length === 0, 'family report must stay out of elder stream');
+assert(thirdPerson.claims[0]?.subject === 'unknown', 'ambiguous third-person concern must fail closed instead of becoming self');
+assert(acceptedSelfClaims(thirdPerson).length === 0, 'ambiguous third-person concern must stay out of elder stream');
 
 const mixed = understandElderInput('我爸今天没吃降压药，我也没吃', TODAY);
 assert(mixed.claims.length === 2, 'mixed-person sentence must retain both claims');
