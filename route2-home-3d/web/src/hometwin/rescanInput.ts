@@ -32,7 +32,12 @@ export function prepareRescanFiles(files: FileList | File[]): RescanInputResult 
   if (!selected.length) return null;
 
   const kinds = new Set(selected.map((file) => classify(file)));
-  const kind: RescanMediaKind = kinds.has('video') ? 'video' : 'image';
+  // A single capture batch must have one transport mode because the PowerShell
+  // pipeline accepts either -Photos or -Video. Do not silently discard one kind.
+  if (kinds.size > 1) return null;
+  const kind = [...kinds][0];
+  if (!kind) return null;
+
   const batch: RescanInputBatch = {
     id: `rescan-${Date.now()}`,
     capturedAt: new Date().toISOString(),
