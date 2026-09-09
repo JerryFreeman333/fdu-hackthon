@@ -9,6 +9,7 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
+import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
@@ -70,6 +71,8 @@ export default function App() {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
+    consumeSharedFindingIds,
+    consumeSharedFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
@@ -119,6 +122,27 @@ export default function App() {
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
   }, [events, familyEvents, chat]);
+
+  useEffect(() => {
+    if (role !== 'family' || familyLink?.status !== 'active') return;
+
+    const oneTimeFindingIds = familyNotifs
+      .filter((notification) => notification.oneTime)
+      .map((notification) => notification.finding.id);
+    const oneTimeFamilyEventIds = visibleFamilyFacts
+      .filter((event) => event.shareMode === 'one_time')
+      .map((event) => event.id);
+
+    consumeSharedFindingIds(oneTimeFindingIds);
+    consumeSharedFamilyEventIds(oneTimeFamilyEventIds);
+  }, [
+    role,
+    familyLink?.status,
+    familyNotifs,
+    visibleFamilyFacts,
+    consumeSharedFindingIds,
+    consumeSharedFamilyEventIds,
+  ]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
