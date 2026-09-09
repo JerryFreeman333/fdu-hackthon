@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
@@ -140,7 +141,10 @@ export function useElderChat({
   onShareFindingIds,
   onShareFamilyEventIds,
 }: UseElderChatOptions) {
+  const latestTurnRef = useRef(0);
+
   async function handleElderSend(text: string) {
+    const turnId = ++latestTurnRef.current;
     const intent = parsePrivacyIntent(text);
     const sharingHistoryQuery = sharingHistoryRequested(text);
     const understanding = understandElderInput(text, TODAY, chat);
@@ -198,6 +202,8 @@ export function useElderChat({
       );
     }
 
+    if (turnId !== latestTurnRef.current) return;
+
     let familyAcknowledgement = '';
     if (familyClaims.length > 0 && intent !== 'no_record') {
       familyAcknowledgement = buildFamilyAcknowledgement(
@@ -211,6 +217,8 @@ export function useElderChat({
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
+
+    if (turnId !== latestTurnRef.current) return;
 
     if (understanding.correction) {
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
@@ -388,32 +396,16 @@ export function useElderChat({
       const capturedAt = localIsoTimestamp();
       const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
       const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
-      const incomingEvents: HealthEvent[] = [
-        ...parsed.measurements.map((measurement) => measurementToEvent({ ...measurement, visibility })),
-        ...parsed.labResults.map((result) => ({
-          id: `labResult:${result.id}`,
-          type: 'labResult' as const,
-          timestamp: result.timestamp,
-          source: result.source,
-          labResult: { ...result, visibility },
-        })),
-      ];
-      if (parsed.tags.length > 0 || parsed.rawText) {
-        incomingEvents.push(
-          observationToEvent({
-            id: `photo-obs-${Date.now()}`,
-            date: TODAY,
-            source: 'photo',
-            text: parsed.rawText ?? '拍照录入（演示）',
-            tags: parsed.tags,
-            visibility,
-          }),
-        );
+      const measurements = parsed.map((item) => measurementToEvent({ ...item, visibility }));
+      if (measurements.length === 0) {
+        showToast('这张图片没有识别到可记录的健康数值。');
+        return;
       }
-      setEvents((current) => appendHealthEvents(current, incomingEvents));
-      showToast(`${parsed.rawText ?? '拍照录入完成'}；数据按当前共享设置处理，这是 Demo 示例，请人工确认。`);
-    } catch {
-      showToast('这张图片暂时无法处理，请换一张或直接告诉我数据。');
+      setEvents((current) => appendHealthEvents(current, measurements));
+      showToast(`已记录 ${measurements.length} 项图片中的健康数值。`);
+    } catch (error) {
+      console.error(error);
+      showToast('图片解析失败，请稍后重试。');
     }
   }
 
