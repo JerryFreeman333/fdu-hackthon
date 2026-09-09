@@ -1,12 +1,10 @@
-# 路线二 —— 表面级可通行候选路线
-# 输入: COLMAP sparse 3D points + hometwin-semantic.json
-# 输出: pipeline/data/<Scene>/semantic/hometwin-surface-route.json
+# 路线二 —— 按老人通行模型生成表面级可通行候选路线
 param(
     [string]$Scene = "home",
     [double]$Cell = 0.05,
     [double]$PlaneThreshold = 0.02,
     [double]$ObstacleHeight = 0.08,
-    [double]$Clearance = 0.18,
+    [string]$ClearanceProfile = "",
     [string]$ScaleFile = ""
 )
 $ErrorActionPreference = 'Stop'
@@ -16,28 +14,30 @@ $semanticDir = "$sceneDir\semantic"
 $input = "$semanticDir\hometwin-semantic.json"
 $output = "$semanticDir\hometwin-surface-route.json"
 $points = "$semanticDir\colmap_txt\points3D.txt"
+$defaultProfile = "$repoRoot\pipeline\semantic\mobility-profile.example.json"
 
 if (-not (Test-Path $input)) { throw "缺少语义 Home Twin: $input，请先运行 06_detect_semantics.ps1" }
-if (-not (Test-Path $points)) {
-    throw "缺少 COLMAP points3D.txt: $points，请先运行 06_detect_semantics.ps1（它会导出文本模型）"
-}
+if (-not (Test-Path $points)) { throw "缺少 COLMAP points3D.txt，请先运行 06_detect_semantics.ps1" }
 $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) { throw "找不到 python" }
+if (-not $ClearanceProfile) { $ClearanceProfile = $defaultProfile }
+if (-not (Test-Path $ClearanceProfile)) { throw "通行模型不存在: $ClearanceProfile" }
 
 $args = @(
-    "$repoRoot\pipeline\semantic\surface_costmap.py",
+    "$repoRoot\pipeline\semantic\personalized_surface_route.py",
     '--snapshot', $input,
     '--points', $points,
     '--output', $output,
+    '--profile', $ClearanceProfile,
     '--cell', $Cell,
     '--plane-threshold', $PlaneThreshold,
-    '--obstacle-height', $ObstacleHeight,
-    '--clearance', $Clearance
+    '--obstacle-height', $ObstacleHeight
 )
 if ($ScaleFile) { $args += @('--scale', $ScaleFile) }
 
-Write-Host "===== 从 COLMAP 稀疏点云构建表面代价图 =====" -ForegroundColor Cyan
+Write-Host "===== 按通行模型构建表面代价图 =====" -ForegroundColor Cyan
+Write-Host "Mobility profile: $ClearanceProfile"
 & $python.Source @args
-if ($LASTEXITCODE -ne 0) { throw "表面代价图/路线计算失败" }
+if ($LASTEXITCODE -ne 0) { throw "表面代价图/个体化路线计算失败" }
 Write-Host "表面路线输出: $output" -ForegroundColor Green
-Write-Host "注意：未提供 scale.json 时仍属于 reconstruction-unit；未进行现场通行宽度验证。" -ForegroundColor Yellow
+Write-Host "注意：结果仍是 candidate，不代表现场验证的安全路线。" -ForegroundColor Yellow
