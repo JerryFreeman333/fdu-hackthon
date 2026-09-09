@@ -28,12 +28,17 @@ import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
-const HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-route1-health-records-v2'];
+const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 
 function clearLegacyHealthStorage() {
   if (typeof window === 'undefined') return;
   for (const key of LEGACY_HEALTH_STORAGE_KEYS) window.localStorage.removeItem(key);
+}
+
+function clearLegacyHomeSafetyStorage() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(LEGACY_HOME_ACTION_KEY);
 }
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
@@ -51,15 +56,9 @@ function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthE
   return snapshot;
 }
 
-function loadHomeSafetyActions(): HomeSafetyAction[] {
-  try {
-    const raw = window.localStorage.getItem(HOME_ACTION_KEY);
-    if (!raw) return demoHomeSafetyActions;
-    const parsed = JSON.parse(raw) as HomeSafetyAction[];
-    return Array.isArray(parsed) ? parsed : demoHomeSafetyActions;
-  } catch {
-    return demoHomeSafetyActions;
-  }
+function initialHomeSafetyActions(): HomeSafetyAction[] {
+  clearLegacyHomeSafetyStorage();
+  return demoHomeSafetyActions.map((action) => ({ ...action }));
 }
 
 export default function App() {
@@ -67,7 +66,7 @@ export default function App() {
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
-  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() => loadHomeSafetyActions());
+  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
@@ -144,10 +143,6 @@ export default function App() {
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
   }, [events, familyEvents, chat]);
-
-  useEffect(() => {
-    window.localStorage.setItem(HOME_ACTION_KEY, JSON.stringify(homeSafetyActions));
-  }, [homeSafetyActions]);
 
   useEffect(() => {
     if (role !== 'family' || familyLink?.status !== 'active') return;
