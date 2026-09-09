@@ -58,7 +58,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
   const activeTasks = familyVisibleTasks(props.tasks, familyFindings).slice(0, 3);
-  const openHomeActions = props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3);
+  const openHomeActions = canViewSharedDetail
+    ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
+    : [];
 
   useEffect(() => {
     const oneTimeFindingIds = props.notifications
