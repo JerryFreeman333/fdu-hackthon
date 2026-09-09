@@ -31,15 +31,15 @@ export function buildDemoHomeTwin(data: HazardData): HomeTwinSnapshot {
   }));
 
   const byId = new Map(objects.map(object => [object.id, object]));
-  const relations = [
-    { subjectId: 'bedside-glasses', relation: 'near' as const, objectId: 'bed', confidence: 1 },
-    { subjectId: 'bedside-medicine', relation: 'near' as const, objectId: 'bed', confidence: 1 },
-    { subjectId: 'bedroom-door', relation: 'connects' as const, objectId: 'rug-curl', confidence: 1 },
-    { subjectId: 'rug-curl', relation: 'connects' as const, objectId: 'step-no-rail', confidence: 0.95 },
-    { subjectId: 'step-no-rail', relation: 'connects' as const, objectId: 'bathroom-door', confidence: 0.95 },
-    { subjectId: 'bathroom-door', relation: 'connects' as const, objectId: 'toilet', confidence: 1 },
-    { subjectId: 'rug-curl', relation: 'on-route' as const, objectId: 'bed', confidence: 0.9 },
-    { subjectId: 'step-no-rail', relation: 'on-route' as const, objectId: 'bathroom-door', confidence: 0.95 }
+  const relations: HomeTwinSnapshot['relations'] = [
+    { subjectId: 'bedside-glasses', relation: 'near', objectId: 'bed', confidence: 1, source: 'demo' },
+    { subjectId: 'bedside-medicine', relation: 'near', objectId: 'bed', confidence: 1, source: 'demo' },
+    { subjectId: 'bedroom-door', relation: 'connects', objectId: 'rug-curl', confidence: 1, source: 'demo' },
+    { subjectId: 'rug-curl', relation: 'connects', objectId: 'step-no-rail', confidence: 0.95, source: 'demo' },
+    { subjectId: 'step-no-rail', relation: 'connects', objectId: 'bathroom-door', confidence: 0.95, source: 'demo' },
+    { subjectId: 'bathroom-door', relation: 'connects', objectId: 'toilet', confidence: 1, source: 'demo' },
+    { subjectId: 'rug-curl', relation: 'on-route', objectId: 'bed', confidence: 0.9, source: 'demo' },
+    { subjectId: 'step-no-rail', relation: 'on-route', objectId: 'bathroom-door', confidence: 0.95, source: 'demo' }
   ];
 
   const demoNight = data.paths.find(path => path.id === 'night-toilet');
