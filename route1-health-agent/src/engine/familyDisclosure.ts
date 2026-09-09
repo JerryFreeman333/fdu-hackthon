@@ -1,4 +1,4 @@
-import type { CareTask, Finding } from '../types';
+import type { CareTask, FamilySharing, Finding } from '../types';
 
 const FAMILY_FINDING_LEVELS = new Set<Finding['severity']>(['alert', 'urgent']);
 
@@ -9,17 +9,27 @@ export function familyVisibleFindings(findings: Finding[]): Finding[] {
 
 /**
  * 家属任务也必须通过同一条披露边界。
- * 与私密 finding 关联的 safety_check 不能仅凭任务类型被家属看到；
+ * 与私密 finding 关联的任务不能仅凭任务类型被家属看到；
+ * 只有明确关联到当前可共享 finding 的任务才可携带该 finding 的信息进入家属端。
  * 无 sourceFindingId 的 safety_check 才可作为不泄露具体病情的通用安全协同任务展示。
  */
 export function familyVisibleTasks(tasks: CareTask[], visibleFindings: Finding[]): CareTask[] {
   const visibleFindingIds = new Set(visibleFindings.map((finding) => finding.id));
   return tasks.filter((task) => {
     if (task.status === 'completed' || task.status === 'dismissed') return false;
-    if (task.kind === 'contact_family') return true;
     if (typeof task.sourceFindingId === 'string') return visibleFindingIds.has(task.sourceFindingId);
     return task.kind === 'safety_check';
   });
+}
+
+/** Family task disclosure is fail-closed unless persistent family sharing is explicitly granted. */
+export function familyVisibleTasksForSharing(
+  tasks: CareTask[],
+  findings: Finding[],
+  familySharing: FamilySharing,
+): CareTask[] {
+  if (familySharing !== 'granted') return [];
+  return familyVisibleTasks(tasks, familyVisibleFindings(findings));
 }
 
 /** Consuming a one-time grant is idempotent and leaves unrelated grants untouched. */

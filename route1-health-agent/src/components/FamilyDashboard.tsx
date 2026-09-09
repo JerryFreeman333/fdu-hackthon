@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
+import { useEffect, useState } from 'react';
+import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
+import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
-import { familyVisibleFindings, familyVisibleTasks } from '../engine/familyDisclosure';
+import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 
 interface FamilyDashboardProps {
   profile: ElderProfile;
@@ -13,12 +14,17 @@ interface FamilyDashboardProps {
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
+  homeSafetyActions: HomeSafetyAction[];
+  records: DayRecord[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
+  onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
   onContactElder: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
   onViewChange: (view: 'home' | 'detail' | 'report') => void;
+  onConsumeFindingShare: (findingIds: string[]) => void;
+  onConsumeFamilyEventShare: (eventIds: string[]) => void;
   view: 'home' | 'detail' | 'report';
 }
 
@@ -44,34 +50,31 @@ function overallMessage(notifications: FamilyNotification[]) {
   };
 }
 
-function FindingCard({ finding }: { finding: Finding }) {
-  const badge = severityBadge(finding.severity);
-  return (
-    <div className={`family-item family-item-${finding.severity}`}>
-      <div className="finding-head">
-        <span className={`badge ${badge.className}`}>{badge.text}</span>
-        <b>{finding.title}</b>
-        <span className="muted right">{finding.date}</span>
-      </div>
-      <p>{finding.familyMessage ?? '建议联系老人确认当前状态。'}</p>
-      {finding.carePath && (
-        <div className="care-path">
-          <b>建议行动：</b>
-          {finding.carePath}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
   const state = overallMessage(props.notifications);
-  const familyFindings = familyVisibleFindings(props.findings);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
+  const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
-  const activeTasks = familyVisibleTasks(props.tasks, familyFindings).slice(0, 3);
+  const activeTasks = familyVisibleTasksForSharing(props.tasks, props.findings, props.profile.familySharing).slice(
+    0,
+    3,
+  );
+  const openHomeActions = canViewSharedDetail
+    ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
+    : [];
+
+  useEffect(() => {
+    const oneTimeFindingIds = props.notifications
+      .filter((notification) => notification.oneTime)
+      .map((notification) => notification.finding.id);
+    const oneTimeFamilyEventIds = recentFamilyEvents
+      .filter((event) => event.shareMode === 'one_time')
+      .map((event) => event.id);
+    props.onConsumeFindingShare(oneTimeFindingIds);
+    props.onConsumeFamilyEventShare(oneTimeFamilyEventIds);
+  }, [props.notifications, recentFamilyEvents, props.onConsumeFindingShare, props.onConsumeFamilyEventShare]);
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -92,7 +95,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             ← 返回
           </button>
           <button className="btn-secondary" onClick={() => props.onViewChange('report')}>
-            查看家属周报
+            查看周报
           </button>
         </div>
         <section className="card">
@@ -104,7 +107,22 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           ) : (
             <div className="family-feed">
               {familyFindings.map((finding) => (
-                <FindingCard key={finding.id} finding={finding} />
+                <div className={`family-item family-item-${finding.severity}`} key={finding.id}>
+                  <div className="finding-head">
+                    <span className={`badge ${severityBadge(finding.severity).className}`}>
+                      {severityBadge(finding.severity).text}
+                    </span>
+                    <b>{finding.title}</b>
+                    <span className="muted right">{finding.date}</span>
+                  </div>
+                  <p>{finding.familyMessage ?? '建议联系老人确认当前状态。'}</p>
+                  {finding.carePath && (
+                    <div className="care-path">
+                      <b>建议行动：</b>
+                      {finding.carePath}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -164,7 +182,22 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           {familyFindings.length > 0 && (
             <div className="family-feed">
               {familyFindings.map((finding) => (
-                <FindingCard key={finding.id} finding={finding} />
+                <div className={`family-item family-item-${finding.severity}`} key={finding.id}>
+                  <div className="finding-head">
+                    <span className={`badge ${severityBadge(finding.severity).className}`}>
+                      {severityBadge(finding.severity).text}
+                    </span>
+                    <b>{finding.title}</b>
+                    <span className="muted right">{finding.date}</span>
+                  </div>
+                  <p>{finding.familyMessage ?? '建议联系老人确认当前状态。'}</p>
+                  {finding.carePath && (
+                    <div className="care-path">
+                      <b>建议行动：</b>
+                      {finding.carePath}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -238,6 +271,45 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </button>
         </div>
       </section>
+
+      {openHomeActions.length > 0 && (
+        <section className="card">
+          <div className="section-head">
+            <div>
+              <h3>居家安全，需要您做的一件事</h3>
+              <span className="muted">来自 Home Twin × Person Twin，只呈现可执行建议。</span>
+            </div>
+          </div>
+          <div className="family-feed">
+            {openHomeActions.map((action) => (
+              <div className="family-item family-item-alert" key={action.id}>
+                <div className="finding-head">
+                  <span className="badge badge-alert">居家安全</span>
+                  <b>{action.title}</b>
+                </div>
+                <p>{action.description}</p>
+                <div className="care-path">
+                  <b>建议行动：</b>
+                  {action.action}
+                </div>
+                {action.requiresRescan ? (
+                  <span className="muted">完成后还需要重新扫描，系统确认风险是否消失。</span>
+                ) : (
+                  <span className="muted">当前任务无需复扫确认。</span>
+                )}
+                <div className="family-actions">
+                  {action.status === 'open' && (
+                    <button className="btn-secondary" onClick={() => props.onHomeSafetyActionStatus(action.id, 'done')}>
+                      我已处理
+                    </button>
+                  )}
+                  {action.status === 'done' && <span className="muted">已处理，等待重新扫描确认</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="section-head">

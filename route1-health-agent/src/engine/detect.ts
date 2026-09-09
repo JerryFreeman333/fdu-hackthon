@@ -61,15 +61,6 @@ function dedupeFindings(findings: Finding[]): Finding[] {
   return [...byId.values()];
 }
 
-/**
- * Privacy is evaluated by each detection rule from the exact evidence it used.
- *
- * Do not add a global “private tag ever seen” veto here. A historical private
- * observation must not suppress a later, independently shareable emergency event
- * with the same symptom tag (for example, an old private fall vs today's explicit
- * family-ok fall). Each rule already sets familyEligible from its own source
- * observations/measurements, which keeps privacy decisions local to the finding.
- */
 export function runDetection(events: HealthEvent[], today: string, options: DetectionOptions = {}): Finding[] {
   const config: DetectionConfig = { ...DEFAULT_CONFIG, ...options };
   const materialized = materializeHealthData(events);
@@ -92,9 +83,9 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
     else if (result) findings.push(result);
   }
 
-  const privacyAware = dedupeFindings(findings);
+  const dedupedFindings = dedupeFindings(findings);
   const order = { urgent: 0, alert: 1, watch: 2, info: 3 } as const;
-  return privacyAware.sort((a, b) => {
+  return dedupedFindings.sort((a, b) => {
     const severityDelta = order[a.severity] - order[b.severity];
     if (severityDelta !== 0) return severityDelta;
     return (b.score ?? 0) - (a.score ?? 0);

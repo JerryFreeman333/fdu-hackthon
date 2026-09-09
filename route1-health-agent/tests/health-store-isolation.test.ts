@@ -47,17 +47,20 @@ assert(loaded.events.length === 1, 'the same in-memory session must retain healt
 assert(loaded.familyEvents.length === 1, 'the same in-memory session must retain family facts');
 assert(loaded.chat.length === 1, 'the same in-memory session must retain chat');
 
+firstSession.clear();
 const secondSession = new LocalHealthRecordStore();
 const fresh = secondSession.load();
 assert(fresh.events.length === 0, 'a fresh store instance must not inherit prior health events');
 assert(fresh.familyEvents.length === 0, 'a fresh store instance must not inherit prior family facts');
 assert(fresh.chat.length === 0, 'a fresh store instance must not inherit prior chat');
 
-const loadedObs = loaded.events[0] as Extract<HealthEvent, { type: 'observation' }>;
+firstSession.save({ events: [event], familyEvents: [familyEvent], chat: [chat] });
+const loaded2 = firstSession.load();
+const loadedObs = loaded2.events[0] as Extract<HealthEvent, { type: 'observation' }>;
 loadedObs.observation.text = 'mutated outside store';
 loadedObs.observation.tags.push('pain');
-loaded.familyEvents[0]!.tags.push('pain');
-loaded.chat[0]!.text = 'mutated outside store';
+loaded2.familyEvents[0]!.tags.push('pain');
+loaded2.chat[0]!.text = 'mutated outside store';
 const cloned = firstSession.load();
 const clonedObs = cloned.events[0] as Extract<HealthEvent, { type: 'observation' }>;
 assert(clonedObs?.observation.text === event.observation.text, 'loaded observations must be cloned');

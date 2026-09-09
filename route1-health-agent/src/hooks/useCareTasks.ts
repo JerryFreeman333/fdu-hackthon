@@ -1,18 +1,38 @@
 import { useEffect, useState } from 'react';
 import type { CareTask, Finding } from '../types';
 import { TODAY } from '../data/demo';
-import { buildInitialTasks, createTaskFromFinding, ensureMedicationCheckTask, updateTaskStatus } from '../engine/tasks';
+import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from '../engine/tasks';
 
-/**
- * Route 1 Demo 任务状态只存在当前页面会话。
- * 任务标题/描述可能暴露健康风险，因此不能跨浏览器会话持久化到 localStorage。
- */
+const LEGACY_TASK_KEY = 'ankang-route1-tasks-v2';
+let sessionTasks: CareTask[] | null = null;
+
+function cloneTasks(tasks: CareTask[]): CareTask[] {
+  return tasks.map((task) => ({ ...task }));
+}
+
+function loadTasks(): CareTask[] {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(LEGACY_TASK_KEY);
+  }
+  if (sessionTasks) return cloneTasks(sessionTasks);
+  sessionTasks = buildInitialTasks(TODAY);
+  return cloneTasks(sessionTasks);
+}
+
+function saveTasks(tasks: CareTask[]): void {
+  sessionTasks = cloneTasks(tasks);
+}
+
 interface UseCareTasksOptions {
   findings: Finding[];
 }
 
 export function useCareTasks({ findings }: UseCareTasksOptions) {
-  const [tasks, setTasks] = useState<CareTask[]>(() => buildInitialTasks(TODAY));
+  const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
+
+  useEffect(() => {
+    saveTasks(tasks);
+  }, [tasks]);
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
@@ -35,7 +55,25 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
   }
 
   function ensureMedicationCheck(createdAt: string) {
-    setTasks((current) => ensureMedicationCheckTask(current, TODAY, createdAt));
+    setTasks((current) => {
+      if (
+        current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')
+      ) {
+        return current;
+      }
+      return [
+        ...current,
+        {
+          id: `task-medication-${TODAY}`,
+          title: '确认今天是否按原来的医生方案服药',
+          description: '不要自行加倍或调整药量，只确认并按原方案处理。',
+          dueDate: TODAY,
+          status: 'pending',
+          createdAt,
+          kind: 'medication_check',
+        },
+      ];
+    });
   }
 
   return { tasks, updateStatus, ensureMedicationCheck };

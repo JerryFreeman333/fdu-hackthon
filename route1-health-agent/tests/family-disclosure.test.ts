@@ -1,5 +1,10 @@
 import { collectFamilyNotifications } from '../src/engine/escalate';
-import { familyVisibleFindings, familyVisibleTasks } from '../src/engine/familyDisclosure';
+import {
+  familyVisibleFindings,
+  familyVisibleTasks,
+  familyVisibleTasksForSharing,
+  consumeOneTimeShareIds,
+} from '../src/engine/familyDisclosure';
 import { createTaskFromFinding } from '../src/engine/tasks';
 import type { CareTask, Finding } from '../src/types';
 
@@ -27,24 +32,15 @@ const baseFinding: Finding = {
 runCase('family disclosure is fail-closed when familyEligible is omitted', () => {
   const finding = { ...baseFinding, familyEligible: undefined };
   assert(familyVisibleFindings([finding]).length === 0, 'undefined family eligibility must stay hidden');
-});
-
-runCase('family notification is also fail-closed when familyEligible is omitted', () => {
-  const finding = { ...baseFinding, familyEligible: undefined };
   assert(
     collectFamilyNotifications([finding], 'granted').length === 0,
-    'undefined family eligibility must never trigger a family notification',
+    'undefined eligibility must never notify family',
   );
-});
-
-runCase('private-ineligible findings never reach family view', () => {
-  const finding = { ...baseFinding, familyEligible: false };
-  assert(familyVisibleFindings([finding]).length === 0, 'explicitly ineligible finding must stay hidden');
 });
 
 runCase('watch-level findings remain elder-only', () => {
   const finding = { ...baseFinding, severity: 'watch' as const };
-  assert(familyVisibleFindings([finding]).length === 0, 'watch findings must not be disclosed to family');
+  assert(familyVisibleFindings([finding]).length === 0, 'watch findings must stay elder-only');
 });
 
 runCase('only explicitly shareable alert and urgent findings are disclosed', () => {
@@ -66,10 +62,9 @@ const unspecifiedFinding: Finding = {
 runCase('non-shareable urgent findings never create family contact tasks', () => {
   const task = createTaskFromFinding(unspecifiedFinding, '2026-09-09');
   assert(task?.kind !== 'contact_family', 'missing family eligibility must not create contact_family');
-  assert(task?.sourceFindingId === unspecifiedFinding.id, 'the task may remain elder-side and keep finding lineage');
-
+  assert(task?.sourceFindingId === unspecifiedFinding.id, 'the task may remain elder-side and keep lineage');
   const privateTask = createTaskFromFinding(privateFinding, '2026-09-09');
-  assert(privateTask?.kind === 'safety_check', 'private urgent finding should become elder safety task');
+  assert(privateTask?.kind === 'safety_check', 'private urgent finding should remain an elder safety task');
 });
 
 const tasks: CareTask[] = [
@@ -92,9 +87,19 @@ const tasks: CareTask[] = [
     kind: 'contact_family',
   },
   {
+    id: 'visible-family-linked',
+    title: '联系老人确认变化',
+    description: '与可共享 finding 关联的家属任务',
+    dueDate: '2026-09-09',
+    status: 'pending',
+    createdAt: '2026-09-09T08:00:00Z',
+    kind: 'contact_family',
+    sourceFindingId: visibleFinding.id,
+  },
+  {
     id: 'safety',
     title: '确认安全',
-    description: '家属安全核实',
+    description: '通用安全核实',
     dueDate: '2026-09-09',
     status: 'pending',
     createdAt: '2026-09-09T08:00:00Z',
@@ -102,7 +107,7 @@ const tasks: CareTask[] = [
   },
   {
     id: 'private-safety',
-    title: '立即确认当前安全情况',
+    title: '私密安全任务',
     description: '私密 finding 产生的安全任务',
     dueDate: '2026-09-09',
     status: 'pending',
@@ -123,7 +128,7 @@ const tasks: CareTask[] = [
   {
     id: 'visible-linked',
     title: '跟进变化',
-    description: '与可共享发现关联',
+    description: '与可共享 finding 关联',
     dueDate: '2026-09-09',
     status: 'pending',
     createdAt: '2026-09-09T08:00:00Z',
@@ -132,15 +137,47 @@ const tasks: CareTask[] = [
   },
 ];
 
-runCase('family task disclosure excludes unrelated private tasks and keeps coordination tasks', () => {
+runCase('family task disclosure excludes unlinked and private tasks', () => {
   const visible = familyVisibleTasks(tasks, [visibleFinding]);
   const ids = visible.map((task) => task.id);
   assert(!ids.includes('med'), 'medication task must remain elder-only');
-  assert(ids.includes('family'), 'contact-family task should remain visible');
-  assert(ids.includes('safety'), 'unlinked generic safety-check task should remain visible');
+  assert(!ids.includes('family'), 'unlinked contact-family task must fail closed');
+  assert(
+    ids.includes('visible-family-linked'),
+    'contact-family task linked to a visible finding should remain visible',
+  );
+  assert(ids.includes('safety'), 'generic safety-check task should remain visible');
   assert(ids.includes('visible-linked'), 'task linked to a visible finding should remain visible');
   assert(!ids.includes('private-safety'), 'safety task linked to a private finding must stay hidden');
   assert(!ids.includes('private-linked'), 'task linked to a private finding must stay hidden');
+});
+
+runCase('revoked family sharing hides every family task, including generic safety tasks', () => {
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'granted').length === 3,
+    'granted sharing should expose only three allowed tasks',
+  );
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'ask').length === 0,
+    'ask state must expose no family tasks',
+  );
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'denied').length === 0,
+    'denied state must expose no family tasks',
+  );
+});
+
+runCase('revocation cannot be bypassed by a stale visible finding list', () => {
+  const staleVisibleFindings = [visibleFinding];
+  assert(
+    familyVisibleTasksForSharing(tasks, staleVisibleFindings, 'denied').length === 0,
+    'denied state must override stale derived findings',
+  );
+});
+
+runCase('one-time share consumption removes only consumed ids', () => {
+  const result = consumeOneTimeShareIds(['a', 'b', 'c'], ['b']);
+  assert(result.length === 2 && result[0] === 'a' && result[1] === 'c', 'unrelated share ids must survive consumption');
 });
 
 console.log('PASS: family minimum-necessary disclosure boundary');

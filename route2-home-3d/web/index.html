@@ -1,26 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>居家安全 3D 建模 · 高斯泼溅</title>
-</head>
-<body>
-  <div id="app"></div>
-  <!-- 顶部标题 -->
-  <header id="topbar">
-    <div id="app-title">居家安全 3D 建模</div>
-    <div id="app-subtitle">
-      <span id="scene-badge" class="badge badge-demo">合成演示场景</span>
-      <span class="muted">路线二 · Gaussian Splatting 重建 · AI 危险点 / 动线 / 找东西</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Route 2：面向老人居住者与子女/照护者的居家空间助手原型" />
+    <title>居家空间助手 · Route 2</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="scene-badge" class="badge badge-demo">加载中…</div>
+      <div id="role-switcher" aria-label="使用身份"></div>
+      <section id="journey" aria-label="使用流程"></section>
+      <aside id="panel" aria-label="功能面板"></aside>
+      <div id="hint" role="status" aria-live="polite"></div>
+      <div id="hazard-card" class="hidden" aria-live="polite"></div>
     </div>
-  </header>
-  <!-- 右侧功能面板 -->
-  <aside id="panel"></aside>
-  <!-- 危险点信息卡 -->
-  <div id="hazard-card" class="hidden"></div>
-  <!-- 底部提示 -->
-  <footer id="hint"></footer>
-  <script type="module" src="/src/main.ts"></script>
-</body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

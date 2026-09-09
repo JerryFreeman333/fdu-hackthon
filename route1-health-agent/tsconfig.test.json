@@ -6,10 +6,13 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "outDir": ".test-build",
     "rootDir": ".",
     "noEmitOnError": true
   },
-  "include": ["tests/**/*.ts", "src/engine/**/*.ts", "src/types.ts"],
-  "types": []
+  "include": ["tests/**/*.ts", "src/**/*.ts"],
+  "exclude": ["src/hooks/useElderChat.ts"],
+  "types": ["node"]
 }

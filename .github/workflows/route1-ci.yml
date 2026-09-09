@@ -1,6 +1,7 @@
 name: route1-health-agent-ci
 
-# Route 1 has a push-backed recovery verifier because PR event delivery can be unreliable in some automation paths.
+# Final verification pass: this workflow owns the Route 1 build, security, and browser gates.
+
 on:
   push:
     branches:
@@ -14,68 +15,18 @@ on:
     paths:
       - 'route1-health-agent/**'
       - '.github/workflows/route1-ci.yml'
-  issue_comment:
-    types: [created]
   workflow_dispatch:
 
 concurrency:
-  group: route1-health-agent-ci-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  group: route1-health-agent-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  route1-format-recovery:
-    if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request &&
-      github.event.comment.body == '/route1-format' &&
-      github.event.comment.user.login == 'JerryFreeman333'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: route1-health-agent
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          ref: ${{ format('refs/pull/{0}/head', github.event.issue.number) }}
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: route1-health-agent/package-lock.json
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Format with locked Prettier
-        run: npx --yes prettier@3.5.3 --write .
-      - name: Commit formatting fixes to PR branch
-        shell: bash
-        env:
-          PR_NUMBER: ${{ github.event.issue.number }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if git diff --quiet; then
-            echo 'No formatting changes required.'
-            exit 0
-          fi
-          git add .
-          git commit -m 'style(route1): apply locked prettier formatting'
-          branch_name="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq '.headRefName')"
-          git push origin "HEAD:${branch_name}"
-
   build-route1:
-    if: >-
-      (github.event_name != 'push' || github.ref != 'refs/heads/main') &&
-      (github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci'))
+    name: Route 1 build, tests and security
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -86,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -112,19 +63,19 @@ jobs:
         run: npm audit --omit=dev
 
   blackbox-route1:
+    name: Route 1 browser black-box
     needs: build-route1
-    if: >-
-      (github.event_name != 'push' || github.ref != 'refs/heads/main') &&
-      (github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: route1-health-agent/p0-blackbox
     steps:
       - name: Checkout revision under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -136,79 +87,7 @@ jobs:
         working-directory: route1-health-agent
       - name: Install black-box dependencies
         run: npm install --no-package-lock
-        working-directory: route1-health-agent/p0-blackbox
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-        working-directory: route1-health-agent/p0-blackbox
-      - name: Run final Chromium black-box suite
+      - name: Run browser black-box suite
         run: npm run blackbox
-        working-directory: route1-health-agent/p0-blackbox
-
-  route1-final-verify:
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      github.actor == 'JerryFreeman333' &&
-      contains(github.event.head_commit.message, '[route1-final-verify]')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: route1-health-agent
-    steps:
-      - name: Checkout Route 1 final verification branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          ref: route1-final-verify-2026-09-09
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: route1-health-agent/package-lock.json
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Apply locked Prettier formatting
-        run: npx --yes prettier@3.5.3 --write .
-      - name: Commit formatting fixes to verification branch
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if git diff --quiet; then
-            echo 'Route 1 verification branch already formatted.'
-          else
-            git add .
-            git commit -m 'style(route1): apply locked prettier formatting'
-            git push origin 'HEAD:route1-final-verify-2026-09-09'
-          fi
-      - name: Check formatting
-        run: npm run format:check
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Run tests
-        run: npm test
-      - name: Production build
-        run: npm run build
-      - name: Security checks
-        run: npm run security:check
-      - name: Dependency audit (high severity)
-        run: npm audit --omit=dev --audit-level=high
-      - name: Dependency audit (full, informational)
-        continue-on-error: true
-        run: npm audit --omit=dev
-      - name: Install black-box dependencies
-        run: npm install --no-package-lock
-        working-directory: route1-health-agent/p0-blackbox
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-        working-directory: route1-health-agent/p0-blackbox
-      - name: Run final Chromium black-box suite
-        run: npm run blackbox
-        working-directory: route1-health-agent/p0-blackbox
-      - name: Final gate marker
-        run: echo 'Route 1 final 7-gate verification completed on this runner. Gait synonym hardening included.'
