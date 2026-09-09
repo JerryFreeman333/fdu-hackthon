@@ -3,6 +3,7 @@ import './style.css';
 import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
+import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { SceneManager } from './scene/app';
 import { buildDemoRoom } from './scene/demoRoom';
 import { createHazardMarkers, createItemRings } from './scene/markers';
@@ -10,6 +11,16 @@ import { createPathVisual, highlightDangerZones } from './scene/paths';
 import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 
 const DEMO_SPLAT_URL = 'models/home.ply';
+const ACTION_PLAN_URL = 'data/family-action-plan.json';
+const RESCAN_RISK_URL = 'data/family-action-rescan.json';
+
+type RiskProjection = {
+  schemaVersion: 1;
+  type: 'person-home-risk-projection';
+  status: 'non-diagnostic';
+  privacyScope: 'private' | 'family_ok';
+  risks: Array<{ id: string }>;
+};
 
 async function hasRealModel(): Promise<boolean> {
   try {
@@ -22,11 +33,25 @@ async function hasRealModel(): Promise<boolean> {
   }
 }
 
+async function loadJson<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const dataResponse = await fetch('data/hazards.json');
   if (!dataResponse.ok) throw new Error(`无法读取场景数据: HTTP ${dataResponse.status}`);
   const data = (await dataResponse.json()) as HazardData;
   const mode: SceneMode = (await hasRealModel()) ? 'real' : 'demo';
+
+  const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
+  const rescanRisk = await loadJson<RiskProjection>(RESCAN_RISK_URL);
+  let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
 
   const badge = document.getElementById('scene-badge')!;
   badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
@@ -122,7 +147,25 @@ async function main() {
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
 
-  initPanel(data, {
+  let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void };
+  const onRescan = async () => {
+    if (!currentActionPlan) return;
+    if (!rescanRisk) {
+      setHint('当前没有可用的复扫风险证据。真实环境应由新一轮 Home Twin 重新计算后关闭任务。');
+      return;
+    }
+    const activeRiskIds = rescanRisk.risks.map(risk => risk.id);
+    currentActionPlan = applyRescan(currentActionPlan, activeRiskIds);
+    panelController.updateActionPlan(currentActionPlan);
+
+    const resolved = currentActionPlan.actions.filter(a => a.status === 'resolved');
+    if (resolved.length) {
+      const titles = resolved.map(a => a.title).join('、');
+      setHint(`复扫完成：${titles} 对应风险已消失，任务自动关闭；仍存在的风险保持开放。`);
+    }
+  };
+
+  panelController = initPanel(data, {
     onSelectHazard: openHazard,
     onSelectPath: selectPath,
     onSelectItem(item: ItemInfo) {
@@ -135,8 +178,9 @@ async function main() {
       rings.pulseAt(p, 0x53d8ff);
       app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);
       setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
-    }
-  }, mode);
+    },
+    onRescan,
+  }, mode, currentActionPlan);
 
   window.addEventListener('resize', () => {
     app.camera.aspect = window.innerWidth / window.innerHeight;
