@@ -81,6 +81,7 @@ export interface HealthMeasurement {
   source: DataSource;
   confidence?: number;
   visibility?: PrivacyScope;
+  claimId?: string;
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -138,6 +139,7 @@ export interface Observation {
   text: string;
   tags: SymptomTag[];
   visibility?: PrivacyScope;
+  claimId?: string;
   measurements?: HealthMeasurement[];
   labResults?: LabResult[];
 }
@@ -154,6 +156,7 @@ export interface FamilyHealthEvent {
   status: ClaimStatus;
   visibility: PrivacyScope;
   shareMode: FamilyShareMode;
+  claimId?: string;
 }
 
 export type Severity = 'info' | 'watch' | 'alert' | 'urgent';
@@ -179,6 +182,7 @@ export interface ChatMessage {
   text: string;
   time: string;
   persisted?: boolean;
+  claimIds?: string[];
 }
 
 export interface ElderProfile {
