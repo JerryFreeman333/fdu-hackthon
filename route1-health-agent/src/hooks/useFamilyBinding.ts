@@ -1,67 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
-import { TODAY, profile } from '../data/demo';
+import { TODAY } from '../data/demo';
 
-const CONSENT_KEY = 'ankang-route1-consent-v2';
-const FAMILY_LINK_KEY = 'ankang-route1-family-link-v1';
-const SHARED_FINDING_IDS_KEY = 'ankang-route1-shared-findings-v1';
-const SHARED_FAMILY_EVENT_IDS_KEY = 'ankang-route1-shared-family-events-v1';
-const INVITE_PREFIX = 'ankang-route1-invite:';
-const DEMO_ELDER_ID = 'demo-elder-route1';
 const MAX_PENDING_ONE_TIME_IDS = 50;
-
-interface WebLockManagerLike {
-  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
-}
-
-function getWebLocks(): WebLockManagerLike | null {
-  const candidate = (navigator as Navigator & { locks?: WebLockManagerLike }).locks;
-  return candidate ?? null;
-}
 
 function localIsoTimestamp(): string {
   return new Date().toISOString();
-}
-
-function loadFamilySharing(): { familySharing: ElderProfile['familySharing']; updatedAt: string } {
-  try {
-    const raw = window.localStorage.getItem(CONSENT_KEY);
-    if (!raw) return { familySharing: profile.familySharing, updatedAt: '' };
-    if (raw === 'granted' || raw === 'ask' || raw === 'denied') return { familySharing: raw, updatedAt: '' };
-    const parsed = JSON.parse(raw) as { familySharing?: ElderProfile['familySharing']; updatedAt?: string };
-    if (parsed.familySharing === 'granted' || parsed.familySharing === 'ask' || parsed.familySharing === 'denied') {
-      return {
-        familySharing: parsed.familySharing,
-        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
-      };
-    }
-  } catch {
-    // fall back to the demo account's initial consent state
-  }
-  return { familySharing: profile.familySharing, updatedAt: '' };
-}
-
-function loadFamilyLink(): FamilyLink | null {
-  try {
-    const raw = window.localStorage.getItem(FAMILY_LINK_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as FamilyLink;
-    return parsed && typeof parsed.inviteCode === 'string' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function loadStringIds(key: string): string[] {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string').slice(-MAX_PENDING_ONE_TIME_IDS)
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 function createInviteCode(): string {
@@ -76,34 +20,20 @@ interface UseFamilyBindingOptions {
   showToast: (text: string) => void;
 }
 
+/**
+ * Demo-only family authorization state.
+ * Security-sensitive state deliberately lives in React memory and is not restored from localStorage.
+ * Health records may remain locally persisted, but role/consent/binding/share grants do not.
+ */
 export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
-  const [initialConsent] = useState(loadFamilySharing);
-  const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>(initialConsent.familySharing);
-  const [consentUpdatedAt, setConsentUpdatedAt] = useState(initialConsent.updatedAt);
-  const [familyLink, setFamilyLink] = useState<FamilyLink | null>(() => loadFamilyLink());
-  const [sharedFindingIds, setSharedFindingIds] = useState<string[]>(() => loadStringIds(SHARED_FINDING_IDS_KEY));
-  const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>(() =>
-    loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY),
-  );
+  const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>('denied');
+  const [consentUpdatedAt, setConsentUpdatedAt] = useState('');
+  const [familyLink, setFamilyLink] = useState<FamilyLink | null>(null);
+  const [issuedInviteCode, setIssuedInviteCode] = useState<string | null>(null);
+  const [sharedFindingIds, setSharedFindingIds] = useState<string[]>([]);
+  const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>([]);
   const [claimedOneTimeFindingIds, setClaimedOneTimeFindingIds] = useState<string[]>([]);
   const [claimedOneTimeFamilyEventIds, setClaimedOneTimeFamilyEventIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      CONSENT_KEY,
-      JSON.stringify({ familySharing, updatedAt: consentUpdatedAt || localIsoTimestamp() }),
-    );
-    if (familyLink) window.localStorage.setItem(FAMILY_LINK_KEY, JSON.stringify(familyLink));
-    else window.localStorage.removeItem(FAMILY_LINK_KEY);
-    window.localStorage.setItem(
-      SHARED_FINDING_IDS_KEY,
-      JSON.stringify(sharedFindingIds.slice(-MAX_PENDING_ONE_TIME_IDS)),
-    );
-    window.localStorage.setItem(
-      SHARED_FAMILY_EVENT_IDS_KEY,
-      JSON.stringify(sharedFamilyEventIds.slice(-MAX_PENDING_ONE_TIME_IDS)),
-    );
-  }, [familySharing, consentUpdatedAt, familyLink, sharedFindingIds, sharedFamilyEventIds]);
 
   function updatePersistentFamilySharing(next: ElderProfile['familySharing']) {
     const updatedAt = localIsoTimestamp();
@@ -117,21 +47,24 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     showToast(`已同意在必要时与家属共享。授权记录时间：${updatedAt.slice(0, 10)}`);
   }
 
-  function keepFamilyPrivate() {
-    updatePersistentFamilySharing('denied');
+  function clearSessionAuthorization() {
+    setFamilySharing('denied');
+    setConsentUpdatedAt('');
+    setIssuedInviteCode(null);
+    setFamilyLink(null);
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
     setClaimedOneTimeFindingIds([]);
     setClaimedOneTimeFamilyEventIds([]);
+  }
+
+  function keepFamilyPrivate() {
+    clearSessionAuthorization();
     showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
   }
 
   function revokeFamilyShare() {
-    updatePersistentFamilySharing('denied');
-    setSharedFindingIds([]);
-    setSharedFamilyEventIds([]);
-    setClaimedOneTimeFindingIds([]);
-    setClaimedOneTimeFamilyEventIds([]);
+    clearSessionAuthorization();
     showToast('已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。');
   }
 
@@ -145,35 +78,23 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
       inviteCode: code,
       status: 'pending',
     };
-    window.localStorage.setItem(
-      `${INVITE_PREFIX}${code}`,
-      JSON.stringify({ elderId: DEMO_ELDER_ID, relation: '家属' }),
-    );
+    setIssuedInviteCode(code);
     setFamilyLink(link);
     showToast(`邀请码已生成：${code}`);
   }
 
   function bindFamily(inviteCode: string): boolean {
-    if (!inviteCode) return false;
-    try {
-      const raw = window.localStorage.getItem(`${INVITE_PREFIX}${inviteCode}`);
-      if (!raw) return false;
-      const invite = JSON.parse(raw) as { elderId?: string; relation?: string };
-      if (invite.elderId !== DEMO_ELDER_ID) return false;
-      const link: FamilyLink = {
-        id: `family-${Date.now()}`,
-        relation: invite.relation ?? '家属',
-        displayName: '本地演示家属',
-        maskedContact: '本地设备',
-        inviteCode,
-        status: 'active',
-      };
-      setFamilyLink(link);
-      showToast('家属绑定成功（本地 Demo）。');
-      return true;
-    } catch {
-      return false;
-    }
+    if (!inviteCode || !issuedInviteCode || inviteCode !== issuedInviteCode || !familyLink) return false;
+    const link: FamilyLink = {
+      ...familyLink,
+      displayName: '本地演示家属',
+      maskedContact: '本地设备',
+      status: 'active',
+    };
+    setIssuedInviteCode(null);
+    setFamilyLink(link);
+    showToast('家属绑定成功（本地 Demo）。邀请码已失效。');
+    return true;
   }
 
   function shareFindingIds(ids: string[]) {
@@ -188,40 +109,22 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
 
   const claimOneTimeShares = useCallback(
     async (candidateFindingIds: string[], candidateFamilyEventIds: string[]): Promise<void> => {
-      const locks = getWebLocks();
-      if (!locks) {
-        // Fail closed on browsers without cross-tab atomic locking support.
-        return;
-      }
+      const findingCandidates = new Set(candidateFindingIds);
+      const eventCandidates = new Set(candidateFamilyEventIds);
+      const findingIds = sharedFindingIds.filter((id) => findingCandidates.has(id));
+      const familyEventIds = sharedFamilyEventIds.filter((id) => eventCandidates.has(id));
+      if (findingIds.length === 0 && familyEventIds.length === 0) return;
 
-      try {
-        await locks.request('ankang-route1-one-time-share-claim', async () => {
-          const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY).filter((id) => candidateFindingIds.includes(id));
-          const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY).filter((id) =>
-            candidateFamilyEventIds.includes(id),
-          );
-          if (findingIds.length === 0 && familyEventIds.length === 0) return;
-
-          const remainingFindingIds = loadStringIds(SHARED_FINDING_IDS_KEY).filter((id) => !findingIds.includes(id));
-          const remainingFamilyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY).filter(
-            (id) => !familyEventIds.includes(id),
-          );
-          window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify(remainingFindingIds));
-          window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify(remainingFamilyEventIds));
-          setClaimedOneTimeFindingIds((current) =>
-            [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-          );
-          setClaimedOneTimeFamilyEventIds((current) =>
-            [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-          );
-          setSharedFindingIds(remainingFindingIds);
-          setSharedFamilyEventIds(remainingFamilyEventIds);
-        });
-      } catch {
-        // Lock/Storage failure must not turn into a visible one-time share.
-      }
+      setSharedFindingIds((current) => current.filter((id) => !findingIds.includes(id)));
+      setSharedFamilyEventIds((current) => current.filter((id) => !familyEventIds.includes(id)));
+      setClaimedOneTimeFindingIds((current) =>
+        [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+      );
+      setClaimedOneTimeFamilyEventIds((current) =>
+        [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
+      );
     },
-    [],
+    [sharedFindingIds, sharedFamilyEventIds],
   );
 
   return {
