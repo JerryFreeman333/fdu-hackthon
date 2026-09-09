@@ -10,7 +10,7 @@ ACTION_MAP = {
     "trip-hazard": ("safety_check", "处理绊倒障碍", "移除或固定路线上的电缆，并重新扫描路线。"),
     "surface-hazard": ("safety_check", "处理地面障碍", "固定或移除地毯/门槛等地面障碍，并重新扫描路线。"),
     "night-route": ("safety_check", "复核夜间通行路线", "检查夜间照明和床到卫生间路线上的障碍，完成后重新扫描。"),
-    "functional-context": ("observation", "处理已识别环境障碍", "先处理明确的环境障碍；身体不适本身沿用原有医疗建议处理。"),
+    "functional-context": ("observation", "处理已识别环境障碍", "先处理明确的环境障碍；身体不适本身沿用原有医疗建议。"),
     "evidence-limit": ("safety_check", "现场验证候选路线", "在真实环境中步行验证候选路线后，再把它作为固定照护建议。"),
 }
 
@@ -26,19 +26,6 @@ def validate_projection(p: dict[str, Any]) -> None:
         for key in ("id", "level", "kind", "title", "evidence", "action"):
             if key not in risk:
                 raise RuntimeError(f"risk 缺少字段: {key}")
-
-
-def validate_plan(plan: dict[str, Any]) -> None:
-    if plan.get("schemaVersion") != 1 or plan.get("type") != "person-home-action-plan":
-        raise RuntimeError("action plan schema 无效")
-    if plan.get("privacyScope") not in {"private", "family_ok"}:
-        raise RuntimeError("action plan privacyScope 无效")
-    for action in plan.get("actions", []):
-        for key in ("id", "riskId", "kind", "title", "description", "status", "requiresRescan", "closureRule"):
-            if key not in action:
-                raise RuntimeError(f"action 缺少字段: {key}")
-        if action.get("closureRule", {}).get("riskId") != action.get("riskId"):
-            raise RuntimeError("action closureRule.riskId 与 riskId 不一致")
 
 
 def _action_from_risk(risk: dict[str, Any]) -> dict[str, Any]:
@@ -65,50 +52,42 @@ def build_action_plan(projection: dict[str, Any]) -> dict[str, Any]:
         "type": "person-home-action-plan",
         "status": "open" if actions else "clear",
         "privacyScope": projection["privacyScope"],
-        "homeVersion": projection.get("homeVersion"),
         "actions": actions,
         "principle": "先形成可执行的家庭行动，再由复扫结果决定风险是否关闭。",
     }
 
 
-def apply_rescan_closure(plan: dict[str, Any], latest_projection: dict[str, Any]) -> dict[str, Any]:
-    validate_plan(plan)
+def merge_rescan_plan(previous_plan: dict[str, Any], latest_projection: dict[str, Any]) -> dict[str, Any]:
     validate_projection(latest_projection)
-    active_ids = {r["id"] for r in latest_projection.get("risks", [])}
-    result = json.loads(json.dumps(plan, ensure_ascii=False))
-    for action in result.get("actions", []):
-        if action.get("status") == "completed":
-            continue
-        if action.get("requiresRescan") and action.get("riskId") not in active_ids:
+    previous = json.loads(json.dumps(previous_plan, ensure_ascii=False))
+    current_risks = {risk["id"]: risk for risk in latest_projection.get("risks", [])}
+    previous_actions = previous.get("actions", [])
+    previous_by_risk = {action.get("riskId"): action for action in previous_actions if action.get("riskId")}
+    merged: list[dict[str, Any]] = []
+
+    for action in previous_actions:
+        risk_id = action.get("riskId")
+        if risk_id not in current_risks and action.get("status") not in {"completed", "resolved"}:
             action["status"] = "resolved"
             action["resolvedBy"] = "rescan"
-    result["status"] = "open" if any(a.get("status") in {"open", "in_progress"} for a in result.get("actions", [])) else "clear"
-    result["homeVersion"] = latest_projection.get("homeVersion")
-    return result
+        merged.append(action)
+
+    for risk_id, risk in current_risks.items():
+        if risk_id not in previous_by_risk:
+            merged.append(_action_from_risk(risk))
+
+    previous["privacyScope"] = latest_projection["privacyScope"]
+    previous["actions"] = merged
+    previous["status"] = (
+        "open"
+        if any(action.get("status") in {"open", "in_progress"} for action in merged)
+        else "clear"
+    )
+    return previous
 
 
-def merge_rescan_plan(previous_plan: dict[str, Any], latest_projection: dict[str, Any]) -> dict[str, Any]:
-    """Keep action history, resolve disappeared risks, and append genuinely new risks."""
-    validate_plan(previous_plan)
-    validate_projection(latest_projection)
-    latest_ids = {risk["id"] for risk in latest_projection.get("risks", [])}
-    result = apply_rescan_closure(previous_plan, latest_projection)
-    existing_ids = {action["riskId"] for action in result.get("actions", [])}
-
-    for risk in latest_projection.get("risks", []):
-        if risk["id"] not in existing_ids:
-            result.setdefault("actions", []).append(_action_from_risk(risk))
-
-    result["status"] = "open" if any(a.get("status") in {"open", "in_progress"} for a in result.get("actions", [])) else "clear"
-    result["homeVersion"] = latest_projection.get("homeVersion")
-    result["rescan"] = {
-        "applied": True,
-        "activeRiskIds": sorted(latest_ids),
-        "resolvedRiskIds": sorted(
-            a["riskId"] for a in result.get("actions", []) if a.get("resolvedBy") == "rescan"
-        ),
-    }
-    return result
+def apply_rescan_closure(plan: dict[str, Any], latest_projection: dict[str, Any]) -> dict[str, Any]:
+    return merge_rescan_plan(plan, latest_projection)
 
 
 def main() -> int:
@@ -121,8 +100,8 @@ def main() -> int:
 
     projection = json.loads(args.risk.read_text(encoding="utf-8"))
     if args.rescan_plan:
-        previous_plan = json.loads(args.rescan_plan.read_text(encoding="utf-8"))
-        plan = merge_rescan_plan(previous_plan, projection)
+        previous = json.loads(args.rescan_plan.read_text(encoding="utf-8"))
+        plan = merge_rescan_plan(previous, projection)
     else:
         plan = build_action_plan(projection)
         if args.rescan_risk:

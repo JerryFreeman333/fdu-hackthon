@@ -10,6 +10,7 @@
   --lv-high: #e74c3c;
   --lv-mid: #f39c12;
   --lv-low: #f1c40f;
+  --resolved: #6ee7a0;
 }
 
 html, body { width: 100%; height: 100%; overflow: hidden; }
@@ -20,14 +21,12 @@ body {
 }
 
 #app, #app canvas { width: 100% !important; height: 100% !important; }
-/* 真实模型夜间模式: 画布滤镜 */
 body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12deg); transition: filter 1.2s; }
 
 .hidden { display: none !important; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 
-/* ---------- 顶部 ---------- */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 10;
   display: flex; align-items: baseline; gap: 14px;
@@ -43,15 +42,16 @@ body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12de
   font-size: 12px; border: 1px solid var(--border);
 }
 .badge-demo { background: rgba(83, 216, 255, 0.15); color: var(--accent); }
-.badge-real { background: rgba(110, 231, 160, 0.15); color: #6ee7a0; }
+.badge-real { background: rgba(110, 231, 160, 0.15); color: var(--resolved); }
 .badge.lv-high { background: rgba(231, 76, 60, 0.18); color: #ff8a7d; border-color: rgba(231,76,60,.5); }
 .badge.lv-mid  { background: rgba(243, 156, 18, 0.18); color: #ffc46b; border-color: rgba(243,156,18,.5); }
 .badge.lv-low  { background: rgba(241, 196, 15, 0.15); color: #ffe28a; border-color: rgba(241,196,15,.4); }
+.badge-action { background: rgba(243, 156, 18, 0.15); color: #ffc46b; border-color: rgba(243,156,18,.45); }
+.badge-resolved { background: rgba(110, 231, 160, 0.15); color: var(--resolved); border-color: rgba(110,231,160,.4); }
 
-/* ---------- 右侧面板 ---------- */
 #panel {
   position: fixed; top: 64px; right: 16px; bottom: 60px; z-index: 10;
-  width: 320px;
+  width: 340px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -61,8 +61,8 @@ body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12de
 }
 .tabs { display: flex; border-bottom: 1px solid var(--border); }
 .tab-btn {
-  flex: 1; padding: 12px 0; border: none; background: transparent;
-  color: var(--muted); font-size: 14px; cursor: pointer; font-family: inherit;
+  flex: 1; min-width: 0; padding: 12px 4px; border: none; background: transparent;
+  color: var(--muted); font-size: 13px; cursor: pointer; font-family: inherit;
   border-bottom: 2px solid transparent;
 }
 .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
@@ -83,6 +83,7 @@ body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12de
 }
 .hazard-row:hover, .path-row:hover, .item-row:hover { background: rgba(255,255,255,0.09); }
 .path-row.active, .item-row.active { border-color: var(--accent); background: rgba(83,216,255,0.10); }
+.hazard-row.disabled, .path-row.disabled, .item-row.disabled { opacity: 0.5; cursor: not-allowed; }
 
 .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .dot.lv-high { background: var(--lv-high); box-shadow: 0 0 8px var(--lv-high); }
@@ -93,7 +94,28 @@ body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12de
 .hazard-text { display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
 .hazard-text b { font-size: 14px; }
 
-/* ---------- 危险点信息卡 ---------- */
+.action-summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 12px; }
+.action-row {
+  padding: 11px; margin-bottom: 8px; border: 1px solid var(--border);
+  border-radius: 10px; background: rgba(255,255,255,0.04);
+}
+.action-row.action-resolved { opacity: 0.72; border-color: rgba(110,231,160,.28); }
+.action-row.action-completed { border-color: rgba(243,156,18,.32); }
+.action-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+.action-head b { font-size: 14px; }
+.action-meta { margin-top: 7px; font-size: 10px; color: #66727e; word-break: break-all; }
+.action-rescan-btn {
+  width: 100%; border: 1px solid rgba(83,216,255,.5); background: rgba(83,216,255,.12);
+  color: var(--text); border-radius: 10px; padding: 11px 12px; cursor: pointer; font-family: inherit;
+  font-weight: 600;
+}
+.action-rescan-btn:hover { background: rgba(83,216,255,.18); }
+.action-empty, .action-resolved-note {
+  padding: 13px; border-radius: 10px; background: rgba(255,255,255,.04);
+  color: var(--muted); line-height: 1.6; font-size: 13px;
+}
+.action-resolved-note { color: var(--resolved); background: rgba(110,231,160,.08); }
+
 #hazard-card {
   position: fixed; left: 20px; bottom: 64px; z-index: 20;
   width: 340px;
@@ -120,7 +142,6 @@ body.night #app canvas { filter: brightness(0.45) saturate(0.7) hue-rotate(-12de
 .card-line { display: flex; gap: 8px; font-size: 13px; line-height: 1.55; margin-bottom: 4px; }
 .card-line .muted { flex: none; width: 34px; }
 
-/* ---------- 底部提示 ---------- */
 #hint {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
   z-index: 15; max-width: 70%;

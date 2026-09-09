@@ -4,40 +4,47 @@ import type { PathItem, SceneMode } from '../types';
 export interface PathVisual {
   item: PathItem;
   group: THREE.Group;
-  /** 显示并开始行走动画 */
   show(): void;
   hide(): void;
   center(): THREE.Vector3;
 }
 
-/**
- * 动线可视化: 发光管道 + 沿线行走的小人(球) + 起终点标记。
- * 夜间动线整体呈青蓝色发光, 与暗环境对比强烈。
- */
-export function createPathVisual(item: PathItem, mode: SceneMode, onUpdate: (cb: (dt: number, elapsed: number) => void) => void): PathVisual {
-  const points = (mode === 'demo' ? item.demoPoints : item.realPoints)?.map(p => new THREE.Vector3(p[0], Math.max(p[1], 0.05), p[2]));
-  const group = new THREE.Group();
-  const curve = new THREE.CatmullRomCurve3(points!, false, 'catmullrom', 0.35);
-  const color = item.mode === 'night' ? 0x53d8ff : 0xffd166;
+function resolvePoints(item: PathItem, mode: SceneMode): THREE.Vector3[] | null {
+  const source = mode === 'demo' ? item.demoPoints : item.realPoints;
+  if (!source || source.length < 2) return null;
+  return source.map(p => new THREE.Vector3(p[0], Math.max(p[1], 0.05), p[2]));
+}
 
+export function createPathVisual(item: PathItem, mode: SceneMode, onUpdate: (cb: (dt: number, elapsed: number) => void) => void): PathVisual {
+  const points = resolvePoints(item, mode);
+  const group = new THREE.Group();
+  group.userData.routeCalibrated = Boolean(points);
+  if (!points) {
+    return {
+      item,
+      group,
+      show() { group.visible = false; },
+      hide() { group.visible = false; },
+      center() { return new THREE.Vector3(); }
+    };
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.35);
+  const color = item.mode === 'night' ? 0x53d8ff : 0xffd166;
   const tube = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, Math.max(48, points!.length * 12), 0.045, 10),
+    new THREE.TubeGeometry(curve, Math.max(48, points.length * 12), 0.045, 10),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 })
   );
   group.add(tube);
 
-  // 起终点
   const mkCap = (p: THREE.Vector3, c: number, r: number) => {
     const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), new THREE.MeshBasicMaterial({ color: c }));
     m.position.copy(p);
     return m;
   };
-  const start = points![0];
-  const end = points![points!.length - 1];
-  group.add(mkCap(start, 0x6ee7a0, 0.09), mkCap(end, 0xff8f6b, 0.09));
+  group.add(mkCap(points[0], 0x6ee7a0, 0.09), mkCap(points[points.length - 1], 0xff8f6b, 0.09));
 
-  // 行走的"老人"(呼吸脉动小球)
-  const walker = mkCap(start, item.mode === 'night' ? 0xbfefff : 0xffffff, 0.13);
+  const walker = mkCap(points[0], item.mode === 'night' ? 0xbfefff : 0xffffff, 0.13);
   group.add(walker);
 
   let playing = false;
@@ -71,19 +78,18 @@ export function createPathVisual(item: PathItem, mode: SceneMode, onUpdate: (cb:
   };
 }
 
-/** 高亮某条动线经过的危险点所在曲线段(红色覆盖) */
 export function highlightDangerZones(item: PathItem, markersPos: Map<string, THREE.Vector3>, mode: SceneMode): THREE.Group | null {
-  const points = (mode === 'demo' ? item.demoPoints : item.realPoints)?.map(p => new THREE.Vector3(p[0], Math.max(p[1], 0.05), p[2]));
+  const points = resolvePoints(item, mode);
   if (!points || points.length < 2) return null;
   const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.35);
   const group = new THREE.Group();
   const total = curve.getLength();
+  if (!Number.isFinite(total) || total <= 0) return null;
   const segLen = 0.9;
 
   for (const id of item.hazardIds) {
     const p = markersPos.get(id);
     if (!p) continue;
-    // 找到曲线上离危险点最近的参数
     let bestU = 0;
     let bestD = Infinity;
     for (let i = 0; i <= 120; i++) {
@@ -94,9 +100,8 @@ export function highlightDangerZones(item: PathItem, markersPos: Map<string, THR
     const u0 = Math.max(0, bestU - segLen / total / 2);
     const u1 = Math.min(1, bestU + segLen / total / 2);
     if (u1 - u0 < 0.01) continue;
-    const n = 14;
     const subPoints: THREE.Vector3[] = [];
-    for (let i = 0; i <= n; i++) subPoints.push(curve.getPointAt(u0 + (u1 - u0) * (i / n)));
+    for (let i = 0; i <= 14; i++) subPoints.push(curve.getPointAt(u0 + (u1 - u0) * (i / 14)));
     const subCurve = new THREE.CatmullRomCurve3(subPoints);
     group.add(new THREE.Mesh(
       new THREE.TubeGeometry(subCurve, 20, 0.08, 10, false),

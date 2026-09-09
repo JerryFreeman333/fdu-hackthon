@@ -14,24 +14,7 @@ Route 2 不以风险分数作为终点，而是形成：
 
 `person_home_action_plan.py` 将每条风险生成一个带 `riskId` 的家庭任务。任务默认要求复扫，并带有 `risk-disappears-after-rescan` 关闭规则。
 
-## 真实复扫关闭
-
-处理障碍后，不直接把任务标记为安全。重新得到一份 Home Twin 快照，再执行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\11_rescan_and_close.ps1 `
-  -Scene home `
-  -RescanHomeSnapshot "C:\path\rescan\hometwin-surface-route.json" `
-  -PersonProfile "C:\path\person.json"
-```
-
-脚本会重新计算 `person-home-risk.json`，然后把它与既有行动计划合并。消失的 `riskId` 会保留在历史记录中并标记为 `resolvedBy: rescan`；仍存在的风险继续保持 `open`；新出现的风险会新增行动项。
-
-这意味着：
-
-`家属点击完成 ≠ 风险关闭`
-
-只有新的 Home Twin 证据确认风险消失，任务才进入 `resolved`。
+复扫后，如果对应风险已经消失，任务变为 `resolved`；若风险仍存在，行动计划保持 `open`。
 
 ## 产品语义
 
@@ -41,8 +24,6 @@ powershell -ExecutionPolicy Bypass -File scripts\11_rescan_and_close.ps1 `
 
 而不是展示一个未经现场验证的“安全分数”。
 
-## 隐私与边界
-
-Route 2 只消费显式的 Person Twin 功能字段，不读取 Route 1 原始聊天或原始健康事件。家庭行动也只针对已共享的风险投影。
+## 当前边界
 
 这是功能状态与空间证据的工程组合，不是医疗诊断、跌倒概率模型或经过临床验证的安全评级。实际家庭部署前仍需要真实尺度、连续表面/门洞净宽、设备差异和现场步行验证。

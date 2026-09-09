@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
+import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { demoHomeSafetyActions } from './data/demoHomeSafetyActions';
 import {
   legacySnapshotToEvents,
   materializeHealthData,
@@ -27,6 +29,7 @@ import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
 const ROLE_KEY = 'ankang-route1-role-v3';
+const HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   const stored = healthRecordStore.load();
@@ -42,11 +45,23 @@ function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthE
   return snapshot;
 }
 
+function loadHomeSafetyActions(): HomeSafetyAction[] {
+  try {
+    const raw = window.localStorage.getItem(HOME_ACTION_KEY);
+    if (!raw) return demoHomeSafetyActions;
+    const parsed = JSON.parse(raw) as HomeSafetyAction[];
+    return Array.isArray(parsed) ? parsed : demoHomeSafetyActions;
+  } catch {
+    return demoHomeSafetyActions;
+  }
+}
+
 export default function App() {
   const initial = useMemo(() => initialSnapshot(), []);
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
+  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() => loadHomeSafetyActions());
   const [role, setRole] = useState<UserRole | null>(() => {
     const saved = window.localStorage.getItem(ROLE_KEY);
     return saved === 'elder' || saved === 'family' ? saved : null;
@@ -125,6 +140,10 @@ export default function App() {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
   }, [events, familyEvents, chat]);
 
+  useEffect(() => {
+    window.localStorage.setItem(HOME_ACTION_KEY, JSON.stringify(homeSafetyActions));
+  }, [homeSafetyActions]);
+
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
     window.localStorage.setItem(ROLE_KEY, nextRole);
@@ -138,6 +157,13 @@ export default function App() {
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
     updateStatus(taskId, status);
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
+  }
+
+  function handleHomeSafetyActionStatus(actionId: string, status: HomeSafetyAction['status']) {
+    setHomeSafetyActions((current) =>
+      current.map((action) => (action.id === actionId ? { ...action, status } : action)),
+    );
+    if (status === 'done') showToast('已记录处理完成；重新扫描后才会确认风险是否消失。');
   }
 
   function contactElder() {
@@ -220,10 +246,12 @@ export default function App() {
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
+          homeSafetyActions={homeSafetyActions}
           records={familyRecords}
           observations={observations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
+          onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
           onContactElder={contactElder}
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}

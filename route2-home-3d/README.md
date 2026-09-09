@@ -1,89 +1,152 @@
-# 路线二：居家安全 3D 建模（Gaussian Splatting）
+# 路线二：居家安全 3D / Home Twin 原型
 
-> 把老人家里变成一个可以被 AI 理解的 3D 空间：帮他找危险、找路线、找东西。
-> 对应 `docs/想法.md` 中的路线二，也是融合路线（路线三）中"Home Twin"的基础。
+> 当前阶段的目标不是“做一个漂亮的 3D 房子”，而是把家庭空间变成可查询、可定位、可追溯的 Home Twin 基础数据，为后续 Person × Home 风险判断提供输入。
 
-## 组成
+## 当前真实能力边界
 
-```
+本目录目前包含三层能力：
+
+1. **合成演示链**：场景中的危险点、动线和物品来自预置数据，只用于验证交互。
+2. **真实重建链**：手机拍摄 → COLMAP → Gaussian Splatting → Web 加载真实 3D 模型。
+3. **真实语义定位链**：输入图像 → YOLO-World 六类开放词汇检测 → COLMAP 2D track → 3D anchor → `HomeTwinSnapshot`。只有获得足够稀疏重建支持的对象才会拥有 3D 坐标。
+
+因此当前版本仍应称为“Home Twin 原型”，不宣称已经完成老人家庭环境的高精度自动理解。
+
+## 目录
+
+```text
 route2-home-3d/
-├── docs/capture-guide.md    手机拍摄指南（先看这个）
+├── docs/capture-guide.md
 ├── pipeline/
-│   ├── scripts/
-│   │   ├── 00_check_env.ps1    环境检查
-│   │   ├── 01_setup.ps1        克隆官方 gaussian-splatting + 编译 CUDA 子模块
-│   │   ├── 02_prepare_data.ps1 视频抽帧 / 照片整理
-│   │   ├── 03_run_colmap.ps1   COLMAP 相机标定（自动下载）
-│   │   ├── 04_train_3dgs.ps1   高斯泼溅训练（8GB 显存适配）
-│   │   ├── 05_export_web.ps1   导出模型到 Web 演示端
-│   │   └── run_all.ps1         一键全流程
-│   ├── data/      拍摄素材与 COLMAP 中间结果（不入库）
-│   ├── output/    训练产物（不入库）
-│   └── external/  gaussian-splatting、COLMAP（不入库）
-└── web/                     Web 演示端（Vite + Three.js）
-    ├── public/models/       home.ply 放这里（真实模型）
-    ├── public/data/hazards.json   危险点 / 动线 / 物品数据
-    └── src/                 viewer、合成演示场景、标注、动线、找东西
+│   ├── semantic/
+│   │   ├── requirements.txt
+│   │   ├── README.md
+│   │   └── detect_and_localize.py
+│   └── scripts/
+│       ├── 00_check_env.ps1
+│       ├── 01_setup.ps1
+│       ├── 02_prepare_data.ps1
+│       ├── 03_run_colmap.ps1
+│       ├── 04_train_3dgs.ps1
+│       ├── 05_export_web.ps1
+│       ├── 06_detect_semantics.ps1
+│       └── run_all.ps1
+└── web/
+    ├── public/data/hazards.json
+    ├── public/data/semantic-targets.json
+    └── src/
+        ├── hometwin/model.ts
+        ├── hometwin/semantic.ts
+        ├── hometwin/importSemantic.ts
+        ├── hometwin/routePlanner.ts
+        ├── hometwin/fromHazardData.ts
+        ├── scene/
+        └── ui/
 ```
 
-## 快速开始：Web 演示端（无需训练）
+## Web 演示
 
 ```powershell
 cd route2-home-3d/web
-npm install
-npm run dev      # 打开 http://localhost:5174
+npm ci
+npm test
+npm run build
+npm run dev
 ```
 
-没有真实模型时自动进入**合成演示场景**（一套虚拟的"卧室+走廊+客厅+卫生间"），
-完整演示三大功能：
+没有 `public/models/home.ply` 时，网页自动进入合成演示模式；此模式只用于验证交互，不用于证明真实空间识别准确率。
 
-- **安全巡检** —— 场景中标记危险点（地毯翘边、电线横穿、台阶无扶手、湿滑、照明不足…），
-  点击查看风险等级、位置、风险描述与整改建议；右侧面板显示风险统计。
-- **动线分析** —— 三条动线（夜间起夜 / 日间活动 / 紧急逃生），
-  发光路径 + 沿线行走动画 + 危险段红色高亮；夜间动线会自动切换夜间环境。
-- **找东西** —— 一键定位老花镜 / 降压药 / 钥匙，相机飞到物品处并给出语音式指引文案
-  （对认知障碍老人场景的直接演示）。
+有真实 `home.ply` 时，进入真实重建模式。未完成真实空间定位的数据不会被 Web 端伪造成已知结果。
 
-训练完成后把 `home.ply` 放进 `web/public/models/`，刷新即为**真实重建模式**。
+## 真实 3D + 语义定位管线
 
-## 训练真实模型（需要一次性环境配置）
+### 环境
 
-### 环境要求
+- Windows + NVIDIA GPU
+- Python 3.10+
+- 与本机 CUDA/驱动匹配的 PyTorch
+- CUDA Toolkit / `nvcc`
+- Visual Studio 2022 Build Tools + C++ 工作负载
+- ffmpeg
 
-- NVIDIA GPU（8GB 显存已验证可行，推荐 RTX 40 系）
-- Python 3.10+，且安装了匹配 CUDA 的 PyTorch（`pip install torch --index-url https://download.pytorch.org/whl/cu126`）
-- CUDA Toolkit 12.6（`winget install Nvidia.CUDA --version 12.6`，编译 CUDA 子模块必需）
-- VS 2022 Build Tools + "使用 C++ 的桌面开发"工作负载
-  （`winget install Microsoft.VisualStudio.2022.BuildTools` 后在 Visual Studio Installer 里勾选）
-- ffmpeg（`winget install ffmpeg`，视频采集方式需要）
-
-### 一键流程
+先执行：
 
 ```powershell
 cd route2-home-3d/pipeline/scripts
-
-# 0. 环境自检（哪项缺了会明确提示）
 powershell -ExecutionPolicy Bypass -File 00_check_env.ps1
-
-# 1. 首次：克隆官方仓库并编译（约 3~10 分钟）
 powershell -ExecutionPolicy Bypass -File 01_setup.ps1
-
-# 2. 拍好后：一键 数据准备 → COLMAP → 训练 → 导出到 Web
-powershell -ExecutionPolicy Bypass -File run_all.ps1 -Video "C:\path\home.mp4" -Scene home
-# 或用照片: run_all.ps1 -Photos "C:\path\photos" -Scene home
 ```
 
-RTX 4060 8GB 训练 30000 步约 20~50 分钟。想快速预览用
-`04_train_3dgs.ps1 -Iterations 7000`；OOM 时加 `-Downscale 4`。
+之后运行完整管线：
 
-### 标注真实模型的危险点
+```powershell
+powershell -ExecutionPolicy Bypass -File run_all.ps1 -Video "C:\path\home.mp4" -Scene home
+```
 
-训练导出后，在 three.js 里对照模型把 `web/public/data/hazards.json`
-中各条目的 `realPos` 从 `null` 改为场景内坐标（单位：米），
-同时可把动线的 `realPoints` 依次填上途经点。`demoPos` 只用于合成演示场景。
+也支持照片目录：
 
-## 隐私说明
+```powershell
+powershell -ExecutionPolicy Bypass -File run_all.ps1 -Photos "C:\path\photos" -Scene home
+```
 
-- 拍摄素材、COLMAP 中间数据、训练产物、模型文件全部在 `.gitignore` 中，**不提交仓库**；
-- Web 演示端全部本地运行，不上传任何影像；
-- 卫生间等隐私区域拍摄建议只拍门口（见拍摄指南）。
+完整流程现在是：
+
+`照片/视频 → 数据准备 → COLMAP → YOLO-World 六类语义检测 → COLMAP 3D anchor → Gaussian Splatting → Web 导出`
+
+也可以单独运行语义层：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File 06_detect_semantics.ps1 -Scene home
+```
+
+输出：
+
+`pipeline/data/<Scene>/semantic/hometwin-semantic.json`
+
+### 六类核心对象
+
+第一版只固定六类，避免开放词汇结果无限扩散：
+
+- `bed` 床
+- `door` 门/出入口
+- `rug` 地毯
+- `cable` 地面电线
+- `threshold` 门槛/台阶
+- `toilet` 卫生间/马桶区域
+
+### 为什么先采用“2D 检测 + COLMAP track → 3D anchor”
+
+当前阶段最需要的是把视觉证据和三维坐标建立可靠连接，而不是立即做复杂的端到端 3D 语义模型。检测框中的 COLMAP 稀疏轨迹可以作为第一版可审计的 3D 支撑；没有轨迹支持时，系统保持“未定位”。
+
+### 尺度限制
+
+当前 `scaleConfidence = 0`。COLMAP SfM 输出的是重建坐标系，并不能自动保证绝对米制尺度。因此现在可以比较同一场景内对象的相对位置，但**不能把坐标差直接解释为多少米**。后续必须增加实测标尺/已知尺寸锚点，再把尺度置信度写入 Home Twin。
+
+## Home Twin 数据契约
+
+`web/src/hometwin/model.ts` 统一承载：
+
+- `HomeRoom`：房间及功能标签
+- `HomeObject`：物体、位置、所属房间、来源、时间、置信度
+- `SpatialRelation`：对象之间的空间关系
+- `HomeRoute`：高价值生活路线及风险点
+- `HomeTwinSnapshot`：家庭版本、采集时间、尺度可信度和上述数据的统一快照
+
+语义感知层输出的对象可以进入这个契约，但不会自动伪造 `connects / blocks / on-route` 关系；路线规划只有在具备足够空间关系证据时才允许执行。
+
+## 当前仍未完成
+
+- 房间自动分区与门/通道拓扑
+- 视觉对象的稳定跨帧 ID
+- 从 3D 对象自动推导可靠的 `connects / blocks / on-route`
+- 真正米制尺度标定
+- 安全路线而不仅是几何最短路线
+- 环境变化检测
+- Person × Home 个体化风险计算
+- 面向老人和家属的最终产品 UI
+
+这些属于下一阶段，而不是用静态数据假装已经完成。
+
+## 隐私
+
+拍摄素材、COLMAP 中间数据、训练产物和模型文件默认不入库；卫生间等高度敏感区域应尽量减少拍摄范围。真实产品版本还需要家庭空间访问授权、分享控制、删除和审计机制；这些能力尚未在当前原型中完成。

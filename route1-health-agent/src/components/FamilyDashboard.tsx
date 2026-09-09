@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
+import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
@@ -14,10 +15,12 @@ interface FamilyDashboardProps {
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
+  homeSafetyActions: HomeSafetyAction[];
   records: DayRecord[];
   observations: Observation[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
+  onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
   onContactElder: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
@@ -55,6 +58,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const familyObservations = props.observations.filter((observation) => observation.visibility !== 'private');
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
+  const openHomeActions = props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3);
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -195,6 +199,45 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </button>
         </div>
       </section>
+
+      {openHomeActions.length > 0 && (
+        <section className="card">
+          <div className="section-head">
+            <div>
+              <h3>居家安全，需要您做的一件事</h3>
+              <span className="muted">来自 Home Twin × Person Twin，只呈现可执行建议。</span>
+            </div>
+          </div>
+          <div className="family-feed">
+            {openHomeActions.map((action) => (
+              <div className="family-item family-item-alert" key={action.id}>
+                <div className="finding-head">
+                  <span className="badge badge-alert">居家安全</span>
+                  <b>{action.title}</b>
+                </div>
+                <p>{action.description}</p>
+                <div className="care-path">
+                  <b>建议行动：</b>
+                  {action.action}
+                </div>
+                {action.requiresRescan ? (
+                  <span className="muted">完成后还需要重新扫描，系统确认风险是否消失。</span>
+                ) : (
+                  <span className="muted">当前任务无需复扫确认。</span>
+                )}
+                <div className="family-actions">
+                  {action.status === 'open' && (
+                    <button className="btn-secondary" onClick={() => props.onHomeSafetyActionStatus(action.id, 'done')}>
+                      我已处理
+                    </button>
+                  )}
+                  {action.status === 'done' && <span className="muted">已处理，等待重新扫描确认</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="section-head">

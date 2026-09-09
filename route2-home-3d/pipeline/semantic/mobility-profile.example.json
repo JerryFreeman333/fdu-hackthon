@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "profileId": "elder-default",
+  "description": "可配置的老人通行模型；数值不是医疗标准，应按真实测试调整。",
+  "clearanceMetres": 0.36,
+  "assistiveDeviceExtraMetres": 0.10,
+  "minimumFreeWidthMetres": 0.72,
+  "requiresMetricScale": true,
+  "confidenceFloor": 0.55,
+  "notes": [
+    "clearanceMetres 表示规划时从障碍边界向外保留的水平余量。",
+    "assistiveDeviceExtraMetres 用于拐杖/助行器等额外通行余量。",
+    "这些参数必须通过真实采集与现场测试校准。"
+  ]
+}
