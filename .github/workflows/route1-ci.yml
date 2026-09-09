@@ -84,42 +84,32 @@ jobs:
     defaults:
       run:
         working-directory: route1-health-agent
-
     steps:
       - name: Checkout revision under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.sha }}
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
-
       - name: Install locked dependencies
         run: npm ci
-
       - name: Check formatting
         run: npm run format:check
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Run tests
         run: npm test
-
       - name: Production build
         run: npm run build
-
       - name: Security checks
         run: npm run security:check
-
       - name: Dependency audit (high severity)
         run: npm audit --omit=dev --audit-level=high
-
       - name: Dependency audit (full, informational)
         continue-on-error: true
         run: npm audit --omit=dev
@@ -132,33 +122,27 @@ jobs:
       (github.event.issue.pull_request && github.event.comment.body == '/route1-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
       - name: Checkout revision under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.sha }}
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
-
       - name: Install app dependencies
         run: npm ci
         working-directory: route1-health-agent
-
       - name: Install black-box dependencies
         run: npm install --no-package-lock
         working-directory: route1-health-agent/p0-blackbox
-
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
         working-directory: route1-health-agent/p0-blackbox
-
       - name: Run final Chromium black-box suite
         run: npm run blackbox
         working-directory: route1-health-agent/p0-blackbox
@@ -174,27 +158,22 @@ jobs:
     defaults:
       run:
         working-directory: route1-health-agent
-
     steps:
       - name: Checkout Route 1 final verification branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           ref: route1-final-verify-2026-09-09
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
-
       - name: Install locked dependencies
         run: npm ci
-
       - name: Apply locked Prettier formatting
         run: npx --yes prettier@3.5.3 --write .
-
       - name: Commit formatting fixes to verification branch
         shell: bash
         env:
@@ -210,37 +189,27 @@ jobs:
             git commit -m 'style(route1): apply locked prettier formatting'
             git push origin 'HEAD:route1-final-verify-2026-09-09'
           fi
-
       - name: Check formatting
         run: npm run format:check
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Run tests
         run: npm test
-
       - name: Production build
         run: npm run build
-
       - name: Security checks
         run: npm run security:check
-
       - name: Dependency audit (high severity)
         run: npm audit --omit=dev --audit-level=high
-
       - name: Dependency audit (full, informational)
         continue-on-error: true
         run: npm audit --omit=dev
-
       - name: Install black-box dependencies
         run: npm install --no-package-lock
         working-directory: route1-health-agent/p0-blackbox
-
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
         working-directory: route1-health-agent/p0-blackbox
-
       - name: Run final Chromium black-box suite
         run: npm run blackbox
         working-directory: route1-health-agent/p0-blackbox
