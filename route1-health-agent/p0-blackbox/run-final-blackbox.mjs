@@ -192,13 +192,29 @@ async function caseOneTimeNoResurrection(browser) {
   try {
     await selectElder(page);
     await sendChat(page, '我今天摔了一下，可以告诉孩子们');
+
+    const consentButton = page.locator('button', { hasText: '同意以后需要时告诉家属' });
+    const hasConsentPrompt = await consentButton.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasConsentPrompt) await consentButton.click();
+
+    const inviteButton = page.locator('button', { hasText: '生成家属邀请码' });
+    if (await inviteButton.isVisible({ timeout: 2000 }).catch(() => false)) await inviteButton.click();
+    const elderBody = (await page.locator('body').textContent()) ?? '';
+    const invite = elderBody.match(/AN-\d{4}-\d{4}/)?.[0];
+    if (!invite) throw new Error('invite code was not generated');
+
     await page.locator('button', { hasText: '切换身份' }).click();
     await selectFamily(page);
+    await page.locator('.family-dashboard input.chat-input').fill(invite);
+    await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
+    await page.waitForTimeout(300);
     const first = await familyText(page);
+    const firstShowsSharedFinding = first.includes('摔');
+
     await page.reload({ waitUntil: 'networkidle' });
     const gateAfterReload = await page.locator('button.role-option', { hasText: '我是老人' }).isVisible({ timeout: 3000 }).catch(() => false);
     const second = (await page.locator('body').textContent()) ?? '';
-    const passed = !gateAfterReload || true ? gateAfterReload && !second.includes('可以告诉孩子们') : false;
+    const passed = firstShowsSharedFinding && gateAfterReload && !second.includes('摔了一下');
     await screenshot(page, 'final-08-one-time-reload.png');
     return { id: 'FINAL-08', result: passed ? 'PASS' : 'FAIL', first: first.slice(0, 300), gateAfterReload };
   } finally {
