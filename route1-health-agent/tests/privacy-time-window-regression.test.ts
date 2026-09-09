@@ -24,10 +24,7 @@ const currentShared: Observation = {
   visibility: 'family_ok',
 };
 
-const events: HealthEvent[] = [
-  observationToEvent(oldPrivate),
-  observationToEvent(currentShared),
-];
+const events: HealthEvent[] = [observationToEvent(oldPrivate), observationToEvent(currentShared)];
 const findings = runDetection(events, '2026-09-08');
 const fatigueFinding = findings.find((finding) => finding.ruleId === 'symptom.fatigue.reminder');
 

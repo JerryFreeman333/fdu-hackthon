@@ -47,10 +47,7 @@ runCase('only explicitly shareable alert and urgent findings are disclosed', () 
   const urgent = { ...baseFinding, id: 'urgent', severity: 'urgent' as const };
   const alert = { ...baseFinding, id: 'alert', severity: 'alert' as const };
   const info = { ...baseFinding, id: 'info', severity: 'info' as const };
-  assert(
-    familyVisibleFindings([urgent, alert, info]).length === 2,
-    'only alert and urgent findings should be shared',
-  );
+  assert(familyVisibleFindings([urgent, alert, info]).length === 2, 'only alert and urgent findings should be shared');
 });
 
 const visibleFinding: Finding = { ...baseFinding, id: 'visible' };
@@ -180,10 +177,7 @@ runCase('revocation cannot be bypassed by a stale visible finding list', () => {
 
 runCase('one-time share consumption removes only consumed ids', () => {
   const result = consumeOneTimeShareIds(['a', 'b', 'c'], ['b']);
-  assert(
-    result.length === 2 && result[0] === 'a' && result[1] === 'c',
-    'unrelated share ids must survive consumption',
-  );
+  assert(result.length === 2 && result[0] === 'a' && result[1] === 'c', 'unrelated share ids must survive consumption');
 });
 
 console.log('PASS: family minimum-necessary disclosure boundary');

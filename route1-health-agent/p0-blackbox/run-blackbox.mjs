@@ -149,7 +149,10 @@ async function caseFamilyRevocation(browser) {
     assert(familyAfterRevoke.includes('尚未绑定老人'), 'revoked family session still appeared bound');
     assert(!familyAfterRevoke.includes('健康共享摘要'), 'revoked family session exposed health navigation');
     assert(!familyAfterRevoke.includes('家属周报'), 'revoked family session exposed report navigation');
-    assert(!familyAfterRevoke.includes('居家安全，需要您做的一件事'), 'revoked family session exposed home safety actions');
+    assert(
+      !familyAfterRevoke.includes('居家安全，需要您做的一件事'),
+      'revoked family session exposed home safety actions',
+    );
     return 'PASS family revocation';
   } finally {
     await context.close();

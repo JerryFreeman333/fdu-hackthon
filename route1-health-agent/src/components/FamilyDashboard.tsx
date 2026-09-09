@@ -57,7 +57,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
-  const activeTasks = familyVisibleTasksForSharing(props.tasks, props.findings, props.profile.familySharing).slice(0, 3);
+  const activeTasks = familyVisibleTasksForSharing(props.tasks, props.findings, props.profile.familySharing).slice(
+    0,
+    3,
+  );
   const openHomeActions = canViewSharedDetail
     ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
     : [];
@@ -172,7 +175,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         </div>
         <section className="card">
           <div className="eyebrow">家属周报</div>
-          <h3>{familyFindings.length > 0 ? `本周有 ${familyFindings.length} 项需要您留意` : '本周没有需要您介入的变化'}</h3>
+          <h3>
+            {familyFindings.length > 0 ? `本周有 ${familyFindings.length} 项需要您留意` : '本周没有需要您介入的变化'}
+          </h3>
           <p className="muted">这份摘要只汇总明确需要家属行动的信息；详细健康资料仍留在老人端。</p>
           {familyFindings.length > 0 && (
             <div className="family-feed">
