@@ -137,15 +137,17 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 
   const mentions = explicitSubjectMentions(clause);
 
+  // 先判断第三人称代词，再处理“唯一 mention = 我”的 self fallback。
+  // 否则“我觉得他喘得厉害”会因只看到“我”而错误落入 self。
+  const pronounSubject = inferPronounSubject(clause, priorSubjects);
+  if (pronounSubject) return pronounSubject;
+
   // “我爸说我妈喘”“我妈告诉我我爸胸痛”“我妈让我自己去量血压”这类关系句里，
   // 健康事实主体通常是关系词后面的人，而不是句首的说话者/信息来源。
   const relationSubject = subjectAfterRelationCue(clause, mentions);
   if (relationSubject) return relationSubject;
 
   if (mentions.length === 1) return mentions[0].subject;
-
-  const pronounSubject = inferPronounSubject(clause, priorSubjects);
-  if (pronounSubject) return pronounSubject;
 
   // 同一句无明确关系结构却点名多个人时，宁可 unknown，也不猜测谁是健康事实主体。
   const uniqueSubjects = [...new Set(mentions.map((mention) => mention.subject))];
@@ -294,8 +296,6 @@ export function understandElderInput(
       continue;
     }
 
-    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
-    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
     if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
       claims.push({
         text: clause,
