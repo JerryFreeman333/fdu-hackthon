@@ -6,16 +6,36 @@ import json
 from pathlib import Path
 from typing import Any
 
+RISK_RULE_VERSION = 'person-home-risk-v1'
+
 
 def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def validate_projection(risk_projection: dict[str, Any]) -> None:
+    if risk_projection.get('schemaVersion') != 1 or risk_projection.get('type') != 'person-home-risk-projection':
+        raise RuntimeError('复扫风险投影 schema 无效')
+    for key in ('homeId', 'homeVersion', 'riskRuleVersion', 'homeProvenance'):
+        if key not in risk_projection:
+            raise RuntimeError(f'复扫风险投影缺少 provenance 字段: {key}')
+    if risk_projection.get('riskRuleVersion') != RISK_RULE_VERSION:
+        raise RuntimeError('risk rule version 不受支持')
+    home_provenance = risk_projection['homeProvenance']
+    if not isinstance(home_provenance, dict) or home_provenance.get('homeId') != risk_projection.get('homeId') or home_provenance.get('homeVersion') != risk_projection.get('homeVersion'):
+        raise RuntimeError('Home Twin provenance 与 risk projection 不一致')
+
+
 def provenance(risk_projection: dict[str, Any]) -> dict[str, Any]:
+    home = risk_projection['homeProvenance']
     return {
-        'projectionAsOf': risk_projection.get('personAsOf'),
+        'homeId': risk_projection.get('homeId'),
         'homeVersion': risk_projection.get('homeVersion'),
-        'recordedAt': risk_projection.get('generatedAt'),
+        'riskRuleVersion': risk_projection.get('riskRuleVersion'),
+        'projectionAsOf': risk_projection.get('personAsOf'),
+        'generatedAt': risk_projection.get('generatedAt'),
+        'captureId': home.get('captureId'),
+        'reconstructionId': home.get('reconstructionId'),
     }
 
 
@@ -38,13 +58,12 @@ def action_from_risk(risk: dict[str, Any], source: dict[str, Any] | None = None)
         'status': 'open',
         'requiresRescan': True,
         'closureRule': {'type': 'risk-disappears-after-rescan', 'riskId': risk['id']},
-        'provenance': dict(source or {}),
+        'provenance': {**(source or {}), 'riskId': risk['id']},
     }
 
 
 def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, Any]:
-    if latest_risk.get('schemaVersion') != 1 or latest_risk.get('type') != 'person-home-risk-projection':
-        raise RuntimeError('复扫风险投影 schema 无效')
+    validate_projection(latest_risk)
     previous_copy = copy.deepcopy(previous)
     latest = {risk['id']: risk for risk in latest_risk.get('risks', [])}
     actions = previous_copy.get('actions', [])
@@ -52,17 +71,35 @@ def merge(previous: dict[str, Any], latest_risk: dict[str, Any]) -> dict[str, An
     latest_provenance = provenance(latest_risk)
     previous_provenance = previous_copy.get('provenance', {}).get('current')
 
+    if previous_provenance:
+        if previous_provenance.get('homeId') != latest_provenance.get('homeId'):
+            raise RuntimeError('复扫 Home Twin homeId 不一致，拒绝关闭历史风险')
+        previous_version = previous_provenance.get('homeVersion')
+        latest_version = latest_provenance.get('homeVersion')
+        if isinstance(previous_version, int) and isinstance(latest_version, int) and latest_version <= previous_version:
+            raise RuntimeError('复扫 Home Twin version 未前进，拒绝自动关闭历史风险')
+        if previous_provenance.get('riskRuleVersion') != latest_provenance.get('riskRuleVersion'):
+            raise RuntimeError('risk rule version 不一致，拒绝自动关闭历史风险')
+        previous_capture = previous_provenance.get('captureId')
+        latest_capture = latest_provenance.get('captureId')
+        if previous_capture and latest_capture and previous_capture == latest_capture:
+            raise RuntimeError('复扫 captureId 未变化，拒绝把同一批输入当作新复扫')
+        previous_reconstruction = previous_provenance.get('reconstructionId')
+        latest_reconstruction = latest_provenance.get('reconstructionId')
+        if previous_reconstruction and latest_reconstruction and previous_reconstruction == latest_reconstruction:
+            raise RuntimeError('复扫 reconstructionId 未变化，拒绝把同一轮重建当作新证据')
+
     for action in actions:
         risk_id = action.get('riskId')
         if (
             risk_id
             and risk_id not in latest
             and action.get('requiresRescan') is True
-            and action.get('status') != 'resolved'
+            and action.get('status') not in {'completed', 'resolved'}
         ):
             action['status'] = 'resolved'
             action['resolvedBy'] = 'rescan'
-            action['resolvedAtProvenance'] = dict(latest_provenance)
+            action['resolvedAtProvenance'] = {**latest_provenance, 'riskId': risk_id}
 
     for risk_id, risk in latest.items():
         if risk_id not in existing:
