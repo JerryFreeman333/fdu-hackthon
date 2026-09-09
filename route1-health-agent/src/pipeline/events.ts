@@ -77,6 +77,56 @@ export function labResultToEvent(labResult: LabResult): LabResultEvent {
   };
 }
 
+function normalizedText(text: string): string {
+  return text.trim().replace(/\s+/g, '');
+}
+
+/**
+ * 判断聊天输入生成的健康事件是否已经记录过。
+ * 这里刻意只去重“同来源 + 同事实”，避免老人重复说一句话时不断堆叠相同记录，
+ * 同时不把设备/照片/历史导入的数据误删掉。
+ */
+export function isDuplicateChatHealthEvent(current: HealthEvent, incoming: HealthEvent): boolean {
+  if (current.source !== 'chat' || incoming.source !== 'chat' || current.type !== incoming.type) return false;
+
+  if (current.type === 'observation' && incoming.type === 'observation') {
+    return (
+      current.observation.date === incoming.observation.date &&
+      normalizedText(current.observation.text) === normalizedText(incoming.observation.text) &&
+      [...current.observation.tags].sort().join('|') === [...incoming.observation.tags].sort().join('|')
+    );
+  }
+
+  if (current.type === 'measurement' && incoming.type === 'measurement') {
+    const currentSourceText = current.measurement.metadata?.sourceText;
+    const incomingSourceText = incoming.measurement.metadata?.sourceText;
+    if (typeof currentSourceText === 'string' && typeof incomingSourceText === 'string') {
+      return (
+        current.measurement.timestamp === incoming.measurement.timestamp &&
+        current.measurement.metric === incoming.measurement.metric &&
+        normalizedText(currentSourceText) === normalizedText(incomingSourceText)
+      );
+    }
+    return (
+      current.measurement.timestamp === incoming.measurement.timestamp &&
+      current.measurement.metric === incoming.measurement.metric &&
+      current.measurement.value === incoming.measurement.value &&
+      current.measurement.unit === incoming.measurement.unit
+    );
+  }
+
+  if (current.type === 'labResult' && incoming.type === 'labResult') {
+    return (
+      current.labResult.timestamp === incoming.labResult.timestamp &&
+      normalizedText(current.labResult.name) === normalizedText(incoming.labResult.name) &&
+      current.labResult.value === incoming.labResult.value &&
+      current.labResult.unit === incoming.labResult.unit
+    );
+  }
+
+  return false;
+}
+
 export function mergeHealthEvents(...sets: HealthEvent[][]): HealthEvent[] {
   const byId = new Map<string, HealthEvent>();
   for (const set of sets) for (const event of set) byId.set(event.id, event);
@@ -84,7 +134,10 @@ export function mergeHealthEvents(...sets: HealthEvent[][]): HealthEvent[] {
 }
 
 export function appendHealthEvents(current: HealthEvent[], incoming: HealthEvent[]): HealthEvent[] {
-  return mergeHealthEvents(current, incoming);
+  const acceptedIncoming = incoming.filter(
+    (event) => !current.some((existing) => isDuplicateChatHealthEvent(existing, event)),
+  );
+  return mergeHealthEvents(current, acceptedIncoming);
 }
 
 export function legacySnapshotToEvents(snapshot: LegacyHealthRecordSnapshot): HealthEvent[] {

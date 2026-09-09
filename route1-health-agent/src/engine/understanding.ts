@@ -7,6 +7,7 @@
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
+import { parsePrivacyIntent } from './privacy';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
@@ -49,18 +50,23 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    return unique.length === 1 ? unique[0] : 'family_other';
+    if (unique.length === 1) return unique[0];
+    return 'family_other';
   }
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    return unique.length === 1 ? unique[0] : 'family_other';
+    if (unique.length === 1) return unique[0];
+    return unique.length > 1 ? 'unknown' : 'family_other';
   }
 
   return null;
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
+  if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
+
   if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
@@ -105,6 +111,9 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
     return 'occurred';
   }
+
+  // “没睡好”含有口语否定词，但它表达的是已经发生的睡眠问题。
+  if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
   // 比较/缓解结构不是“完全没有症状”。
   const comparativeImprovement =
@@ -246,11 +255,27 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
+  const privacyIntents = splitClauses(trimmed)
+    .map((clause) => parsePrivacyIntent(clause))
+    .filter((intent) => intent !== 'none');
+  const uniquePrivacyIntents = [...new Set(privacyIntents)];
+  const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
+
+  if (hasMixedPrivacyIntent) {
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion:
+        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      correction,
+    };
+  }
+
   return {
     claims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
-      ? '您说的“他/她”指的是谁？我先确认清楚，再决定要不要记录。'
+      ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
       : undefined,
     correction,
   };

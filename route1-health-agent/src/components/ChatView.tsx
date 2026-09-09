@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../types';
 
 interface ChatViewProps {
+  id?: string;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
   quickInputs: string[];
@@ -38,17 +39,17 @@ type VoiceState = 'ready' | 'unsupported' | 'listening' | 'permission' | 'error'
 function voiceMessage(state: VoiceState): string {
   switch (state) {
     case 'unsupported':
-      return '当前浏览器没有提供网页语音输入，可以使用键盘上的麦克风听写，再检查文字后发送。';
+      return '当前浏览器没有提供语音输入，可以用手机键盘上的麦克风听写，再检查文字后发送。';
     case 'permission':
-      return '麦克风权限未通过。请在浏览器权限设置中允许麦克风；也可以直接使用键盘听写。';
+      return '手机没有允许麦克风。请在浏览器设置里打开麦克风权限，也可以用键盘上的麦克风听写。';
     case 'error':
-      return '网页语音输入没有成功启动。可以检查麦克风权限、网络和浏览器支持情况，或改用键盘听写。';
+      return '语音输入没有成功启动。可以检查麦克风权限和网络，也可以直接打字。';
     default:
       return '';
   }
 }
 
-export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
+export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProps) {
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -131,11 +132,11 @@ export default function ChatView({ chat, onSend, quickInputs }: ChatViewProps) {
   const voiceHint = voiceMessage(voiceState);
 
   return (
-    <div className="chat-view">
+    <div id={id} className="chat-view">
       <div className="chat-intro">
         <div className="agent-greeting">
           我是<b>阿安</b>，您的健康小助手。身体有什么不舒服、心里有什么话，都可以跟我说。
-          目前页面里的手表、血压等设备数据是演示接口，真实硬件尚未接入；我不会把演示数据当成您当前真实测量。
+          现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。
         </div>
       </div>
 

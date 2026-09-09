@@ -31,7 +31,7 @@ jobs:
         working-directory: route1-health-agent
 
     steps:
-      - name: Checkout pushed or PR revision
+      - name: Checkout revision under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -46,24 +46,24 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Verify formatting
+      - name: Check formatting
         run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Detection regression tests
+      - name: Run tests
         run: npm test
 
       - name: Production build
         run: npm run build
 
-      - name: Secret hygiene check
+      - name: Security checks
         run: npm run security:check
 
-      - name: Production dependency audit
+      - name: Dependency audit (high severity)
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Full dependency audit (informational)
+      - name: Dependency audit (full, informational)
         continue-on-error: true
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev

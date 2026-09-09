@@ -15,6 +15,13 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
+import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../engine/userFacing';
+import {
+  buildHistoricalSharingAnswer,
+  inferSharingRecipient,
+  loadSharingAudit,
+  recordSharingAudit,
+} from '../engine/sharingAudit';
 import {
   acceptedSelfClaims,
   hasDeathReport,
@@ -52,6 +59,12 @@ function recallSummary(chat: ChatMessage[]): string {
   const prior = chat.filter((message) => message.role === 'elder').slice(-4);
   if (prior.length === 0) return '我这次对话里还没有找到您之前说的话。您可以再告诉我一次，我不会自己编造记忆。';
   return `我能看到这次对话里您之前说过：\n${prior.map((message) => `“${message.text}”`).join('\n')}`;
+}
+
+function sharingHistoryRequested(text: string): boolean {
+  return /(?:有没有|刚才|之前|到底|究竟).*(?:告诉|说给|分享给).*(?:女儿|儿子|家属|孩子)?.*(?:什么|哪些|哪条)|(?:告诉|分享给).*(?:什么|哪些|哪条)/.test(
+    text,
+  );
 }
 
 function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): boolean {
@@ -129,15 +142,14 @@ export function useElderChat({
 }: UseElderChatOptions) {
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
+    const sharingHistoryQuery = sharingHistoryRequested(text);
     const understanding = understandElderInput(text, TODAY, chat);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
     const familyOnlyClaims = understanding.claims.filter(
       (claim) =>
-        claim.subject !== 'self' &&
-        claim.subject !== 'unknown' &&
-        (claim.tags.length > 0 || claim.hasHealthValue),
+        claim.subject !== 'self' && claim.subject !== 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
     );
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
@@ -146,7 +158,16 @@ export function useElderChat({
     const persisted = intent !== 'no_record';
 
     let agentText: string;
-    if (understanding.recallRequested) {
+    if (sharingHistoryQuery) {
+      const recipient = /女儿/.test(text)
+        ? 'daughter'
+        : /儿子/.test(text)
+          ? 'son'
+          : /家属|孩子/.test(text)
+            ? 'family'
+            : undefined;
+      agentText = buildHistoricalSharingAnswer(loadSharingAudit(), recipient ?? inferSharingRecipient(text));
+    } else if (understanding.recallRequested) {
       agentText = recallSummary(chat);
     } else if (understanding.clarificationQuestion) {
       agentText = understanding.clarificationQuestion;
@@ -177,9 +198,16 @@ export function useElderChat({
       );
     }
 
-    setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+    let familyAcknowledgement = '';
+    if (familyClaims.length > 0 && intent !== 'no_record') {
+      familyAcknowledgement = buildFamilyAcknowledgement(
+        familyClaims.map((claim) => ({ subject: claim.subject, text: claim.text })),
+        shareMode,
+      );
+    }
 
     if (intent === 'no_record') {
+      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
@@ -188,8 +216,7 @@ export function useElderChat({
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
       const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects =
-        previousInput?.claims.filter((claim) => isFamilySubject(claim.subject)).map((claim) => claim.subject) ?? [];
+      const priorFamilySubjects = previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
       if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
       if (tagsToCorrect.length > 0) {
         setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
@@ -217,7 +244,38 @@ export function useElderChat({
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
     }
 
-    if (acceptedClaims.length === 0) return;
+    if (canShare && shareMode !== 'private' && !sharingHistoryQuery) {
+      const recipient = inferSharingRecipient(text);
+      recordSharingAudit([
+        ...acceptedClaims.map((claim, claimIndex) => ({
+          id: `share-audit-${Date.now()}-self-${claimIndex}`,
+          createdAt: localIsoTimestamp(),
+          scope: 'self' as const,
+          recipient,
+          shareMode,
+          content: claim.text,
+        })),
+        ...familyClaims.map((claim, claimIndex) => ({
+          id: `share-audit-${Date.now()}-family-${claimIndex}`,
+          createdAt: localIsoTimestamp(),
+          scope: 'family' as const,
+          recipient,
+          shareMode,
+          content: claim.text,
+        })),
+      ]);
+    }
+
+    if (acceptedClaims.length === 0) {
+      const finalFamilyText = familyAcknowledgement || agentText;
+      setChat((current) => [
+        ...current,
+        msg('elder', text, now, persisted),
+        msg('agent', finalFamilyText, now, persisted),
+      ]);
+      showToast(finalFamilyText.replace(/\n/g, ' '));
+      return;
+    }
 
     const incomingEvents: HealthEvent[] = [];
     for (let claimIndex = 0; claimIndex < acceptedClaims.length; claimIndex += 1) {
@@ -258,13 +316,21 @@ export function useElderChat({
       }
     }
 
-    if (incomingEvents.length === 0) return;
+    if (incomingEvents.length === 0) {
+      const finalFamilyText = familyAcknowledgement || agentText;
+      setChat((current) => [
+        ...current,
+        msg('elder', text, now, persisted),
+        msg('agent', finalFamilyText, now, persisted),
+      ]);
+      showToast(finalFamilyText.replace(/\n/g, ' '));
+      return;
+    }
     const nextEvents = appendHealthEvents(events, incomingEvents);
     setEvents(nextEvents);
 
     if (intent === 'share_family') {
-      const nextFindings = runDetection(nextEvents, TODAY);
-      const shareableFindingIds = nextFindings
+      const shareableFindingIds = runDetection(nextEvents, TODAY)
         .filter(
           (finding) =>
             (finding.severity === 'alert' || finding.severity === 'urgent') &&
@@ -278,21 +344,43 @@ export function useElderChat({
     const values = acceptedClaims.flatMap((claim) => extractHealthValues(claim.text));
     const labels = acceptedTags.map(tagLabel);
     const valueText = values.map((item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`);
+    const recordSummary = [...labels, ...valueText].join('、');
     const timeNotice = acceptedClaims.some(
       (claim) => claim.timeScope === 'yesterday' || claim.timeScope === 'lastNight',
     )
-      ? '；按您说的时间归到昨晚/昨天，不当作今天新发生'
+      ? '按您说的时间归到昨晚/昨天，不当作今天新发生。'
       : '';
     const sharingNotice =
       intent === 'share_family'
-        ? '；这次明确分享给家属，不会自动修改长期共享设置'
+        ? '这次只分享给家属一次，不会自动打开长期共享。'
         : canShare
-          ? '；按当前授权可供家属查看必要变化'
-          : '；仅供您本人使用';
-    showToast(`已记录：${[...labels, ...valueText].join('、')}${timeNotice}${sharingNotice}`);
+          ? '按您现在的授权，家属可以看到必要的变化。'
+          : '这部分只供您本人使用。';
+    const safetyTags = new Set(['fall', 'medicationMissed', 'chestPain', 'neuroChange', 'dizziness']);
+    const hasSafetyGuidance = acceptedTags.some((tag) => safetyTags.has(tag));
+    const safetyNotice = acceptedTags.includes('fall')
+      ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
+      : '';
+    const guidance = hasSafetyGuidance ? agentText : '';
+    const selfSharingReceipt =
+      canShare && recordSummary ? buildSelfSharingAcknowledgement(recordSummary, shareMode) : '';
+    const sharingReceipt = familyAcknowledgement || selfSharingReceipt || sharingNotice;
+    const receiptParts = [
+      guidance,
+      recordSummary ? `我已经记下：${recordSummary}。${timeNotice}` : '',
+      safetyNotice && !guidance.includes(safetyNotice) ? safetyNotice : '',
+      sharingReceipt,
+    ].filter(Boolean);
+    const finalAgentText = receiptParts.join('\n');
+    setChat((current) => [
+      ...current,
+      msg('elder', text, now, persisted),
+      msg('agent', finalAgentText, now, persisted),
+    ]);
+
+    showToast(finalAgentText.replace(/\n/g, ' '));
 
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
-    if (acceptedTags.includes('fall')) showToast('已标记为需要优先确认安全的事件，请先确认现在是否安全。');
   }
 
   async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
