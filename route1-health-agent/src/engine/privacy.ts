@@ -7,7 +7,9 @@ export function parsePrivacyIntent(text: string): PrivacyIntent {
   const refusesFamily =
     /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(告诉|让|通知).{0,3}(孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
       text,
-    ) || /不想让.{0,3}(孩子|女儿|儿子|家人).{0,3}(知道|看见|知道这件事)/.test(text);
+    ) ||
+    /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(text) ||
+    /不想让.{0,3}(孩子|女儿|儿子|家人).{0,3}(知道|看见|知道这件事)/.test(text);
   const requestsFamily = /(告诉|通知|跟|让).{0,4}(孩子|女儿|儿子|家人).{0,3}(知道|说|讲)?/.test(text);
 
   if (wantsNoRecord) return 'no_record';
