@@ -10,6 +10,15 @@ const INVITE_PREFIX = 'ankang-route1-invite:';
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const MAX_PENDING_ONE_TIME_IDS = 50;
 
+interface WebLockManagerLike {
+  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+}
+
+function getWebLocks(): WebLockManagerLike | null {
+  const candidate = (navigator as Navigator & { locks?: WebLockManagerLike }).locks;
+  return candidate ?? null;
+}
+
 function localIsoTimestamp(): string {
   return new Date().toISOString();
 }
@@ -76,6 +85,8 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>(() =>
     loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY),
   );
+  const [claimedOneTimeFindingIds, setClaimedOneTimeFindingIds] = useState<string[]>([]);
+  const [claimedOneTimeFamilyEventIds, setClaimedOneTimeFamilyEventIds] = useState<string[]>([]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -110,6 +121,8 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     updatePersistentFamilySharing('denied');
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
+    setClaimedOneTimeFindingIds([]);
+    setClaimedOneTimeFamilyEventIds([]);
     showToast('好的，先不告诉家属。之后需要时，您可以再打开共享。');
   }
 
@@ -117,6 +130,8 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     updatePersistentFamilySharing('denied');
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
+    setClaimedOneTimeFindingIds([]);
+    setClaimedOneTimeFamilyEventIds([]);
     showToast('已暂停家属共享。之后的新变化不会继续提供给家属；已经告诉对方的内容，我不会假装它已经被撤回。');
   }
 
@@ -171,18 +186,27 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
-  /** Remove consumed one-time finding grants so refresh/navigation cannot reuse them. */
-  function consumeSharedFindingIds(ids: string[]) {
-    if (ids.length === 0) return;
-    const consumed = new Set(ids);
-    setSharedFindingIds((current) => current.filter((id) => !consumed.has(id)));
-  }
+  async function claimOneTimeShares(): Promise<void> {
+    const locks = getWebLocks();
+    if (!locks) {
+      // Fail closed on browsers without cross-tab atomic locking support.
+      return;
+    }
 
-  /** Remove consumed one-time family-event grants so refresh/navigation cannot reuse them. */
-  function consumeSharedFamilyEventIds(ids: string[]) {
-    if (ids.length === 0) return;
-    const consumed = new Set(ids);
-    setSharedFamilyEventIds((current) => current.filter((id) => !consumed.has(id)));
+    await locks.request('ankang-route1-one-time-share-claim', async () => {
+      const findingIds = loadStringIds(SHARED_FINDING_IDS_KEY);
+      const familyEventIds = loadStringIds(SHARED_FAMILY_EVENT_IDS_KEY);
+      if (findingIds.length === 0 && familyEventIds.length === 0) return;
+
+      window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify([]));
+      window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify([]));
+      setClaimedOneTimeFindingIds((current) => [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS));
+      setClaimedOneTimeFamilyEventIds((current) => [
+        ...new Set([...current, ...familyEventIds]),
+      ].slice(-MAX_PENDING_ONE_TIME_IDS));
+      setSharedFindingIds([]);
+      setSharedFamilyEventIds([]);
+    });
   }
 
   return {
@@ -191,6 +215,8 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     familyLink,
     sharedFindingIds,
     sharedFamilyEventIds,
+    claimedOneTimeFindingIds,
+    claimedOneTimeFamilyEventIds,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
@@ -198,7 +224,6 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
+    claimOneTimeShares,
   };
 }
