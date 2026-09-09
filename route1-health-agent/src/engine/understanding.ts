@@ -91,10 +91,14 @@ function subjectAfterRelationCue(clause: string, mentions: SubjectMention[]): El
     const rightSubjects = [...new Set(rightMentions.map((mention) => mention.subject))];
     if (!left || rightSubjects.length === 0) continue;
 
-    // 关系词后的多个不同人物仍然无法唯一确定健康事实主体：
-    // “我看到我爸和我妈都不舒服”必须 fail closed，而不能挑第一个人。
-    if (rightSubjects.length > 1) return 'unknown';
-    return rightSubjects[0];
+    // “告诉我/跟我说”里的 self 是语法上的接收者，不是健康事实主体。
+    // 只要后面的明确家属对象唯一，就优先把健康事实归给该家属；
+    // 多个家属仍然必须 unknown。
+    const familySubjects = rightSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown');
+    if (familySubjects.length > 1) return 'unknown';
+    if (familySubjects.length === 1) return familySubjects[0];
+    if (rightSubjects.includes('unknown')) return 'unknown';
+    if (rightSubjects.includes('self')) return 'self';
   }
 
   return null;
@@ -152,7 +156,6 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   // 同一句无明确关系结构却点名多个人时，宁可 unknown，也不猜测谁是健康事实主体。
   const uniqueSubjects = [...new Set(mentions.map((mention) => mention.subject))];
   if (uniqueSubjects.length > 1) return 'unknown';
-  if (uniqueSubjects.length === 1) return uniqueSubjects[0];
 
   // 只有确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
