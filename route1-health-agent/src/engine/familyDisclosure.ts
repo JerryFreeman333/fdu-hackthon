@@ -1,4 +1,4 @@
-import type { CareTask, Finding } from '../types';
+import type { CareTask, FamilySharing, Finding } from '../types';
 
 const FAMILY_FINDING_LEVELS = new Set<Finding['severity']>(['alert', 'urgent']);
 
@@ -20,6 +20,16 @@ export function familyVisibleTasks(tasks: CareTask[], visibleFindings: Finding[]
     if (typeof task.sourceFindingId === 'string') return visibleFindingIds.has(task.sourceFindingId);
     return task.kind === 'safety_check';
   });
+}
+
+/** Family task disclosure is fail-closed unless persistent family sharing is explicitly granted. */
+export function familyVisibleTasksForSharing(
+  tasks: CareTask[],
+  findings: Finding[],
+  familySharing: FamilySharing,
+): CareTask[] {
+  if (familySharing !== 'granted') return [];
+  return familyVisibleTasks(tasks, familyVisibleFindings(findings));
 }
 
 /** Consuming a one-time grant is idempotent and leaves unrelated grants untouched. */
