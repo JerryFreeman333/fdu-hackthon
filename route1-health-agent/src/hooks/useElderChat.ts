@@ -214,7 +214,9 @@ export function useElderChat({
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       if (previousElder) {
         const previousInput = understandElderInput(previousElder.text, TODAY, chat);
-        const claimIds = previousInput.claims.map((_claim, claimIndex) => claimIdForMessage(previousElder.text, claimIndex));
+        const claimIds = previousInput.claims.map((_claim, claimIndex) =>
+          claimIdForMessage(previousElder.text, claimIndex),
+        );
         setEvents((current) => removeCorrectedChatEvents(current, claimIds));
         setFamilyEvents((current) => removeCorrectedFamilyEvents(current, claimIds));
         if (claimIds.length > 0) {
@@ -331,9 +333,10 @@ export function useElderChat({
         msg('elder', text, now, persisted),
         msg('agent', finalFamilyText, now, persisted),
       ]);
-      showToast(finalFamilyText.replace(/\n/g, ' '));
+      showToast(finalAgentText.replace(/\n/g, ' '));
       return;
     }
+
     const nextEvents = appendHealthEvents(events, incomingEvents);
     setEvents(nextEvents);
 
