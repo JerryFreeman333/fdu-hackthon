@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import { METRICS } from './types';
 import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
@@ -26,6 +26,8 @@ import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
 const ROLE_KEY = 'ankang-route1-role-v3';
+const MAX_FAMILY_FINDINGS_PER_VIEW = 3;
+const MAX_FAMILY_EVENTS_PER_VIEW = 5;
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   const stored = healthRecordStore.load();
@@ -53,6 +55,7 @@ export default function App() {
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const { fontScale, setFontScale } = useFontScale();
+  const familyClaimAttempted = useRef(false);
 
   const showToast = useCallback((text: string) => {
     setToast(text);
@@ -62,6 +65,8 @@ export default function App() {
   const {
     familySharing,
     familyLink,
+    sharedFindingIds,
+    sharedFamilyEventIds,
     claimedOneTimeFindingIds,
     claimedOneTimeFamilyEventIds,
     requestFamilyShare,
@@ -123,17 +128,22 @@ export default function App() {
   }, [events, familyEvents, chat]);
 
   useEffect(() => {
-    if (role !== 'family' || familyLink?.status !== 'active') return;
-    void claimOneTimeShares();
-  }, [role, familyLink?.status, claimOneTimeShares]);
+    if (role !== 'family' || familyLink?.status !== 'active' || familyClaimAttempted.current) return;
+    familyClaimAttempted.current = true;
+    const candidateFindingIds = sharedFindingIds.slice(0, MAX_FAMILY_FINDINGS_PER_VIEW);
+    const candidateFamilyEventIds = sharedFamilyEventIds.slice(0, MAX_FAMILY_EVENTS_PER_VIEW);
+    void claimOneTimeShares(candidateFindingIds, candidateFamilyEventIds);
+  }, [role, familyLink?.status, sharedFindingIds, sharedFamilyEventIds, claimOneTimeShares]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
+    if (nextRole !== 'family') familyClaimAttempted.current = false;
     window.localStorage.setItem(ROLE_KEY, nextRole);
   }
 
   function resetRole() {
     setRole(null);
+    familyClaimAttempted.current = false;
     window.localStorage.removeItem(ROLE_KEY);
   }
 
