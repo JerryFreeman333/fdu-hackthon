@@ -12,6 +12,11 @@
     "rootDir": ".",
     "noEmitOnError": true
   },
-  "include": ["tests/**/*.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "include": [
+    "tests/**/*.ts",
+    "src/**/*.ts",
+    "src/App.tsx",
+    "src/components/**/*.tsx"
+  ],
   "types": ["node"]
 }
