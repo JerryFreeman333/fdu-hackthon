@@ -11,7 +11,7 @@ export function buildInitialTasks(_today: string): CareTask[] {
 export function createTaskFromFinding(finding: Finding, today: string): CareTask | null {
   if (!finding.carePath) return null;
   const stableKey = finding.ruleId ?? finding.id;
-  const shouldContactFamily = finding.familyEligible !== false && Boolean(finding.familyMessage);
+  const shouldContactFamily = finding.familyEligible === true && Boolean(finding.familyMessage);
   const kind: CareTask['kind'] = shouldContactFamily
     ? 'contact_family'
     : finding.severity === 'urgent'
