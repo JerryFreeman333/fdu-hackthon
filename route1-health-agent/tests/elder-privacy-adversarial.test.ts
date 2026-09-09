@@ -1,5 +1,6 @@
 import { canShareWithFamily, parsePrivacyIntent } from '../src/engine/privacy';
 import { visibleFamilyEvents } from '../src/engine/familyLedger';
+import { buildHistoricalSharingAnswer, appendSharingAudit, type SharingAuditEntry } from '../src/engine/sharingAudit';
 import { understandElderInput } from '../src/engine/understanding';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -167,7 +168,81 @@ runCase(
     );
     assert(
       acknowledgement.includes('不会假装它已经被撤回'),
-      'revocation must never claim an unsupported historical recall',
+      'revocation must never claim unsupported historical recall',
     );
   },
 );
+
+runCase('historical sharing audit survives permission changes', () => {
+  const entries: SharingAuditEntry[] = [
+    {
+      id: 'audit-1',
+      createdAt: '2026-09-08T12:34:00.000Z',
+      scope: 'self',
+      recipient: 'daughter',
+      shareMode: 'one_time',
+      content: '今天头晕',
+    },
+    {
+      id: 'audit-2',
+      createdAt: '2026-09-08T12:35:00.000Z',
+      scope: 'family',
+      recipient: 'daughter',
+      shareMode: 'persistent',
+      content: '爸爸今天摔了一下',
+    },
+  ];
+  const answer = buildHistoricalSharingAnswer(entries, 'daughter');
+  assert(answer.includes('今天头晕'), 'history answer must include the actual shared self fact');
+  assert(answer.includes('爸爸今天摔了一下'), 'history answer must include the actual shared family fact');
+  assert(answer.includes('一次性'), 'history answer must preserve one-time mode');
+  assert(answer.includes('按长期授权'), 'history answer must preserve persistent mode');
+});
+
+runCase('historical audit remains independent from current family visibility', () => {
+  const entry: SharingAuditEntry = {
+    id: 'audit-revoked-1',
+    createdAt: '2026-09-08T13:00:00.000Z',
+    scope: 'self',
+    recipient: 'daughter',
+    shareMode: 'one_time',
+    content: '我今天胸闷',
+  };
+  const answer = buildHistoricalSharingAnswer([entry], 'daughter');
+  const event = {
+    id: 'family-revoked-shadow',
+    timestamp: '2026-09-08T13:00:00',
+    source: 'chat' as const,
+    subject: 'father' as const,
+    text: '我爸今天血压150/95',
+    tags: [] as const,
+    hasHealthValue: true,
+    status: 'occurred' as const,
+    visibility: 'family_ok' as const,
+    shareMode: 'one_time' as const,
+  };
+  assert(answer.includes('我今天胸闷'), 'history must remain queryable after permission revocation');
+  assert(
+    visibleFamilyEvents([event], 'denied', []).length === 0,
+    'current visibility must still be revoked',
+  );
+});
+
+runCase('audit keeps a bounded history', () => {
+  const base: SharingAuditEntry = {
+    id: 'base',
+    createdAt: '2026-09-08T12:00:00.000Z',
+    scope: 'self',
+    recipient: 'daughter',
+    shareMode: 'one_time',
+    content: '旧记录',
+  };
+  const next = Array.from({ length: 4 }, (_, index) => ({
+    ...base,
+    id: `next-${index}`,
+    content: `新记录${index}`,
+  }));
+  const bounded = appendSharingAudit([base], next, 3);
+  assert(bounded.length === 3, 'audit history should respect the configured bound');
+  assert(bounded[0]?.id === 'next-1', 'oldest entries should be evicted first');
+});
