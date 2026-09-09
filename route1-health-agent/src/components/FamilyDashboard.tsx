@@ -5,7 +5,7 @@ import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
-import { familyVisibleFindings, familyVisibleTasks } from '../engine/familyDisclosure';
+import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 
 interface FamilyDashboardProps {
   profile: ElderProfile;
@@ -57,7 +57,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
-  const activeTasks = canViewSharedDetail ? familyVisibleTasks(props.tasks, familyFindings).slice(0, 3) : [];
+  const activeTasks = familyVisibleTasksForSharing(props.tasks, props.findings, props.profile.familySharing).slice(0, 3);
   const openHomeActions = canViewSharedDetail
     ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
     : [];
