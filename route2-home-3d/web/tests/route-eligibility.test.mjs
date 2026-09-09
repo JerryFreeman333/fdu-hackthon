@@ -22,6 +22,13 @@ test('route planner exposes an explicit eligibility gate', async () => {
   assert.match(source, /assessRouteEligibility\(snapshot\)/);
 });
 
+test('demo-only connect evidence cannot become route evidence', async () => {
+  const source = await planner();
+  assert.match(source, /ALLOWED_ROUTE_RELATION_SOURCES = new Set\(\['vision', 'manual', 'inferred'\]\)/);
+  assert.match(source, /ALLOWED_ROUTE_RELATION_SOURCES\.has\(relation\.source\)/);
+  assert.match(source, /snapshot\.relations\.filter\(usableRelation\)/);
+});
+
 test('route planner does not claim an unexplained safe route', async () => {
   const source = await planner();
   assert.match(source, /可解释路线/);
