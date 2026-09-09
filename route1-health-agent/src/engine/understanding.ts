@@ -38,7 +38,7 @@ function subtractDays(today: string, days: number): string {
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   return text
-    .split(/[。！？!?；;，,\n]+/)
+    .split(/[。！？!?；;,，\n]+/)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -254,16 +254,22 @@ export function understandElderInput(
     .filter((intent) => intent !== 'none');
   const uniquePrivacyIntents = [...new Set(privacyIntents)];
   const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
-  const privacyClarification = hasMixedPrivacyIntent
-    ? '我听到您对不同事情有不同的分享要求。为了不把不该告诉家属的内容发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。'
-    : undefined;
+  if (hasMixedPrivacyIntent) {
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion:
+        '我听到您对不同事情有不同的分享要求。为了不把不该告诉家属的内容发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      correction,
+    };
+  }
 
   return {
     claims,
     recallRequested,
-    clarificationQuestion: privacyClarification || (hasUnclearFamilyReference
+    clarificationQuestion: hasUnclearFamilyReference
       ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
-      : undefined),
+      : undefined,
     correction,
   };
 }
