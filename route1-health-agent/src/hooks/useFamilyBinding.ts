@@ -8,6 +8,7 @@ const SHARED_FINDING_IDS_KEY = 'ankang-route1-shared-findings-v1';
 const SHARED_FAMILY_EVENT_IDS_KEY = 'ankang-route1-shared-family-events-v1';
 const INVITE_PREFIX = 'ankang-route1-invite:';
 const DEMO_ELDER_ID = 'demo-elder-route1';
+const MAX_PENDING_ONE_TIME_IDS = 50;
 
 function localIsoTimestamp(): string {
   return new Date().toISOString();
@@ -46,7 +47,9 @@ function loadStringIds(key: string): string[] {
   try {
     const raw = window.localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string').slice(-50) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string').slice(-MAX_PENDING_ONE_TIME_IDS)
+      : [];
   } catch {
     return [];
   }
@@ -81,8 +84,14 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     );
     if (familyLink) window.localStorage.setItem(FAMILY_LINK_KEY, JSON.stringify(familyLink));
     else window.localStorage.removeItem(FAMILY_LINK_KEY);
-    window.localStorage.setItem(SHARED_FINDING_IDS_KEY, JSON.stringify(sharedFindingIds.slice(-50)));
-    window.localStorage.setItem(SHARED_FAMILY_EVENT_IDS_KEY, JSON.stringify(sharedFamilyEventIds.slice(-50)));
+    window.localStorage.setItem(
+      SHARED_FINDING_IDS_KEY,
+      JSON.stringify(sharedFindingIds.slice(-MAX_PENDING_ONE_TIME_IDS)),
+    );
+    window.localStorage.setItem(
+      SHARED_FAMILY_EVENT_IDS_KEY,
+      JSON.stringify(sharedFamilyEventIds.slice(-MAX_PENDING_ONE_TIME_IDS)),
+    );
   }, [familySharing, consentUpdatedAt, familyLink, sharedFindingIds, sharedFamilyEventIds]);
 
   function updatePersistentFamilySharing(next: ElderProfile['familySharing']) {
@@ -154,12 +163,26 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
 
   function shareFindingIds(ids: string[]) {
     if (ids.length === 0) return;
-    setSharedFindingIds((current) => [...new Set([...current, ...ids])].slice(-50));
+    setSharedFindingIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
   function shareFamilyEventIds(ids: string[]) {
     if (ids.length === 0) return;
-    setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-50));
+    setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
+  }
+
+  /** Remove consumed one-time finding grants so refresh/navigation cannot reuse them. */
+  function consumeSharedFindingIds(ids: string[]) {
+    if (ids.length === 0) return;
+    const consumed = new Set(ids);
+    setSharedFindingIds((current) => current.filter((id) => !consumed.has(id)));
+  }
+
+  /** Remove consumed one-time family-event grants so refresh/navigation cannot reuse them. */
+  function consumeSharedFamilyEventIds(ids: string[]) {
+    if (ids.length === 0) return;
+    const consumed = new Set(ids);
+    setSharedFamilyEventIds((current) => current.filter((id) => !consumed.has(id)));
   }
 
   return {
@@ -175,5 +198,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
+    consumeSharedFindingIds,
+    consumeSharedFamilyEventIds,
   };
 }
