@@ -1,6 +1,6 @@
-import type { FamilyHealthEvent } from '../src/types';
+import type { FamilyHealthEvent, HealthMeasurement, Observation } from '../src/types';
 import { claimIdForMessage, removeCorrectedChatEvents, removeCorrectedFamilyEvents } from '../src/engine/claimLineage';
-import type { HealthEvent } from '../src/pipeline/events';
+import { measurementToEvent, observationToEvent, type HealthEvent } from '../src/pipeline/events';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -21,46 +21,34 @@ runCase('claim ids are deterministic and distinct by claim index', () => {
 });
 
 runCase('correction removes only chat events attached to the corrected claims', () => {
-  const keepMeasurement: HealthEvent = {
-    type: 'measurement',
-    measurement: {
-      id: 'measurement-keep',
-      timestamp: '2026-09-08T10:00:00Z',
-      metric: 'systolic',
-      value: 130,
-      unit: 'mmHg',
-      source: 'chat',
-      claimId: 'claim-keep',
-    },
+  const keepMeasurement: HealthMeasurement = {
+    id: 'measurement-keep',
+    timestamp: '2026-09-08T10:00:00Z',
+    metric: 'systolic',
+    value: 130,
+    unit: 'mmHg',
     source: 'chat',
+    claimId: 'claim-keep',
   };
-  const removeMeasurement: HealthEvent = {
-    type: 'measurement',
-    measurement: {
-      id: 'measurement-remove',
-      timestamp: '2026-09-08T11:00:00Z',
-      metric: 'systolic',
-      value: 168,
-      unit: 'mmHg',
-      source: 'chat',
-      claimId: firstClaimId,
-    },
+  const removeMeasurement: HealthMeasurement = {
+    id: 'measurement-remove',
+    timestamp: '2026-09-08T11:00:00Z',
+    metric: 'systolic',
+    value: 168,
+    unit: 'mmHg',
     source: 'chat',
+    claimId: firstClaimId,
   };
-  const removeObservation: HealthEvent = {
-    type: 'observation',
-    observation: {
-      id: 'observation-remove',
-      date: '2026-09-08',
-      source: 'chat',
-      text,
-      tags: ['dizziness'],
-      claimId: secondClaimId,
-    },
+  const removeObservation: Observation = {
+    id: 'observation-remove',
+    date: '2026-09-08',
     source: 'chat',
+    text,
+    tags: ['dizziness'],
+    claimId: secondClaimId,
   };
   const removed = removeCorrectedChatEvents(
-    [keepMeasurement, removeMeasurement, removeObservation],
+    [measurementToEvent(keepMeasurement), measurementToEvent(removeMeasurement), observationToEvent(removeObservation)],
     [firstClaimId, secondClaimId],
   );
 
@@ -72,18 +60,14 @@ runCase('correction removes only chat events attached to the corrected claims', 
 });
 
 runCase('legacy chat events without claim ids fail closed and are not guessed away', () => {
-  const legacyEvent: HealthEvent = {
-    type: 'observation',
-    observation: {
-      id: 'legacy-observation',
-      date: '2026-09-08',
-      source: 'chat',
-      text: '我昨天摔了',
-      tags: ['fall'],
-    },
+  const legacyObservation: Observation = {
+    id: 'legacy-observation',
+    date: '2026-09-08',
     source: 'chat',
+    text: '我昨天摔了',
+    tags: ['fall'],
   };
-  const kept = removeCorrectedChatEvents([legacyEvent], [firstClaimId]);
+  const kept = removeCorrectedChatEvents([observationToEvent(legacyObservation)], [firstClaimId]);
   assert(kept.length === 1, 'legacy event without lineage must not be deleted by a guess');
 });
 
