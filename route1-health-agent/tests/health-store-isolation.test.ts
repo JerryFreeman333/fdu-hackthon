@@ -35,9 +35,9 @@ const familyEvent: FamilyHealthEvent = {
 
 const chat: ChatMessage = {
   id: 'chat-isolation-1',
-  role: 'user',
+  role: 'elder',
   text: '今天有一点头晕',
-  createdAt: '2026-09-09T09:00:00Z',
+  time: '2026-09-09T09:00:00Z',
 };
 
 const firstSession = new LocalHealthRecordStore();
@@ -53,14 +53,16 @@ assert(fresh.events.length === 0, 'a fresh store instance must not inherit prior
 assert(fresh.familyEvents.length === 0, 'a fresh store instance must not inherit prior family facts');
 assert(fresh.chat.length === 0, 'a fresh store instance must not inherit prior chat');
 
-loaded.events[0]!.observation.text = 'mutated outside store';
-loaded.events[0]!.observation.tags.push('pain');
-loaded.familyEvents[0]!.tags.push('extra');
+const loadedObs = loaded.events[0] as Extract<HealthEvent, { type: 'observation' }>;
+loadedObs.observation.text = 'mutated outside store';
+loadedObs.observation.tags.push('pain');
+loaded.familyEvents[0]!.tags.push('pain');
 loaded.chat[0]!.text = 'mutated outside store';
 const cloned = firstSession.load();
-assert(cloned.events[0]?.observation.text === event.observation.text, 'loaded observations must be cloned');
-assert(cloned.events[0]?.observation.tags.includes('pain') === false, 'loaded observation tags must not be shared');
-assert(cloned.familyEvents[0]?.tags.includes('extra') === false, 'loaded family events must be cloned');
+const clonedObs = cloned.events[0] as Extract<HealthEvent, { type: 'observation' }>;
+assert(clonedObs?.observation.text === event.observation.text, 'loaded observations must be cloned');
+assert(clonedObs?.observation.tags.includes('pain') === false, 'loaded observation tags must not be shared');
+assert(cloned.familyEvents[0]?.tags.includes('pain') === false, 'loaded family events must be cloned');
 assert(cloned.chat[0]?.text === chat.text, 'loaded chat must be cloned');
 
 firstSession.clear();

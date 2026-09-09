@@ -1,5 +1,3 @@
-import type { ChatMessage, FamilyHealthEvent } from '../types';
-import type { HealthEvent } from '../pipeline/events';
 import type { HealthRecordSnapshot, HealthRecordStore } from './HealthRecordStore';
 
 const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], chat: [] };
@@ -34,9 +32,12 @@ export class LocalHealthRecordStore implements HealthRecordStore {
 
 function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
   return {
-    events: snapshot.events.map((event) => ({ ...event, evidence: [...event.evidence] })),
+    events: snapshot.events.map((event) => structuredClone(event)),
     familyEvents: snapshot.familyEvents.map((event) => ({ ...event, tags: [...event.tags] })),
-    chat: snapshot.chat.map((message) => ({ ...message })),
+    chat: snapshot.chat.map((message) => ({
+      ...message,
+      ...(message.claimIds ? { claimIds: [...message.claimIds] } : {}),
+    })),
   };
 }
 

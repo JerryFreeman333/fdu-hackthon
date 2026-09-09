@@ -4,6 +4,10 @@ pipeline/output/
 pipeline/external/
 pipeline/logs/
 
+# 本地 Rescan API 上传任务（含真实照片/视频，永不入库）
+backend/.data/
+backend/.venv/
+
 # 高斯模型文件（演示前用 05 脚本导出，不提交大二进制）
 web/public/models/*.ply
 web/public/models/*.ksplat
@@ -13,3 +17,6 @@ web/public/models/*.spz
 # node
 web/node_modules/
 web/dist/
+
+# python
+__pycache__/

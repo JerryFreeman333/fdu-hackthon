@@ -6,28 +6,28 @@
 
 ## A. 代码与自动化回归不变量
 
-| 场景 | 必须成立的不变量 | 当前覆盖 |
-| --- | --- | --- |
-| `我觉得他喘得厉害` | 不得静默进入老人本人健康流；无唯一主体时保持 `unknown` | `tests/user-input-regression.test.ts` |
-| 唯一家属上下文 + `他` | 可继承唯一家属，但不得进入老人本人档案 | `tests/user-input-regression.test.ts` |
-| 多家属上下文 + `他` | 不得猜测主体，fail closed | `tests/user-input-regression.test.ts` |
-| `我爸今天没吃降压药，我也没吃` | 爸爸与老人本人 claim 独立存在 | `tests/user-input-regression.test.ts` |
-| `今天没有像昨天那样喘得厉害了` | 当前日期 + occurred/improving 语义，不得整句否定 | `tests/user-input-regression.test.ts` |
-| 历史 private 跌倒 + 今日可共享跌倒 | 历史 private 不得按 tag 全局屏蔽今日独立 finding | `tests/detection-privacy-isolation.test.ts` |
-| private finding | 老人端仍能安全升级，家属端不得被动共享 | `tests/detection-privacy-isolation.test.ts` |
-| 更正 claim | 仅删除对应 `claimId` 的事件/派生 measurement | `tests/claim-lineage.test.ts`, `tests/stateful-correction-flow.test.ts` |
-| 老日期 legacy event 无 claimId | 不得猜测删除 | `tests/claim-lineage.test.ts` |
-| 家属最小披露 | 仅 `familyEligible === true` 的 alert/urgent finding 可进入 finding 共享视图 | `tests/family-disclosure.test.ts`, `tests/family-sharing-state.test.ts` |
-| task 旁路 | private finding 关联 task 不得绕过 family disclosure | `tests/family-disclosure.test.ts` |
-| one-time grant | 必须显式 claim；刷新/新会话不得恢复 | `tests/family-sharing-state.test.ts` + session-only implementation |
-| one-time + private | private 优先，不能通过旧 ID 绕过 | `tests/family-sharing-state.test.ts` |
-| 同日漏服药 | 稳定 `task-medication-${today}`，不得重复 | `tests/task-regression.test.ts` |
-| 任务 session 隔离 | 不得从 localStorage 恢复旧任务 | `useCareTasks.ts` + security policy |
-| 健康 store session 隔离 | 新 store/新页面不继承 events/familyEvents/chat | `tests/health-store-isolation.test.ts` |
-| store 返回值 | 外部 mutation 不得修改内部快照 | `tests/health-store-isolation.test.ts` |
-| `clear()` | events/familyEvents/chat 全部清空 | `tests/health-store-isolation.test.ts` |
-| role/授权持久化 | `localStorage` 不得成为访问控制依据 | `App.tsx`, `useFamilyBinding.ts`, security policy |
-| external LLM | private/no-record 不送外部；payload 运行时验证；unsafe reply 回退规则适配器 | `agent.ts` + adapter tests |
+| 场景                               | 必须成立的不变量                                                             | 当前覆盖                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `我觉得他喘得厉害`                 | 不得静默进入老人本人健康流；无唯一主体时保持 `unknown`                       | `tests/user-input-regression.test.ts`                                   |
+| 唯一家属上下文 + `他`              | 可继承唯一家属，但不得进入老人本人档案                                       | `tests/user-input-regression.test.ts`                                   |
+| 多家属上下文 + `他`                | 不得猜测主体，fail closed                                                    | `tests/user-input-regression.test.ts`                                   |
+| `我爸今天没吃降压药，我也没吃`     | 爸爸与老人本人 claim 独立存在                                                | `tests/user-input-regression.test.ts`                                   |
+| `今天没有像昨天那样喘得厉害了`     | 当前日期 + occurred/improving 语义，不得整句否定                             | `tests/user-input-regression.test.ts`                                   |
+| 历史 private 跌倒 + 今日可共享跌倒 | 历史 private 不得按 tag 全局屏蔽今日独立 finding                             | `tests/detection-privacy-isolation.test.ts`                             |
+| private finding                    | 老人端仍能安全升级，家属端不得被动共享                                       | `tests/detection-privacy-isolation.test.ts`                             |
+| 更正 claim                         | 仅删除对应 `claimId` 的事件/派生 measurement                                 | `tests/claim-lineage.test.ts`, `tests/stateful-correction-flow.test.ts` |
+| 老日期 legacy event 无 claimId     | 不得猜测删除                                                                 | `tests/claim-lineage.test.ts`                                           |
+| 家属最小披露                       | 仅 `familyEligible === true` 的 alert/urgent finding 可进入 finding 共享视图 | `tests/family-disclosure.test.ts`, `tests/family-sharing-state.test.ts` |
+| task 旁路                          | private finding 关联 task 不得绕过 family disclosure                         | `tests/family-disclosure.test.ts`                                       |
+| one-time grant                     | 必须显式 claim；刷新/新会话不得恢复                                          | `tests/family-sharing-state.test.ts` + session-only implementation      |
+| one-time + private                 | private 优先，不能通过旧 ID 绕过                                             | `tests/family-sharing-state.test.ts`                                    |
+| 同日漏服药                         | 稳定 `task-medication-${today}`，不得重复                                    | `tests/task-regression.test.ts`                                         |
+| 任务 session 隔离                  | 不得从 localStorage 恢复旧任务                                               | `useCareTasks.ts` + security policy                                     |
+| 健康 store session 隔离            | 新 store/新页面不继承 events/familyEvents/chat                               | `tests/health-store-isolation.test.ts`                                  |
+| store 返回值                       | 外部 mutation 不得修改内部快照                                               | `tests/health-store-isolation.test.ts`                                  |
+| `clear()`                          | events/familyEvents/chat 全部清空                                            | `tests/health-store-isolation.test.ts`                                  |
+| role/授权持久化                    | `localStorage` 不得成为访问控制依据                                          | `App.tsx`, `useFamilyBinding.ts`, security policy                       |
+| external LLM                       | private/no-record 不送外部；payload 运行时验证；unsafe reply 回退规则适配器  | `agent.ts` + adapter tests                                              |
 
 ## B. 最终安全边界
 

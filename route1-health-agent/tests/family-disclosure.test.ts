@@ -56,7 +56,12 @@ runCase('only explicitly shareable alert and urgent findings are disclosed', () 
 
 const visibleFinding: Finding = { ...baseFinding, id: 'visible' };
 const privateFinding: Finding = { ...baseFinding, id: 'private', familyEligible: false, severity: 'urgent' };
-const unspecifiedFinding: Finding = { ...baseFinding, id: 'unspecified', familyEligible: undefined, severity: 'urgent' };
+const unspecifiedFinding: Finding = {
+  ...baseFinding,
+  id: 'unspecified',
+  familyEligible: undefined,
+  severity: 'urgent',
+};
 
 runCase('non-shareable urgent findings never create family contact tasks', () => {
   const task = createTaskFromFinding(unspecifiedFinding, '2026-09-09');

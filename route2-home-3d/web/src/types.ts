@@ -33,6 +33,10 @@ export interface HazardData {
   meta: {
     note: string;
     levels: Record<RiskLevel, string>;
+    datasetVersion?: number;
+    capturedAt?: string;
+    provenance?: 'demo' | 'manual' | 'vision';
+    scaleConfidence?: number;
   };
   hazards: HazardItem[];
   paths: PathItem[];

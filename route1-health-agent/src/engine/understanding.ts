@@ -53,10 +53,7 @@ const EXPLICIT_FAMILY_SUBJECT_PATTERNS: Array<[ElderSubject, RegExp]> = [
   ['spouse', /(我老公|我丈夫|老公|丈夫|爱人)/g],
   ['father', /(我爸|我父亲|爸爸|父亲)/g],
   ['mother', /(我妈|我母亲|妈妈|母亲)/g],
-  [
-    'family_other',
-    /(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/g,
-  ],
+  ['family_other', /(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/g],
 ];
 
 function explicitSubjectMentions(clause: string): SubjectMention[] {
@@ -69,9 +66,7 @@ function explicitSubjectMentions(clause: string): SubjectMention[] {
   }
 
   // “我”必须排除已经被更具体的“我爸/我妈/我老公”等人物短语覆盖的情况。
-  const familySpans = mentions.map(
-    (mention) => [mention.index, mention.index + mention.text.length] as const,
-  );
+  const familySpans = mentions.map((mention) => [mention.index, mention.index + mention.text.length] as const);
   for (const match of clause.matchAll(/(我自己|本人|我的|我)/g)) {
     const index = match.index ?? 0;
     const insideFamilySpan = familySpans.some(([start, end]) => index >= start && index < end);
@@ -92,12 +87,20 @@ function subjectAfterRelationCue(clause: string, mentions: SubjectMention[]): El
     const cue = cues[i];
     const nextCue = cues[i + 1] ?? Number.POSITIVE_INFINITY;
     const left = mentions.filter((mention) => mention.index < cue).at(-1);
-    const rightMentions = mentions.filter((mention) => mention.index > cue && mention.index < nextCue);
+    let rightMentions = mentions.filter((mention) => mention.index > cue && mention.index < nextCue);
+    const nonSelfRight = rightMentions.filter((mention) => mention.subject !== 'self');
+    if (nonSelfRight.length > 0) {
+      const firstNonSelf = Math.min(...nonSelfRight.map((mention) => mention.index));
+      rightMentions = rightMentions.filter((mention) => mention.subject !== 'self' || mention.index > firstNonSelf);
+    }
     const rightSubjects = [...new Set(rightMentions.map((mention) => mention.subject))];
     if (!left || rightSubjects.length === 0) continue;
 
-    // 关系词后的多个不同人物仍然无法唯一确定健康事实主体：
-    // “我看到我爸和我妈都不舒服”必须 fail closed，而不能挑第一个人。
+    if (rightSubjects.length === 1 && rightSubjects[0] === 'self') {
+      const pronounAfterCue = /[他她他们她们]/.test(clause.slice(cue));
+      if (pronounAfterCue) continue;
+    }
+
     if (rightSubjects.length > 1) return 'unknown';
     return rightSubjects[0];
   }
@@ -121,9 +124,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
   // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
-    const unique = [
-      ...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown')),
-    ];
+    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
     return 'unknown';
   }
@@ -149,10 +150,10 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const relationSubject = subjectAfterRelationCue(clause, mentions);
   if (relationSubject) return relationSubject;
 
-  if (mentions.length === 1) return mentions[0].subject;
-
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
+
+  if (mentions.length === 1) return mentions[0].subject;
 
   // 同一句无明确关系结构却点名多个人时，宁可 unknown，也不猜测谁是健康事实主体。
   const uniqueSubjects = [...new Set(mentions.map((mention) => mention.subject))];
@@ -245,9 +246,7 @@ export function understandElderInput(
   recentMessages: ChatMessage[] = [],
 ): StructuredElderInput {
   const trimmed = text.trim();
-  const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(
-    trimmed,
-  );
+  const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
   const clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'

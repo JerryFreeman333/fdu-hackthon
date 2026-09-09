@@ -34,7 +34,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'dizziness',
-    patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/],
+    patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /走.{0,2}不稳/, /眼前发黑/, /天旋地转/],
     replies: ['先坐稳，别硬站着。我想确认一下，这样更容易判断当下行动是否安全。'],
   },
   {
@@ -49,13 +49,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'chestPain',
-    patterns: [
-      /胸(口)?痛/,
-      /胸疼/,
-      /胸(口)?.{0,5}(痛|疼)/,
-      /胸口.{0,4}(压迫|压着|紧)/,
-      /心口痛/,
-    ],
+    patterns: [/胸(口)?痛/, /胸疼/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/],
     replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'],
   },
   {
@@ -122,7 +116,9 @@ function buildRuleBasedReply(
     );
   }
   if (newTags.includes('neuroChange')) {
-    return INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。';
+    return (
+      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
+    );
   }
   if (newTags.includes('fall')) {
     const reply = INTENT_RULES.find((rule) => rule.tag === 'fall')?.replies[0];
@@ -154,7 +150,11 @@ function buildRuleBasedReply(
 }
 
 export interface LlmAdapter {
-  complete(systemPrompt: string, userText: string, context?: AgentContext): Promise<{ text: string; tags: SymptomTag[] }>;
+  complete(
+    systemPrompt: string,
+    userText: string,
+    context?: AgentContext,
+  ): Promise<{ text: string; tags: SymptomTag[] }>;
 }
 
 export const ruleBasedAdapter: LlmAdapter = {
@@ -316,8 +316,7 @@ export async function generateAgentReply(
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
   const safetyFinding = context?.priorityFindings.find(
-    (finding) =>
-      (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
+    (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
   );
   const safetyGuard = safetyFinding
     ? `当前最高风险等级为 ${safetyFinding.severity}，不要自行提高或降低等级。`
@@ -333,14 +332,16 @@ export async function generateAgentReply(
   }
 }
 
-export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+export const QUICK_INPUTS = [
+  '最近腿有点没劲',
+  '最近走路有点喘',
+  '这两天睡不好',
+  '我有点头晕',
+  '药忘记吃了',
+  '刚才摔了一跤',
+];
 
-export function msg(
-  role: ChatMessage['role'],
-  text: string,
-  time: string,
-  persisted = true,
-): ChatMessage {
+export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return {
     id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`,
     role,

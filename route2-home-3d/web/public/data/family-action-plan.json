@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "type": "person-home-action-plan",
+  "status": "open",
+  "privacyScope": "family_ok",
+  "actions": [
+    {
+      "id": "action-person-home-surface",
+      "riskId": "person-home-surface",
+      "kind": "safety_check",
+      "title": "处理地面障碍",
+      "description": "固定或移除床到卫生间路线上的地毯/门槛，并重新扫描。",
+      "status": "open",
+      "requiresRescan": true,
+      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-surface" }
+    },
+    {
+      "id": "action-person-home-night-route",
+      "riskId": "person-home-night-route",
+      "kind": "safety_check",
+      "title": "复核夜间通行路线",
+      "description": "检查夜间照明和床到卫生间路线上的障碍，完成后重新扫描。",
+      "status": "open",
+      "requiresRescan": true,
+      "closureRule": { "type": "risk-disappears-after-rescan", "riskId": "person-home-night-route" }
+    }
+  ],
+  "principle": "先形成可执行的家庭行动，再由复扫结果决定风险是否关闭。"
+}

@@ -77,7 +77,9 @@ async function main(): Promise<void> {
   const withRepeat = ensureMedicationCheckTask(withPending, '2026-09-08', '2026-09-08T10:00:00');
   assert(withRepeat.length === 1, 'repeated medication reminders must be idempotent');
 
-  console.log('PASS: family-task eligibility, contact_family path, photo privacy, and medication-task idempotency regressions');
+  console.log(
+    'PASS: family-task eligibility, contact_family path, photo privacy, and medication-task idempotency regressions',
+  );
 }
 
 void main();

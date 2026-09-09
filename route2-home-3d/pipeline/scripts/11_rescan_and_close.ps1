@@ -1,7 +1,6 @@
 # Route 2 —— 使用新一轮 Home Twin 风险投影验证家庭行动是否真正关闭
 param(
     [string]$Scene = "home",
-    [Parameter(Mandatory = $true)]
     [string]$RescanHomeSnapshot,
     [string]$PersonProfile = "",
     [string]$PreviousPlan = "",
@@ -31,6 +30,14 @@ Write-Host "===== Home Twin 复扫：重新计算 Person × Home 风险 =====" -
 & $python.Source @riskArgs
 if ($LASTEXITCODE -ne 0) { throw "复扫后的风险投影生成失败" }
 
+$planArgs = @(
+    "$repoRoot\pipeline\semantic\person_home_action_plan.py",
+    '--risk', $tempRisk,
+    '--output', $Output,
+    '--rescan-risk', $tempRisk
+)
+# 保留既有行动项与风险 ID 的闭环语义；Python 入口会把当前风险消失映射为 resolved。
+# 传入旧计划进行状态继承，避免重复生成同一批动作。
 $planArgs = @(
     "$repoRoot\pipeline\semantic\person_home_action_plan.py",
     '--risk', $tempRisk,
