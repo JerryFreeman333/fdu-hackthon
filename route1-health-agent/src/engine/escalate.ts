@@ -6,6 +6,7 @@ export interface FamilyNotification {
   message: string;
   actionPath?: string;
   reason: string;
+  oneTime: boolean;
 }
 
 export const FAMILY_LEVELS: Severity[] = ['alert', 'urgent'];
@@ -21,7 +22,7 @@ export function collectFamilyNotifications(
       (finding) =>
         FAMILY_LEVELS.includes(finding.severity) &&
         finding.familyMessage &&
-        finding.familyEligible !== false &&
+        finding.familyEligible === true &&
         (familySharing === 'granted' || sharedIds.has(finding.id)),
     )
     .map((finding) => ({
@@ -30,6 +31,7 @@ export function collectFamilyNotifications(
       actionPath: finding.carePath,
       reason:
         finding.severity === 'urgent' ? '出现需要立即确认的安全信号。' : '多项变化叠加，系统认为今天值得家属主动确认。',
+      oneTime: sharedIds.has(finding.id),
     }));
 }
 
