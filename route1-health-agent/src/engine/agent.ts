@@ -324,7 +324,10 @@ export async function generateAgentReply(
     const modelTags = result.tags.filter((tag) => SYMPTOM_TAG_SET.has(tag));
     const mergedTags = [...new Set([...parsed.tags, ...modelTags])];
     const candidate = result.text.trim() || fallback;
-    return normalizeAgentReply(candidate, buildRuleBasedReply(mergedTags, findings, parsed.tags.includes('fall'), context));
+    return normalizeAgentReply(
+      candidate,
+      buildRuleBasedReply(mergedTags, findings, parsed.tags.includes('fall'), context),
+    );
   } catch {
     return fallback;
   }
