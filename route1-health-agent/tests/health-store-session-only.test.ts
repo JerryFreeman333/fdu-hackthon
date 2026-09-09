@@ -2,17 +2,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { LocalHealthRecordStore } from '../src/store/LocalHealthRecordStore';
 import type { HealthRecordSnapshot } from '../src/store/HealthRecordStore';
+import type { HealthEvent } from '../src/pipeline/events';
+
+const privateEvent: HealthEvent = {
+  id: 'event-private-1',
+  type: 'observation',
+  timestamp: '2026-09-09T08:00:00Z',
+  source: 'chat',
+  observation: {
+    id: 'observation-private-1',
+    date: '2026-09-09',
+    source: 'chat',
+    text: '私密健康事实',
+    tags: ['chestPain'],
+    visibility: 'private',
+  },
+};
 
 const snapshot: HealthRecordSnapshot = {
-  events: [
-    {
-      kind: 'observation',
-      id: 'event-private-1',
-      timestamp: '2026-09-09T08:00:00Z',
-      source: 'chat',
-      data: { text: '私密健康事实' },
-    },
-  ],
+  events: [privateEvent],
   familyEvents: [],
   chat: [{ id: 'chat-private-1', role: 'elder', text: '胸口不舒服', time: '2026-09-09T08:00:00Z' }],
 };
