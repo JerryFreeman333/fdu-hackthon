@@ -70,7 +70,7 @@ runCase('“我妈觉得我最近走路不稳”不会把妈妈误当健康主�
   const input = understandElderInput('我妈觉得我最近走路不稳', TODAY);
   assert(input.claims.length === 1, '应识别一条健康事实');
   assert(input.claims[0].subject === 'self', '“觉得”后的我才是健康事实主体');
-  assert(input.claims[0].tags.includes('dizziness'), '“走路不稳”应至少命中既有站不稳信号');
+  assert(input.claims[0].tags.includes('dizziness'), '“走路不稳”应命中既有站不稳信号');
   assert(acceptedSelfClaims(input).length === 1, '本人的事实应进入本人健康流');
 });
 
@@ -80,6 +80,29 @@ runCase('同一句并列点名两个人但没有关系结构时必须 unknown', 
   assert(input.claims[0].subject === 'unknown', '无法区分多人健康事实主体时必须 fail closed');
   assert(acceptedSelfClaims(input).length === 0, '多人的健康事实不能进入老人本人档案');
   assert(Boolean(input.clarificationQuestion), '多人并列且主体不明时应要求澄清');
+});
+
+runCase('“我看到我爸和我妈都不舒服”不能因关系词存在而选择第一个人', () => {
+  const input = understandElderInput('我看到我爸和我妈都不舒服', TODAY);
+  assert(input.claims.length === 1, '应保留为一条待确认 claim');
+  assert(input.claims[0].subject === 'unknown', '关系词后的多人对象仍然不能武断归属');
+  assert(acceptedSelfClaims(input).length === 0, '多人关系句不得进入老人本人健康档案');
+  assert(Boolean(input.clarificationQuestion), '多人关系句需要进一步澄清');
+});
+
+runCase('“我妈告诉我她喘得厉害”代词应继承唯一明确家属', () => {
+  const input = understandElderInput('我妈告诉我她喘得厉害', TODAY);
+  assert(input.claims.length === 1, '关系句应识别一条健康事实');
+  assert(input.claims[0].subject === 'mother', '“她”应回指唯一明确家属我妈');
+  assert(input.claims[0].tags.includes('dyspnea'), '应保留喘的症状标签');
+  assert(acceptedSelfClaims(input).length === 0, '母亲的症状不能进入老人本人健康流');
+});
+
+runCase('“我爸让我自己量血压”健康主体应是老人本人', () => {
+  const input = understandElderInput('我爸让我自己量血压', TODAY);
+  assert(input.claims.length === 1, '应识别一条本人健康事实');
+  assert(input.claims[0].subject === 'self', '让自己执行健康行为时主体应是本人');
+  assert(input.claims[0].hasHealthValue === true, '应保留血压健康数值语义');
 });
 
 runCase('“我爸……，我也……”拆成两条独立事实', () => {
