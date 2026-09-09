@@ -13,7 +13,6 @@ if (-not (Test-Path $inputDir -PathType Container)) { throw "输入目录不存�
 $count = @(Get-ChildItem $inputDir -File).Count
 if ($count -lt 30) { throw "输入图像只有 $count 张，低于安全下限 30；请补充拍摄素材后再重建" }
 
-# 清理旧 SfM 状态，避免重复运行时旧数据库污染新场景。
 Remove-Item $db, $sparse, $distilled -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $sparse, $distilled | Out-Null
 
@@ -58,9 +57,19 @@ if ($LASTEXITCODE -ne 0) { throw "COLMAP Mapper 执行失败" }
 $model = Get-ChildItem "$sparse" -Directory | Sort-Object Name | Select-Object -First 1
 if (-not $model) { throw "重建结果为空：没有生成 sparse model" }
 
-# 最低质量门槛：至少应注册 30% 的输入图像，否则后续 3DGS 不应继续。
 $imagesBin = Join-Path $model.FullName "images.bin"
 if (-not (Test-Path $imagesBin)) { throw "重建模型缺少 images.bin，结果无效" }
+# 将稀疏模型临时转成文本，统计已注册图像数量。
+$txtDir = "$sceneDir\sparse_txt"
+Remove-Item $txtDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $txtDir | Out-Null
+& $colmap model_converter --input_path $model.FullName --output_path $txtDir --output_type TXT
+if ($LASTEXITCODE -ne 0) { throw "无法读取 COLMAP 稀疏模型进行质量检查" }
+$registered = @(Get-Content "$txtDir\images.txt" | Where-Object { $_ -match '^\d+\s' }).Count
+$ratio = $registered / [double]$count
+Write-Host ("COLMAP 注册图像: {0}/{1} ({2:P1})" -f $registered, $count, $ratio)
+if ($ratio -lt 0.30) { throw ("注册率只有 {0:P1}，低于 30% 质量门槛；请重新拍摄并确保足够重叠与纹理" -f $ratio) }
+
 Write-Host "===== [4/4] 去畸变导出 =====" -ForegroundColor Cyan
 & $colmap image_undistorter --image_path $inputDir --input_path $model.FullName `
     --output_path $distilled --output_type COLMAP
@@ -68,5 +77,6 @@ if ($LASTEXITCODE -ne 0) { throw "去畸变失败" }
 if (-not (Test-Path "$distilled\sparse\cameras.bin")) { throw "去畸变结果缺少 cameras.bin" }
 if (-not (Test-Path "$distilled\sparse\images.bin")) { throw "去畸变结果缺少 images.bin" }
 
+Remove-Item $txtDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "===== COLMAP 完成: $distilled =====" -ForegroundColor Green
-Write-Host "注意：COLMAP 输出当前仍需在后续 QA 中检查注册率、重投影误差和断裂组件；本脚本只阻止明显空结果进入 3DGS。" -ForegroundColor Yellow
+Write-Host "说明：30% 只是最低注册率门槛；实际家庭建模仍应在 QA 中检查重投影误差、断裂组件和关键区域覆盖。" -ForegroundColor Yellow
