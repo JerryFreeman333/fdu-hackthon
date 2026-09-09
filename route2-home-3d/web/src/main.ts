@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
-import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from './types';
+import type { HazardData, HazardItem, ItemInfo, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
 import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
@@ -11,11 +11,11 @@ import { buildDemoRoom } from './scene/demoRoom';
 import { createHazardMarkers, createItemRings } from './scene/markers';
 import { createPathVisual, highlightDangerZones } from './scene/paths';
 import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
+import { createRoleSwitcher, readStoredRole, updateRoleSwitcher, type Route2Role } from './ui/roleMode';
 
 const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
-
 
 async function hasRealModel(): Promise<boolean> {
   try {
@@ -116,7 +116,7 @@ async function main() {
   });
   let dangerZones: THREE.Group | null = null;
 
-  function selectPath(p: PathItem | null) {
+  function selectPath(p: any | null) {
     pathVisuals.forEach((v) => v.hide());
     dangerZones?.removeFromParent();
     dangerZones = null;
@@ -136,7 +136,7 @@ async function main() {
     app.setNight(p.mode === 'night');
     markers.filter(new Set(p.hazardIds));
     const posMap = new Map<string, THREE.Vector3>();
-    p.hazardIds.forEach((id) => {
+    p.hazardIds.forEach((id: string) => {
       const q = markers.positionOf(id);
       if (q) posMap.set(id, q);
     });
@@ -145,12 +145,25 @@ async function main() {
       dangerZones = zones;
       app.scene.add(zones);
     }
-    const names = p.hazardIds.map((id) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
-    setHint(`${p.title} — 途经风险: ${names || '暂无已标注风险'}`);
+    const names = p.hazardIds.map((id: string) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
+    setHint(`${p.title} — 影响风险: ${names || '暂无已标注风险'}`);
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
 
-  let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void };
+  let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void };
+  let currentRole = readStoredRole();
+
+  const roleMount = document.getElementById('role-switcher');
+  const roleSwitcher = roleMount ? createRoleSwitcher(currentRole, (nextRole) => {
+    currentRole = nextRole;
+    updateRoleSwitcher(roleSwitcher, nextRole);
+    panelController.setRole(nextRole);
+    const message = nextRole === 'resident'
+      ? '已切换为居住者视角：优先使用找东西等日常功能。'
+      : '已切换为家属/照护者视角：这里处理需要关注的家庭环境问题。';
+    setHint(message);
+  }) : null;
+  if (roleMount && roleSwitcher) roleMount.replaceChildren(roleSwitcher);
 
   async function handleRescanFiles(files: File[]): Promise<void> {
     const input = prepareRescanFiles(files);
@@ -168,9 +181,7 @@ async function main() {
         if (!result.jobId) throw new Error('复扫服务未返回 jobId');
         result = await waitForRescanJob(result.jobId, { endpoint: RESCAN_ENDPOINT, maxAttempts: 90, intervalMs: 1000 });
       }
-      if (result.status === 'failed') {
-        throw new Error(result.message ?? '复扫处理失败');
-      }
+      if (result.status === 'failed') throw new Error(result.message ?? '复扫处理失败');
       if (result.actionPlan) {
         const parsed = parseHomeSafetyActionPlan(result.actionPlan);
         if (parsed) currentActionPlan = parsed;
@@ -218,7 +229,7 @@ async function main() {
       setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
     },
     onRescan,
-  }, mode, currentActionPlan);
+  }, mode, currentActionPlan, currentRole);
 
   window.addEventListener('resize', () => {
     app.camera.aspect = window.innerWidth / window.innerHeight;
