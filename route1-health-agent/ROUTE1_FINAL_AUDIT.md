@@ -24,10 +24,16 @@
 | 重新开启长期共享                  | 已被撤销的旧 one-time event 不得因为重新 grant 而自动复活             | `tests/family-sharing-state.test.ts`                                        |
 | 同一天重复服药提醒                | 必须复用当天 `task-medication-${today}`，不得生成重复任务             | `tests/task-regression.test.ts`                                             |
 | 服药任务已完成后再次提醒          | 不得克隆新任务                                                        | `tests/task-regression.test.ts`                                             |
+| 刷新页面                           | 不得从旧 `localStorage` 恢复角色、家庭授权、绑定或 one-time grant     | App / `useFamilyBinding` 代码审查 + security policy check                   |
+| 修改旧 `ROLE_KEY`                  | 不得直接把浏览器持久化字段变成新的身份                                | App 代码审查 + security policy check                                        |
+| 修改旧 consent / family-link keys | 不得恢复家庭共享或绑定权限                                             | `useFamilyBinding` 代码审查 + security policy check                         |
+| 一次性共享跨标签页并发             | 当前 Demo 不依赖 localStorage 做共享授权；授权只存在当前 React 会话   | `useFamilyBinding` session-only design                                       |
 
-## B. 本轮 CI 已实际通过
+## B. 当前 CI 状态
 
-PR #25 最新有效提交的 Route 1 CI 已通过：
+本轮最新代码已经推送到 PR #25 的 `route1-security-hardening-2026-09-09` 分支；当前 head 为最新硬化提交。
+
+**注意：本文件不把旧提交的 CI 结果冒充为当前 head 的结果。** GitHub Actions 目前尚未返回当前最新 head 的对应 workflow run，因此以下项目仍必须等待/检查当前提交自己的 CI：
 
 - Prettier formatting check
 - TypeScript typecheck
@@ -37,7 +43,7 @@ PR #25 最新有效提交的 Route 1 CI 已通过：
 - High-severity dependency audit
 - Full dependency audit（informational）
 
-因此本审计不是基于“本地猜测”，而是建立在 GitHub Actions 实际执行结果之上。
+旧的失败 run（run #635）对应的是更早的提交，不用于判定当前代码是否通过。
 
 ## C. 三个视角的验收结论
 
@@ -45,45 +51,28 @@ PR #25 最新有效提交的 Route 1 CI 已通过：
 
 核心要求是：老人说别人时，系统不能把别人的健康事实写成自己的；老人要求私密的信息不能因为之后出现同标签而泄露；比较式改善不能被粗暴当成否定；同一句里多个主体不能互相吞掉。
 
-当前代码与回归测试满足这些核心不变量。
+当前代码与回归测试覆盖这些核心不变量。
 
 ### 2. 家属视角
 
 核心要求是：家属只看到当前授权范围内、并且 finding 本身允许家庭协同的信息；撤销共享后不能依靠旧 one-time ID 继续获取私密或不应共享的事实。
 
-当前实现满足本地 Demo 下的这些授权边界。需要特别注意：历史上已经实际发送给家属的内容不能被软件“假装撤回”，审计记录与当前可见性必须分离。
+当前实现满足本地 Demo 下的这些授权边界。历史上已经实际发送给家属的内容不能被软件“假装撤回”，审计记录与当前可见性必须分离。
 
-### 3. 对抗者 / 误用视角
+### 3. 开发者视角
 
-最重要的 fail-closed 条件已经覆盖：
+当前最重要的工程边界是：
 
-- 不明确主体时不默认 `self`；
-- conflicting privacy intent 不默认 share；
-- `familyEligible=false` 不可被 one-time finding ID 绕过；
-- legacy 无 lineage 数据不通过猜测进行 destructive rollback；
-- 历史 private tag 不再形成全局 deny-list，避免错误阻断独立紧急事件。
+- `localStorage` 只能用于 Demo 健康数据持久化，不能承担身份或授权。
+- 当前角色、家庭绑定、共享同意、邀请码和 one-time grant 均为会话状态。
+- one-time sharing 不再是持久 whitelist；claim 后不能通过刷新恢复。
+- 不支持真正认证的 Demo 不能被文档或 UI 描述为“安全登录”。
+- 生产版本必须迁移到服务端账号、会话、授权模型和服务端数据过滤。
 
-## D. 尚不能由当前自动化测试证明的项目
+## D. 本轮新增问题的处理结论
 
-### 真实多设备权限安全
+本轮发现并修复的是“浏览器 localStorage 可伪造身份/授权”问题。
 
-当前 Route 1 明确是浏览器本地 Demo。角色、共享状态和部分状态保存在 `localStorage`；这不能等同于真实产品的身份认证、授权、服务端访问控制或跨设备一致性。
+修复后，旧的持久化 role / consent / family-link / one-time-share 状态不再作为访问控制依据；刷新页面会重新进入身份选择。与此同时，撤销共享不会误删除已经建立的家属关系，避免安全修复破坏正常的再次授权流程。
 
-上线前必须替换为服务端身份与授权模型，并使“谁有权查看哪一条 family event”在服务器端再次校验。
-
-### 真实 UI 人工验收
-
-当前 CI 是 TypeScript/单元/行为级黑盒测试，并不等于完整浏览器人工验收。仍需要人工确认：
-
-1. 老人端实际输入第三人称表述后，界面是否明确要求澄清，而不是给出看似确定的回答；
-2. 撤销家属共享后，家属端页面是否立即清空已禁止显示的 detail / observation；
-3. 家属端重新进入或刷新页面后，旧 one-time 内容是否仍不可见；
-4. 重复点击/快速重复发送是否不会产生重复任务或重复 UI 消息。
-
-## E. Merge Gate
-
-在没有完成上面的真人 UI 验收之前，不把本 PR 描述为“生产级医疗隐私安全已完成”。
-
-当前可以准确描述为：
-
-> Route 1 本轮已通过代码级、行为级和 CI 级安全回归；剩余风险主要集中在 Demo 的本地权限模型与真实 UI/跨设备环境，而不是本轮已经定位的六类核心逻辑回归。
+这解决了 Demo 层最危险的“把浏览器存储误当权限系统”问题，但**不等同于生产级身份认证**。任何真实上线版本都仍必须在服务端重新验证用户身份、家庭关系、共享范围和数据可见性。
