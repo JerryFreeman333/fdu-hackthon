@@ -147,7 +147,9 @@ export default function App() {
 
   useEffect(() => {
     if (role !== 'family' || familyLink?.status !== 'active') return;
-    const oneTimeFindingIds = familyNotifs.filter((notification) => notification.oneTime).map((notification) => notification.finding.id);
+    const oneTimeFindingIds = familyNotifs
+      .filter((notification) => notification.oneTime)
+      .map((notification) => notification.finding.id);
     const oneTimeFamilyEventIds = visibleFamilyFacts
       .filter((event) => event.shareMode === 'one_time')
       .map((event) => event.id);
