@@ -260,7 +260,7 @@ export function understandElderInput(
       claims: [],
       recallRequested,
       clarificationQuestion:
-        '我听到您对不同事情有不同的分享要求。为了不把不该告诉家属的内容发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
       correction,
     };
   }
