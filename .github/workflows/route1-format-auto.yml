@@ -41,6 +41,6 @@ jobs:
             echo 'No formatting changes needed.'
             exit 0
           fi
-          git add route1-health-agent
+          git add .
           git commit -m 'style(route1): apply Prettier formatting'
           git push origin HEAD:route1-security-hardening-2026-09-09
