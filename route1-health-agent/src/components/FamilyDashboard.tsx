@@ -1,13 +1,5 @@
 import { useState } from 'react';
-import type {
-  CareTask,
-  DayRecord,
-  ElderProfile,
-  FamilyHealthEvent,
-  FamilyLink,
-  Finding,
-  Observation,
-} from '../types';
+import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
@@ -235,10 +227,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                 )}
                 <div className="family-actions">
                   {action.status === 'open' && (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => props.onHomeSafetyActionStatus(action.id, 'done')}
-                    >
+                    <button className="btn-secondary" onClick={() => props.onHomeSafetyActionStatus(action.id, 'done')}>
                       我已处理
                     </button>
                   )}
