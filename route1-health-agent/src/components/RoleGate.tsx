@@ -23,7 +23,9 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
             <span>看看老人现在需不需要您的帮助</span>
           </button>
         </div>
-        <p className="role-note">这是演示版：身份、家属绑定和共享授权只在当前演示会话有效，刷新页面会重新开始。不要把此处选择当作真实登录或鉴权。</p>
+        <p className="role-note">
+          这是演示版：身份、家属绑定和共享授权只在当前演示会话有效，刷新页面会重新开始。不要把此处选择当作真实登录或鉴权。
+        </p>
       </div>
     </div>
   );

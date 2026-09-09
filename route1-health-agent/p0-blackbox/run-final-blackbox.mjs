@@ -65,7 +65,12 @@ async function timelineText(page) {
 }
 
 async function familyText(page) {
-  return ((await page.locator('.family-dashboard').textContent().catch(() => '')) ?? '').trim();
+  return (
+    (await page
+      .locator('.family-dashboard')
+      .textContent()
+      .catch(() => '')) ?? ''
+  ).trim();
 }
 
 async function screenshot(page, name) {
@@ -80,7 +85,7 @@ async function caseThirdPerson(browser) {
     await openProfile(page);
     const timeline = await timelineText(page);
     const body = await page.locator('body').textContent();
-    const passed = !timeline.includes('喘得厉害') && !((body ?? '').includes('当前状态：喘'));
+    const passed = !timeline.includes('喘得厉害') && !(body ?? '').includes('当前状态：喘');
     await screenshot(page, 'final-01-third-person.png');
     return { id: 'FINAL-01', result: passed ? 'PASS' : 'FAIL', timeline };
   } finally {
@@ -112,7 +117,8 @@ async function casePrivacyBoundary(browser) {
     await page.locator('button', { hasText: '切换身份' }).click();
     await selectFamily(page);
     const bodyAfter = await familyText(page);
-    const passed = (bodyBefore ?? '').includes('摔') && !(bodyAfter.includes('上周摔了一下') || bodyAfter.includes('先别告诉'));
+    const passed =
+      (bodyBefore ?? '').includes('摔') && !(bodyAfter.includes('上周摔了一下') || bodyAfter.includes('先别告诉'));
     await screenshot(page, 'final-03-privacy.png');
     return { id: 'FINAL-03', result: passed ? 'PASS' : 'FAIL', familyText: bodyAfter.slice(0, 400) };
   } finally {
@@ -126,7 +132,10 @@ async function caseRoleRefreshDoesNotRestore(browser) {
     await selectElder(page);
     await sendChat(page, '这是刷新隔离探针-不要恢复');
     await page.reload({ waitUntil: 'networkidle' });
-    const roleGateVisible = await page.locator('button.role-option', { hasText: '我是老人' }).isVisible({ timeout: 3000 }).catch(() => false);
+    const roleGateVisible = await page
+      .locator('button.role-option', { hasText: '我是老人' })
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
     const body = (await page.locator('body').textContent()) ?? '';
     const passed = roleGateVisible && !body.includes('刷新隔离探针-不要恢复');
     await screenshot(page, 'final-04-refresh-isolation.png');
@@ -145,7 +154,10 @@ async function caseTaskResidue(browser) {
     await selectFamily(page);
     const before = await familyText(page);
     await page.reload({ waitUntil: 'networkidle' });
-    const roleGateVisible = await page.locator('button.role-option', { hasText: '我是老人' }).isVisible({ timeout: 3000 }).catch(() => false);
+    const roleGateVisible = await page
+      .locator('button.role-option', { hasText: '我是老人' })
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
     const after = (await page.locator('body').textContent()) ?? '';
     const passed = roleGateVisible && !after.includes('摔了一下') && !after.includes('联系老人');
     await screenshot(page, 'final-05-task-residue.png');
@@ -212,7 +224,10 @@ async function caseOneTimeNoResurrection(browser) {
     const firstShowsSharedFinding = first.includes('摔');
 
     await page.reload({ waitUntil: 'networkidle' });
-    const gateAfterReload = await page.locator('button.role-option', { hasText: '我是老人' }).isVisible({ timeout: 3000 }).catch(() => false);
+    const gateAfterReload = await page
+      .locator('button.role-option', { hasText: '我是老人' })
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
     const second = (await page.locator('body').textContent()) ?? '';
     const passed = firstShowsSharedFinding && gateAfterReload && !second.includes('摔了一下');
     await screenshot(page, 'final-08-one-time-reload.png');

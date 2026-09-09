@@ -4,9 +4,7 @@ const FAMILY_FINDING_LEVELS = new Set<Finding['severity']>(['alert', 'urgent']);
 
 /** 家属端最小必要披露：只有明确允许共享且确有需要介入的发现才进入共享视图。 */
 export function familyVisibleFindings(findings: Finding[]): Finding[] {
-  return findings.filter(
-    (finding) => finding.familyEligible === true && FAMILY_FINDING_LEVELS.has(finding.severity),
-  );
+  return findings.filter((finding) => finding.familyEligible === true && FAMILY_FINDING_LEVELS.has(finding.severity));
 }
 
 /**

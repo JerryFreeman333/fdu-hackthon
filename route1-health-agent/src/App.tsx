@@ -144,15 +144,7 @@ export default function App() {
       .map((event) => event.id)
       .slice(0, MAX_FAMILY_EVENTS_PER_VIEW);
     void claimOneTimeShares(candidateFindingIds, candidateFamilyEventIds);
-  }, [
-    role,
-    familyLink?.status,
-    findings,
-    familyEvents,
-    sharedFindingIds,
-    sharedFamilyEventIds,
-    claimOneTimeShares,
-  ]);
+  }, [role, familyLink?.status, findings, familyEvents, sharedFindingIds, sharedFamilyEventIds, claimOneTimeShares]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
@@ -261,7 +253,8 @@ export default function App() {
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
         第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。身份、家属绑定和共享授权只在当前演示会话有效；刷新页面后需要重新选择身份并重新授权。
+        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API
+        key。身份、家属绑定和共享授权只在当前演示会话有效；刷新页面后需要重新选择身份并重新授权。
       </footer>
     </div>
   );

@@ -53,4 +53,6 @@ if (policyFindings.length) {
   process.exit(1);
 }
 
-console.log('Security check passed: no obvious hard-coded API keys/private keys and no sensitive session/health state persisted in localStorage.');
+console.log(
+  'Security check passed: no obvious hard-coded API keys/private keys and no sensitive session/health state persisted in localStorage.',
+);
