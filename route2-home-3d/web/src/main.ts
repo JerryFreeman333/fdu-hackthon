@@ -16,13 +16,6 @@ const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
 
-type RiskProjection = {
-  schemaVersion: 1;
-  type: 'person-home-risk-projection';
-  status: 'non-diagnostic';
-  privacyScope: 'private' | 'family_ok';
-  risks: Array<{ id: string }>;
-};
 
 async function hasRealModel(): Promise<boolean> {
   try {
