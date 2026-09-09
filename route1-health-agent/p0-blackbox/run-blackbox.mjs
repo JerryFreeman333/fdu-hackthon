@@ -128,7 +128,10 @@ async function caseFamilyRevocation(browser) {
     await page.locator('.family-dashboard input.chat-input').fill(invite);
     await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
     await page.waitForTimeout(250);
-    assert(((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'), 'revocation probe failed to bind family');
+    assert(
+      ((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'),
+      'revocation probe failed to bind family',
+    );
 
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -174,7 +177,10 @@ async function caseFamilySessionReset(browser) {
     await page.locator('.family-dashboard input.chat-input').fill(invite);
     await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
     await page.waitForTimeout(200);
-    assert(((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'), 'family session did not bind');
+    assert(
+      ((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'),
+      'family session did not bind',
+    );
 
     await page.reload({ waitUntil: 'networkidle' });
     const elderGate = page.locator('button.role-option', { hasText: '我是老人' });
@@ -200,7 +206,14 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 try {
   await waitForServer();
   const browser = await chromium.launch({ headless: true });
-  const cases = [caseStartup, caseElderSmoke, caseFamilySmoke, caseFamilyBinding, caseFamilyRevocation, caseFamilySessionReset];
+  const cases = [
+    caseStartup,
+    caseElderSmoke,
+    caseFamilySmoke,
+    caseFamilyBinding,
+    caseFamilyRevocation,
+    caseFamilySessionReset,
+  ];
   const results = [];
   for (const test of cases) {
     try {
