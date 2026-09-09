@@ -64,6 +64,9 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
+  if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
+
   if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
@@ -108,6 +111,9 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
     return 'occurred';
   }
+
+  // “没睡好”含有口语否定词，但它表达的是已经发生的睡眠问题。
+  if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
   // 比较/缓解结构不是“完全没有症状”。
   const comparativeImprovement =
