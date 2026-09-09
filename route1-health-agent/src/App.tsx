@@ -9,7 +9,6 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
-import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
@@ -75,22 +74,10 @@ export default function App() {
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
-  const { records, observations, measurements } = healthData;
-  const familyRecords = useMemo(
-    () =>
-      familySharing === 'granted'
-        ? measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private'))
-        : [],
-    [measurements, familySharing],
-  );
+  const { records } = healthData;
   const visibleFamilyFacts = useMemo(
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
-  );
-  const familyObservations = useMemo(
-    () =>
-      familySharing === 'granted' ? observations.filter((observation) => observation.visibility !== 'private') : [],
-    [observations, familySharing],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
@@ -194,7 +181,7 @@ export default function App() {
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
-            <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
+            <ProfileView records={records} observations={healthData.observations} findings={findings} today={TODAY} />
           </details>
         </main>
         {toast && <div className="toast">{toast}</div>}
@@ -228,8 +215,6 @@ export default function App() {
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
-          records={familyRecords}
-          observations={familyObservations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onContactElder={contactElder}
