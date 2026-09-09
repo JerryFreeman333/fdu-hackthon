@@ -32,6 +32,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # One-time server-side formatting pass; this workflow will be removed after the pass.
       - name: Format with repository Prettier
         run: npx --yes prettier@3.5.3 --write .
 
