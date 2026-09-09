@@ -28,7 +28,6 @@ import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 
-const ROLE_KEY = 'ankang-route1-role-v3';
 const HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
@@ -62,10 +61,7 @@ export default function App() {
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() => loadHomeSafetyActions());
-  const [role, setRole] = useState<UserRole | null>(() => {
-    const saved = window.localStorage.getItem(ROLE_KEY);
-    return saved === 'elder' || saved === 'family' ? saved : null;
-  });
+  const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const { fontScale, setFontScale } = useFontScale();
@@ -158,12 +154,10 @@ export default function App() {
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
-    window.localStorage.setItem(ROLE_KEY, nextRole);
   }
 
   function resetRole() {
     setRole(null);
-    window.localStorage.removeItem(ROLE_KEY);
   }
 
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
