@@ -98,11 +98,11 @@ runCase('“我妈告诉我她喘得厉害”代词应继承唯一明确家属',
   assert(acceptedSelfClaims(input).length === 0, '母亲的症状不能进入老人本人健康流');
 });
 
-runCase('“我爸让我自己量血压”健康主体应是老人本人', () => {
-  const input = understandElderInput('我爸让我自己量血压', TODAY);
+runCase('“我爸让我自己量血压150/90”健康主体应是老人本人', () => {
+  const input = understandElderInput('我爸让我自己量血压150/90', TODAY);
   assert(input.claims.length === 1, '应识别一条本人健康事实');
   assert(input.claims[0].subject === 'self', '让自己执行健康行为时主体应是本人');
-  assert(input.claims[0].hasHealthValue === true, '应保留血压健康数值语义');
+  assert(input.claims[0].hasHealthValue === true, '应保留实际血压健康数值语义');
 });
 
 runCase('“我爸……，我也……”拆成两条独立事实', () => {
