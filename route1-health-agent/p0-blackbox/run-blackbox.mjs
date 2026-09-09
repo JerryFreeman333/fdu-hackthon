@@ -106,6 +106,53 @@ async function caseFamilyBinding(browser) {
   }
 }
 
+async function caseFamilyRevocation(browser) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await expectRoleGate(page);
+    await page.locator('button.role-option', { hasText: '我是老人' }).click();
+    const shareButton = page.locator('button', { hasText: '同意以后需要时告诉家属' });
+    if (await shareButton.isVisible({ timeout: 1500 }).catch(() => false)) await shareButton.click();
+
+    const inviteButton = page.locator('button', { hasText: '生成家属邀请码' });
+    await inviteButton.waitFor({ state: 'visible', timeout: 5000 });
+    await inviteButton.click();
+    const elderBody = (await page.locator('body').textContent()) ?? '';
+    const match = elderBody.match(/AN-\d{4}-\d{4}/);
+    assert(match, 'revocation probe failed to generate an invite');
+    const invite = match[0];
+
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.locator('button.role-option', { hasText: '我是家属' }).click();
+    await page.locator('.family-dashboard input.chat-input').fill(invite);
+    await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
+    await page.waitForTimeout(250);
+    assert(((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'), 'revocation probe failed to bind family');
+
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.locator('button.role-option', { hasText: '我是老人' }).click();
+    const revokeButton = page.locator('button', { hasText: '暂停家属共享' });
+    await revokeButton.waitFor({ state: 'visible', timeout: 5000 });
+    await revokeButton.click();
+
+    const elderAfterRevoke = (await page.locator('body').textContent()) ?? '';
+    assert(!elderAfterRevoke.includes('暂停家属共享'), 'revoke control remained visible after sharing was disabled');
+
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.locator('button.role-option', { hasText: '我是家属' }).click();
+    await page.waitForTimeout(250);
+    const familyAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
+    assert(familyAfterRevoke.includes('尚未绑定老人'), 'revoked family session still appeared bound');
+    assert(!familyAfterRevoke.includes('健康共享摘要'), 'revoked family session exposed health navigation');
+    assert(!familyAfterRevoke.includes('家属周报'), 'revoked family session exposed report navigation');
+    assert(!familyAfterRevoke.includes('居家安全，需要您做的一件事'), 'revoked family session exposed home safety actions');
+    return 'PASS family revocation';
+  } finally {
+    await context.close();
+  }
+}
+
 async function caseFamilySessionReset(browser) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -153,7 +200,7 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 try {
   await waitForServer();
   const browser = await chromium.launch({ headless: true });
-  const cases = [caseStartup, caseElderSmoke, caseFamilySmoke, caseFamilyBinding, caseFamilySessionReset];
+  const cases = [caseStartup, caseElderSmoke, caseFamilySmoke, caseFamilyBinding, caseFamilyRevocation, caseFamilySessionReset];
   const results = [];
   for (const test of cases) {
     try {
