@@ -1,5 +1,5 @@
 import type { HomeSafetyActionPlan } from './actionPlan';
-import { parseHomeSafetyActionPlan, applyRescan } from './actionPlan';
+import { parseHomeSafetyActionPlan } from './actionPlan';
 import type { RescanInputBatch } from './rescanInput';
 
 export type RescanWorkflowStatus = 'idle' | 'selected' | 'processing' | 'ready-for-review' | 'failed';
@@ -52,12 +52,25 @@ export function markSubmitted(state: RescanWorkflowState): RescanWorkflowState {
 
 export function applyRescanProjection(
   state: RescanWorkflowState,
-  latestRiskIds: string[],
+  result: unknown,
 ): RescanWorkflowState {
   if (!state.previousPlan) {
     return { ...state, status: 'failed', message: '缺少上一轮家庭行动计划，无法比较复扫结果。' };
   }
-  const currentPlan = applyRescan(state.previousPlan, latestRiskIds);
+  if (!result || typeof result !== 'object') {
+    return { ...state, status: 'failed', message: '复扫结果无效，拒绝更新家庭行动状态。' };
+  }
+
+  const payload = result as Record<string, unknown>;
+  const currentPlan = parseHomeSafetyActionPlan(payload.actionPlan);
+  if (!currentPlan) {
+    return {
+      ...state,
+      status: 'failed',
+      message: '复扫结果未提供可验证的行动计划，拒绝仅凭 riskId 更新或关闭历史风险。',
+    };
+  }
+
   return {
     ...state,
     status: 'ready-for-review',
