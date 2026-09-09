@@ -7,6 +7,7 @@
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
+import { parsePrivacyIntent } from './privacy';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
@@ -248,12 +249,21 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
+  const privacyIntents = splitClauses(trimmed)
+    .map((clause) => parsePrivacyIntent(clause))
+    .filter((intent) => intent !== 'none');
+  const uniquePrivacyIntents = [...new Set(privacyIntents)];
+  const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
+  const privacyClarification = hasMixedPrivacyIntent
+    ? '我听到您对不同事情有不同的分享要求。为了不把不该告诉家属的内容发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。'
+    : undefined;
+
   return {
     claims,
     recallRequested,
-    clarificationQuestion: hasUnclearFamilyReference
+    clarificationQuestion: privacyClarification || (hasUnclearFamilyReference
       ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
-      : undefined,
+      : undefined),
     correction,
   };
 }
