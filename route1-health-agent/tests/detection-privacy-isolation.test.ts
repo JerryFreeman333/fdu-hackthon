@@ -43,4 +43,31 @@ assert(Boolean(privateFall), '私密跌倒仍应生成老人侧安全发现');
 assert(privateFall?.familyEligible === false, '私密跌倒不得通知家属');
 assert(privateFall?.familyMessage === undefined, '私密跌倒不得暴露家属提示');
 
-console.log('PASS: 历史私密跌倒不会屏蔽当前可分享的紧急跌倒');
+const sameDayPrivateAfterShare = {
+  id: 'obs-same-day-private-after-share',
+  date: TODAY,
+  source: 'chat' as const,
+  text: '我后来又摔了一下，这次先别告诉孩子们',
+  tags: ['fall' as const],
+  visibility: 'private' as const,
+};
+
+const latestPrivateFindings = runDetection(
+  [observationToEvent(currentFamilyOkFall), observationToEvent(sameDayPrivateAfterShare)],
+  TODAY,
+);
+const latestPrivateFall = latestPrivateFindings.find((finding) => finding.ruleId === 'safety.fall');
+assert(Boolean(latestPrivateFall), '同一天后续私密跌倒仍应生成老人侧安全发现');
+assert(latestPrivateFall?.familyEligible === false, '后续私密跌倒应覆盖较早的可分享跌倒隐私范围');
+assert(latestPrivateFall?.familyMessage === undefined, '后续私密跌倒不得继续暴露家属提示');
+
+const latestShareableFindings = runDetection(
+  [observationToEvent(sameDayPrivateAfterShare), observationToEvent(currentFamilyOkFall)],
+  TODAY,
+);
+const latestShareableFall = latestShareableFindings.find((finding) => finding.ruleId === 'safety.fall');
+assert(Boolean(latestShareableFall), '后续明确可分享的跌倒仍应生成老人侧安全发现');
+assert(latestShareableFall?.familyEligible === true, '后续明确同意分享的跌倒应重新获得家属协同资格');
+assert(Boolean(latestShareableFall?.familyMessage), '后续明确可分享的跌倒应生成家属提示');
+
+console.log('PASS: historical and same-day fall privacy follows the latest matching observation');
