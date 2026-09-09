@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
+import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
@@ -13,8 +13,6 @@ interface FamilyDashboardProps {
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
-  records: DayRecord[];
-  observations: Observation[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onContactElder: () => void;
