@@ -93,3 +93,20 @@ runCase('撤销共享后历史一次性 finding 不再触发家属通知', () =>
     '显式一次性分享仍可在当前授权周期内生效',
   );
 });
+
+runCase('一次性分享 id 不能绕过 finding 自身的隐私边界', () => {
+  const privateFinding: Finding = {
+    id: 'private-finding-1',
+    date: TODAY,
+    severity: 'urgent',
+    title: '跌倒',
+    detail: '老人需要确认安全',
+    evidence: ['跌倒'],
+    familyMessage: '请联系老人确认是否安全。',
+    familyEligible: false,
+  };
+  assert(
+    collectFamilyNotifications([privateFinding], 'denied', ['private-finding-1']).length === 0,
+    'familyEligible=false 时一次性共享 id 也不能绕过隐私限制',
+  );
+});
