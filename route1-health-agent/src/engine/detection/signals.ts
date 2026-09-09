@@ -9,11 +9,13 @@ export function hadTag(
   endDate: string,
   days: number,
 ): Observation | null {
-  return (
-    observations.find(
-      (o) => o.tags.includes(tag) && diffDays(o.date, endDate) >= 0 && diffDays(o.date, endDate) < days,
-    ) ?? null
+  const matching = observations.filter(
+    (observation) =>
+      observation.tags.includes(tag) &&
+      diffDays(observation.date, endDate) >= 0 &&
+      diffDays(observation.date, endDate) < days,
   );
+  return matching.length > 0 ? matching[matching.length - 1] : null;
 }
 
 export function countRecentPoints(records: DayRecord[], metric: MetricKey, endDate: string, days: number): number {
