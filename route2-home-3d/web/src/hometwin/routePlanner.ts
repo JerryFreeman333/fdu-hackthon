@@ -13,6 +13,7 @@ export interface RouteEligibility {
 const MIN_ENDPOINT_CONFIDENCE = 0.6;
 const MIN_RELATION_CONFIDENCE = 0.6;
 const MIN_ROUTE_CONFIDENCE = 0.6;
+const ALLOWED_ROUTE_RELATION_SOURCES = new Set(['vision', 'manual', 'inferred']);
 
 function distance(a: HomeObject, b: HomeObject): number {
   return Math.hypot(a.position.x - b.position.x, a.position.y - b.position.y, a.position.z - b.position.z);
@@ -21,6 +22,12 @@ function distance(a: HomeObject, b: HomeObject): number {
 function findUnique(snapshot: HomeTwinSnapshot, category: HomeObject['category']): HomeObject | null {
   const matches = snapshot.objects.filter((object) => object.category === category);
   return matches.length === 1 ? matches[0] : null;
+}
+
+function usableRelation(relation: HomeTwinSnapshot['relations'][number]): boolean {
+  return relation.relation === 'connects' &&
+    relation.confidence >= MIN_RELATION_CONFIDENCE &&
+    ALLOWED_ROUTE_RELATION_SOURCES.has(relation.source);
 }
 
 export function assessRouteEligibility(snapshot: HomeTwinSnapshot): RouteEligibility {
@@ -46,11 +53,7 @@ export function assessRouteEligibility(snapshot: HomeTwinSnapshot): RouteEligibi
   }
 
   const connectingRelations = snapshot.relations.filter(
-    (relation) =>
-      relation.relation === 'connects' &&
-      relation.confidence >= MIN_RELATION_CONFIDENCE &&
-      !blocked.has(relation.subjectId) &&
-      !blocked.has(relation.objectId),
+    (relation) => usableRelation(relation) && !blocked.has(relation.subjectId) && !blocked.has(relation.objectId),
   );
   if (connectingRelations.length === 0) {
     return { eligible: false, reason: '缺少足够可靠的空间连接证据，暂不生成路线。' };
@@ -74,8 +77,7 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
 
   const graph = new Map<string, Array<{ id: string; weight: number }>>();
   for (const object of snapshot.objects) graph.set(object.id, []);
-  for (const relation of snapshot.relations.filter((item) => item.relation === 'connects')) {
-    if (relation.confidence < MIN_RELATION_CONFIDENCE) continue;
+  for (const relation of snapshot.relations.filter(usableRelation)) {
     if (!objectById.has(relation.subjectId) || !objectById.has(relation.objectId)) continue;
     if (blocked.has(relation.subjectId) || blocked.has(relation.objectId)) continue;
     const a = objectById.get(relation.subjectId)!;
@@ -129,14 +131,20 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
   }
   objectIds.reverse();
 
-  const routeRelations = snapshot.relations.filter(
-    (relation) =>
-      relation.relation === 'connects' &&
-      objectIds.includes(relation.subjectId) &&
-      objectIds.includes(relation.objectId) &&
-      relation.confidence >= MIN_RELATION_CONFIDENCE,
+  const routeRelations = objectIds.slice(0, -1).flatMap((id, index) => {
+    const nextId = objectIds[index + 1];
+    return snapshot.relations.filter(
+      (relation) =>
+        usableRelation(relation) &&
+        ((relation.subjectId === id && relation.objectId === nextId) ||
+          (relation.subjectId === nextId && relation.objectId === id)),
+    );
+  });
+  const routeConfidence = Math.min(
+    bed.confidence,
+    toilet.confidence,
+    ...routeRelations.map((relation) => relation.confidence),
   );
-  const routeConfidence = Math.min(bed.confidence, toilet.confidence, ...routeRelations.map((relation) => relation.confidence));
   if (!Number.isFinite(routeConfidence) || routeConfidence < MIN_ROUTE_CONFIDENCE) {
     return { route: null, reason: '路线整体证据置信度不足，暂不展示为可解释路线。' };
   }
