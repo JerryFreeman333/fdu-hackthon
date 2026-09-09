@@ -59,7 +59,7 @@ def _parse_captured_at(value: str) -> str:
     return value
 
 
-def _validate_manifest(manifest_text: str, batch_id: str, captured_at: str, media_kind: str) -> dict[str, Any]:
+def _validate_manifest(manifest_text: str, batch_id: str, captured_at: str, media_kind: str) -> list[dict[str, Any]]:
     try:
         manifest = json.loads(manifest_text)
     except json.JSONDecodeError as exc:
@@ -73,7 +73,16 @@ def _validate_manifest(manifest_text: str, batch_id: str, captured_at: str, medi
         raise HTTPException(status_code=422, detail="manifest.files 不能为空")
     if len(files) > MAX_FILES:
         raise HTTPException(status_code=413, detail="文件数量超过限制")
-    return manifest
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise HTTPException(status_code=422, detail="manifest.files 项格式无效")
+        if not isinstance(entry.get("name"), str) or not entry["name"].strip():
+            raise HTTPException(status_code=422, detail="manifest.files.name 无效")
+        if not isinstance(entry.get("size"), int) or entry["size"] < 0:
+            raise HTTPException(status_code=422, detail="manifest.files.size 无效")
+        if not isinstance(entry.get("type"), str) or not entry["type"]:
+            raise HTTPException(status_code=422, detail="manifest.files.type 无效")
+    return files
 
 
 async def _save_upload(upload: UploadFile, target: Path) -> int:
@@ -174,9 +183,11 @@ async def submit_rescan(
     captured_at = _parse_captured_at(capturedAt)
     if mediaKind not in {"image", "video"}:
         raise HTTPException(status_code=422, detail="mediaKind 必须为 image 或 video")
-    _validate_manifest(manifest, batch_id, captured_at, mediaKind)
+    manifest_files = _validate_manifest(manifest, batch_id, captured_at, mediaKind)
     if not files or len(files) > MAX_FILES:
         raise HTTPException(status_code=413, detail="文件数量不合法")
+    if len(manifest_files) != len(files):
+        raise HTTPException(status_code=422, detail="manifest.files 与实际上传文件数量不一致")
 
     job_id = f"rs-{uuid.uuid4().hex[:20]}"
     input_dir = DATA_ROOT / "jobs" / job_id / "input"
@@ -185,7 +196,11 @@ async def submit_rescan(
     total = 0
     try:
         for index, upload in enumerate(files, start=1):
-            filename = _sanitize_filename(upload.filename or "", index)
+            manifest_entry = manifest_files[index - 1]
+            original_name = Path(upload.filename or "").name
+            if original_name != Path(str(manifest_entry["name"])).name:
+                raise HTTPException(status_code=422, detail="manifest.files 与实际文件名不一致")
+            filename = _sanitize_filename(original_name, index)
             target = input_dir / filename
             if target.exists():
                 target = input_dir / f"{index}-{filename}"
@@ -194,6 +209,14 @@ async def submit_rescan(
             if total > MAX_TOTAL_BYTES:
                 raise HTTPException(status_code=413, detail="本批次文件总大小超过限制")
             media_type = upload.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            if int(manifest_entry["size"]) != size:
+                raise HTTPException(status_code=422, detail="manifest.files.size 与实际文件大小不一致")
+            if str(manifest_entry["type"]) != media_type:
+                raise HTTPException(status_code=422, detail="manifest.files.type 与实际文件类型不一致")
+            if mediaKind == "image" and media_type.startswith("video/"):
+                raise HTTPException(status_code=422, detail="mediaKind=image 不允许上传视频")
+            if mediaKind == "video" and not media_type.startswith("video/"):
+                raise HTTPException(status_code=422, detail="mediaKind=video 必须上传视频")
             saved.append({
                 "path": str(target),
                 "name": filename,
