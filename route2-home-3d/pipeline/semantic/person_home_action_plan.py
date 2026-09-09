@@ -23,17 +23,28 @@ def validate_projection(p: dict[str, Any]) -> None:
         raise RuntimeError("risk projection 必须保持 non-diagnostic")
     if p.get("privacyScope") not in {"private", "family_ok"}:
         raise RuntimeError("privacyScope 无效")
+    for key in ("riskRuleVersion", "homeId", "homeVersion", "homeProvenance"):
+        if key not in p:
+            raise RuntimeError(f"risk projection 缺少 provenance 字段: {key}")
+    home_provenance = p["homeProvenance"]
+    if not isinstance(home_provenance, dict) or home_provenance.get("homeId") != p.get("homeId") or home_provenance.get("homeVersion") != p.get("homeVersion"):
+        raise RuntimeError("Home Twin provenance 与 projection 不一致")
     for risk in p.get("risks", []):
-        for key in ("id", "level", "kind", "title", "evidence", "action"):
+        for key in ("id", "level", "kind", "title", "evidence", "evidenceRefs", "action"):
             if key not in risk:
                 raise RuntimeError(f"risk 缺少字段: {key}")
 
 
 def _projection_provenance(projection: dict[str, Any]) -> dict[str, Any]:
+    home_provenance = dict(projection["homeProvenance"])
     return {
-        "projectionAsOf": projection.get("personAsOf"),
+        "homeId": projection.get("homeId"),
         "homeVersion": projection.get("homeVersion"),
-        "recordedAt": projection.get("generatedAt"),
+        "riskRuleVersion": projection.get("riskRuleVersion"),
+        "projectionAsOf": projection.get("personAsOf"),
+        "generatedAt": projection.get("generatedAt"),
+        "captureId": home_provenance.get("captureId"),
+        "reconstructionId": home_provenance.get("reconstructionId"),
     }
 
 
@@ -59,7 +70,7 @@ def build_action_plan(projection: dict[str, Any]) -> dict[str, Any]:
     provenance = _projection_provenance(projection)
     actions = [_action_from_risk(risk) for risk in projection.get("risks", [])]
     for action in actions:
-        action["provenance"] = dict(provenance)
+        action["provenance"] = {**provenance, "riskId": action["riskId"]}
     return {
         "schemaVersion": 1,
         "type": "person-home-action-plan",
@@ -79,20 +90,34 @@ def merge_rescan_plan(previous_plan: dict[str, Any], latest_projection: dict[str
     previous_by_risk = {action.get("riskId"): action for action in previous_actions if action.get("riskId")}
     latest_provenance = _projection_provenance(latest_projection)
     previous_provenance = previous.get("provenance", {}).get("current")
-    merged: list[dict[str, Any]] = []
 
+    if previous_provenance:
+        if previous_provenance.get("homeId") != latest_provenance.get("homeId"):
+            raise RuntimeError("复扫 Home Twin homeId 不一致，拒绝关闭历史风险")
+        previous_version = previous_provenance.get("homeVersion")
+        latest_version = latest_provenance.get("homeVersion")
+        if isinstance(previous_version, int) and isinstance(latest_version, int) and latest_version <= previous_version:
+            raise RuntimeError("复扫 Home Twin version 未前进，拒绝自动关闭历史风险")
+        if previous_provenance.get("riskRuleVersion") != latest_provenance.get("riskRuleVersion"):
+            raise RuntimeError("risk rule version 不一致，拒绝自动关闭历史风险")
+        if previous_provenance.get("captureId") and latest_provenance.get("captureId") and previous_provenance.get("captureId") == latest_provenance.get("captureId"):
+            raise RuntimeError("复扫 captureId 未变化，拒绝把同一批输入当作新复扫")
+        if previous_provenance.get("reconstructionId") and latest_provenance.get("reconstructionId") and previous_provenance.get("reconstructionId") == latest_provenance.get("reconstructionId"):
+            raise RuntimeError("复扫 reconstructionId 未变化，拒绝把同一轮重建当作新证据")
+
+    merged: list[dict[str, Any]] = []
     for action in previous_actions:
         risk_id = action.get("riskId")
         if risk_id not in current_risks and action.get("status") not in {"completed", "resolved"}:
             action["status"] = "resolved"
             action["resolvedBy"] = "rescan"
-            action["resolvedAtProvenance"] = dict(latest_provenance)
+            action["resolvedAtProvenance"] = {**latest_provenance, "riskId": risk_id}
         merged.append(action)
 
     for risk_id, risk in current_risks.items():
         if risk_id not in previous_by_risk:
             action = _action_from_risk(risk)
-            action["provenance"] = dict(latest_provenance)
+            action["provenance"] = {**latest_provenance, "riskId": risk_id}
             merged.append(action)
 
     previous["privacyScope"] = latest_projection["privacyScope"]
