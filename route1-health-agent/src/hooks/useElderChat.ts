@@ -159,7 +159,13 @@ export function useElderChat({
 
     let agentText: string;
     if (sharingHistoryQuery) {
-      const recipient = /女儿/.test(text) ? 'daughter' : /儿子/.test(text) ? 'son' : /家属|孩子/.test(text) ? 'family' : undefined;
+      const recipient = /女儿/.test(text)
+        ? 'daughter'
+        : /儿子/.test(text)
+          ? 'son'
+          : /家属|孩子/.test(text)
+            ? 'family'
+            : undefined;
       agentText = buildHistoricalSharingAnswer(loadSharingAudit(), recipient ?? inferSharingRecipient(text));
     } else if (understanding.recallRequested) {
       agentText = recallSummary(chat);

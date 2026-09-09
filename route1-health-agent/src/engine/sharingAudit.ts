@@ -45,7 +45,9 @@ export function loadSharingAudit(): SharingAuditEntry[] {
         typeof candidate.createdAt === 'string' &&
         (candidate.scope === 'self' || candidate.scope === 'family') &&
         (candidate.recipient === 'daughter' || candidate.recipient === 'son' || candidate.recipient === 'family') &&
-        (candidate.shareMode === 'private' || candidate.shareMode === 'persistent' || candidate.shareMode === 'one_time') &&
+        (candidate.shareMode === 'private' ||
+          candidate.shareMode === 'persistent' ||
+          candidate.shareMode === 'one_time') &&
         typeof candidate.content === 'string'
       );
     });
@@ -71,10 +73,7 @@ export function historicalSharesForRecipient(
   return entries.filter((entry) => !recipient || entry.recipient === recipient);
 }
 
-export function buildHistoricalSharingAnswer(
-  entries: SharingAuditEntry[],
-  recipient?: SharingRecipient,
-): string {
+export function buildHistoricalSharingAnswer(entries: SharingAuditEntry[], recipient?: SharingRecipient): string {
   const matches = historicalSharesForRecipient(entries, recipient);
   if (matches.length === 0) return '我没有找到可靠的历史共享记录，所以不会猜测您之前有没有告诉家属。';
 

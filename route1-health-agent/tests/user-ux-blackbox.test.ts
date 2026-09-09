@@ -51,13 +51,19 @@ runCase('persistent sharing is described as currently authorized', () => {
 
 runCase('self one-time sharing receipt names the exact shared facts', () => {
   const text = buildSelfSharingAcknowledgement('头晕、漏服药物', 'one_time');
-  assert(text.includes('这次分享给家属一次的是：头晕、漏服药物'), 'one-time receipt should enumerate shared self facts');
+  assert(
+    text.includes('这次分享给家属一次的是：头晕、漏服药物'),
+    'one-time receipt should enumerate shared self facts',
+  );
   assert(text.includes('不会打开长期共享'), 'one-time receipt should preserve duration boundary');
 });
 
 runCase('self persistent sharing receipt names the exact shared facts', () => {
   const text = buildSelfSharingAcknowledgement('头晕、漏服药物', 'persistent');
-  assert(text.includes('按您现在的授权，家属可以看到的是：头晕、漏服药物'), 'persistent receipt should enumerate shared self facts');
+  assert(
+    text.includes('按您现在的授权，家属可以看到的是：头晕、漏服药物'),
+    'persistent receipt should enumerate shared self facts',
+  );
   assert(text.includes('只限必要的健康变化'), 'persistent receipt should preserve scope boundary');
 });
 
