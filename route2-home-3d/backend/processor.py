@@ -86,7 +86,6 @@ class LocalPipelineProcessor(RescanProcessor):
         video_files = [f.path for f in batch.files if batch.media_kind == "video" or f.media_type.startswith("video/")]
         photo_files = [f.path for f in batch.files if f.path not in video_files]
 
-        # The PowerShell contract accepts either a video path or a photo directory.
         args = [
             "-NoProfile",
             "-ExecutionPolicy",
@@ -166,6 +165,7 @@ class LocalPipelineProcessor(RescanProcessor):
 
 def build_processor(repo_root: Path) -> RescanProcessor:
     mode = os.getenv("ROUTE2_PROCESSOR_MODE", "queue").strip().lower()
-    if mode == "local-pipeline":
+    pipeline_enabled = os.getenv("ROUTE2_ENABLE_PIPELINE", "0").strip() == "1"
+    if mode == "local-pipeline" and pipeline_enabled:
         return LocalPipelineProcessor(repo_root)
     return SafeQueueProcessor()
