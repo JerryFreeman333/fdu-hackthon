@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldCommitElderTurn } from '../src/hooks/useElderChat';
+import { shouldCommitElderTurn } from '../src/engine/elderTurnGuard';
 
 describe('elder chat turn ordering', () => {
   it('commits N+2 while rejecting a delayed N+1 response', async () => {
