@@ -73,7 +73,9 @@ export function parseHomeSafetyActionPlan(input: unknown): HomeSafetyActionPlan 
 export function applyRescan(plan: HomeSafetyActionPlan, activeRiskIds: Iterable<string>): HomeSafetyActionPlan {
   const active = new Set(activeRiskIds);
   const actions = plan.actions.map((action) => {
-    if (action.status === 'completed' || action.status === 'resolved') return action;
+    // A user completing the action is evidence of attempted remediation, not proof
+    // that the environmental risk is gone. Only a new rescan can move it to resolved.
+    if (action.status === 'resolved') return action;
     if (action.requiresRescan && !active.has(action.riskId)) {
       return { ...action, status: 'resolved' as const };
     }
@@ -82,7 +84,7 @@ export function applyRescan(plan: HomeSafetyActionPlan, activeRiskIds: Iterable<
 
   return {
     ...plan,
-    status: actions.some((action) => action.status === 'open' || action.status === 'in_progress') ? 'open' : 'clear',
+    status: actions.some((action) => action.status !== 'resolved') ? 'open' : 'clear',
     actions,
   };
 }
