@@ -1,0 +1,62 @@
+name: route1 semantic fix once
+
+on:
+  push:
+    branches:
+      - 'route1/ci-green-blackbox-2026-09-08'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact semantic fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          agent = Path('route1-health-agent/src/engine/agent.ts')
+          text = agent.read_text(encoding='utf-8')
+          old = "    patterns: [/睡不(好|着|踏实)/, /失眠/, /夜醒/, /起夜/, /半夜(醒|起来)/],"
+          new = "    patterns: [/睡不(好|着|踏实)/, /没睡好/, /失眠/, /夜醒/, /起夜/, /半夜(醒|起来)/],"
+          if old not in text:
+              raise SystemExit('agent pattern anchor not found')
+          agent.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          understanding = Path('route1-health-agent/src/engine/understanding.ts')
+          text = understanding.read_text(encoding='utf-8')
+          old = "我听到您对不同事情有不同的分享要求。为了不把不该告诉家属的内容发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。"
+          new = "我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。"
+          if old not in text:
+              raise SystemExit('privacy clarification anchor not found')
+          understanding.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Format changed files
+        working-directory: route1-health-agent
+        run: npx --yes prettier@3.5.3 --write src/engine/agent.ts src/engine/understanding.ts
+
+      - name: Remove one-time workflow
+        run: rm -f .github/workflows/_route1-semantic-fix-once.yml
+
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add route1-health-agent/src/engine/agent.ts route1-health-agent/src/engine/understanding.ts .github/workflows/_route1-semantic-fix-once.yml
+          git commit -m 'fix(route1): recognize common sleep wording and clarify privacy'
+          git push
