@@ -52,7 +52,8 @@ export function markSubmitted(state: RescanWorkflowState): RescanWorkflowState {
 }
 
 export function applyRescanProjection(state: RescanWorkflowState, result: unknown): RescanWorkflowState {
-  if (!state.previousPlan) return { ...state, status: 'failed', message: '缺少上一轮家庭行动计划，无法比较复扫结果。' };
+  const baselinePlan = state.currentPlan ?? state.previousPlan;
+  if (!baselinePlan) return { ...state, status: 'failed', message: '缺少上一轮家庭行动计划，无法比较复扫结果。' };
   if (!result || typeof result !== 'object') return { ...state, status: 'failed', message: '复扫结果无效，拒绝更新家庭行动状态。' };
 
   const payload = result as Record<string, unknown>;
@@ -60,7 +61,7 @@ export function applyRescanProjection(state: RescanWorkflowState, result: unknow
   if (!currentPlan) {
     return { ...state, status: 'failed', message: '复扫结果未提供可验证的行动计划，拒绝仅凭 riskId 更新或关闭历史风险。' };
   }
-  const acceptance = acceptRescanActionPlan(state.previousPlan, currentPlan);
+  const acceptance = acceptRescanActionPlan(baselinePlan, currentPlan);
   if (!acceptance.accepted) {
     return { ...state, status: 'failed', message: `复扫结果不是当前基线的可信后继：${acceptance.reason}。` };
   }
