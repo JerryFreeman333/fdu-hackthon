@@ -61,7 +61,7 @@ export function observationToEvent(observation: Observation): ObservationEvent {
   return {
     id: `observation:${observation.id}`,
     type: 'observation',
-    timestamp: observation.recordedAt ?? `${observation.date}T12:00:00`,
+    timestamp: `${observation.date}T12:00:00`,
     source: observation.source,
     observation,
   };
