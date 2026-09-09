@@ -25,6 +25,15 @@ test('frontend action plans require complete rescan provenance before closure', 
   assert.doesNotMatch(text, /export function applyRescan\(/);
 });
 
+test('snapshot acceptance rejects stale and replayed results even after a newer snapshot was accepted', async () => {
+  const text = await source(actionPlanPath);
+  assert.match(text, /candidate\.homeVersion <= previous\.homeVersion/);
+  assert.match(text, /candidatePlan\.provenance\?\.previous/);
+  assert.match(text, /candidate previous provenance does not match current snapshot/);
+  assert.match(text, /captureId === previous\.captureId/);
+  assert.match(text, /reconstructionId === previous\.reconstructionId/);
+});
+
 test('frontend rescan flow rejects riskId-only fallback, duplicate and stale responses', async () => {
   const text = await source(mainPath);
   assert.match(text, /rescanInFlight/);
@@ -35,13 +44,23 @@ test('frontend rescan flow rejects riskId-only fallback, duplicate and stale res
   assert.doesNotMatch(text, /applyRescan\(currentActionPlan, result\.latestRiskIds\)/);
 });
 
-test('rescan workflow has no riskId-only closure authority and sanitizes reload state', async () => {
+test('rescan workflow chains from the latest accepted snapshot rather than the original baseline', async () => {
   const text = await source(workflowPath);
+  assert.match(text, /const baselinePlan = state\.currentPlan \?\? state\.previousPlan/);
+  assert.match(text, /acceptRescanActionPlan\(baselinePlan, currentPlan\)/);
+  assert.match(text, /currentPlan,/);
   assert.match(text, /sanitizeRestoredWorkflow/);
   assert.match(text, /Browser storage is not a trust boundary/);
-  assert.match(text, /acceptRescanActionPlan\(state\.previousPlan, currentPlan\)/);
   assert.doesNotMatch(text, /latestRiskIds/);
   assert.doesNotMatch(text, /applyRescan\(/);
+});
+
+test('rescan workflow has no riskId-only closure authority and sanitizes reload state', async () => {
+  const text = await source(workflowPath);
+  assert.match(text, /safeStatus: RescanWorkflowStatus/);
+  assert.match(text, /restoredStatus === 'processing'/);
+  assert.doesNotMatch(text, /ready-for-review.*restoredStatus/);
+  assert.doesNotMatch(text, /resolved.*restoredStatus/);
 });
 
 test('rescan client validates action plans before exposing them to UI', async () => {
