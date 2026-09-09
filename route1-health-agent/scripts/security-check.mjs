@@ -24,18 +24,20 @@ function walk(dir) {
 
 walk(ROOT);
 
-const authBoundaryFiles = [
+const sensitiveClientStateFiles = [
   'src/App.tsx',
   'src/hooks/useFamilyBinding.ts',
+  'src/hooks/useCareTasks.ts',
   'src/components/FamilyDashboard.tsx',
   'src/components/RoleGate.tsx',
+  'src/store/LocalHealthRecordStore.ts',
 ];
 
-for (const relativePath of authBoundaryFiles) {
+for (const relativePath of sensitiveClientStateFiles) {
   const path = join(ROOT, relativePath);
   const text = readFileSync(path, 'utf8');
   if (/localStorage\.(?:getItem|setItem|removeItem)\(/.test(text)) {
-    policyFindings.push(`${relativePath}: security-sensitive role/authorization UI must not persist localStorage state`);
+    policyFindings.push(`${relativePath}: sensitive session/health state must not persist through localStorage`);
   }
 }
 
@@ -51,4 +53,4 @@ if (policyFindings.length) {
   process.exit(1);
 }
 
-console.log('Security check passed: no obvious hard-coded API keys/private keys and no persisted auth boundary state found.');
+console.log('Security check passed: no obvious hard-coded API keys/private keys and no sensitive session/health state persisted in localStorage.');
