@@ -1,5 +1,6 @@
 import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from '../types';
 import type { HomeSafetyActionPlan } from '../hometwin/actionPlan';
+import type { Route2Role } from './roleMode';
 
 export interface PanelCallbacks {
   onSelectHazard(h: HazardItem): void;
@@ -31,8 +32,7 @@ function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, 
     return;
   }
 
-  const intro = el<HTMLDivElement>('div', 'muted small', '家庭行动不是“风险分数”。处理完成后必须重新扫描，只有对应风险消失才会关闭任务。');
-  body.append(intro);
+  body.append(el<HTMLDivElement>('div', 'muted small', '家庭行动不是“风险分数”。处理完成后必须重新扫描，只有对应风险消失才会关闭任务。'));
 
   const summary = el<HTMLDivElement>('div', 'action-summary', `
     <span class="badge ${plan.status === 'clear' ? 'badge-resolved' : 'badge-action'}">${plan.status === 'clear' ? '环境风险已关闭' : '有待处理事项'}</span>
@@ -64,49 +64,91 @@ function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, 
   }
 }
 
-export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode, actionPlan: HomeSafetyActionPlan | null = null): { updateActionPlan(plan: HomeSafetyActionPlan | null): void } {
+function renderRoleHome(data: HazardData, body: HTMLElement, cb: PanelCallbacks, mode: SceneMode, role: Route2Role, actionPlan: HomeSafetyActionPlan | null): { updateActionPlan(plan: HomeSafetyActionPlan | null): void } {
+  body.innerHTML = '';
+
+  const title = role === 'resident' ? '我的家' : '家庭状态';
+  const intro = role === 'resident'
+    ? '这里帮您找回常用物品。安全问题会尽量用简单的话提醒您，复杂处理会交给家人。'
+    : '这里展示家庭环境中值得关注、需要家属确认或处理的事项。';
+  body.append(el<HTMLDivElement>('div', 'panel-section-title', title));
+  body.append(el<HTMLDivElement>('div', 'muted small panel-intro', intro));
+
+  if (role === 'resident') {
+    const findShortcut = el<HTMLButtonElement>('button', 'feature-card primary-card', '🔍 找东西<span>找老花镜、钥匙等常用物品</span>');
+    findShortcut.onclick = () => {
+      document.querySelector<HTMLButtonElement>('[data-role-tab="find"]')?.click();
+    };
+    body.append(findShortcut);
+
+    const medicineShortcut = el<HTMLDivElement>('div', 'feature-card', '💊 找药<span>当前原型仅提供已登记药品位置；服用信息不替代医生、药师或说明书。</span>');
+    body.append(medicineShortcut);
+
+    const tip = el<HTMLDivElement>('div', 'role-note', '需要家人处理的环境问题不会要求您自己判断。系统会把需要介入的事项交给子女/照护者。');
+    body.append(tip);
+  } else {
+    body.append(el<HTMLDivElement>('div', 'family-summary', `当前 ${data.hazards.length} 个演示风险项；只有已具备空间证据的数据才允许进入真实模式。`));
+    renderActionPlan(body, actionPlan, cb.onRescan);
+  }
+
+  return {
+    updateActionPlan(plan) {
+      if (role === 'family') renderActionPlan(body, plan, cb.onRescan);
+    },
+  };
+}
+
+export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode, actionPlan: HomeSafetyActionPlan | null = null, role: Route2Role = 'resident'): { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void } {
   const panel = document.getElementById('panel')!;
   panel.innerHTML = '';
 
-  const tabs = el<HTMLDivElement>('div', 'tabs');
+  const tabBar = el<HTMLDivElement>('div', 'tabs');
   const bodies = el<HTMLDivElement>('div', 'tab-bodies');
-  panel.append(tabs, bodies);
+  panel.append(tabBar, bodies);
 
-  const tabDefs = [
-    { key: 'hazards', label: '安全巡检' },
-    { key: 'paths', label: '动线分析' },
-    { key: 'actions', label: '家庭行动' },
-    { key: 'find', label: '找东西' }
-  ] as const;
+  const roleSections = new Map<Route2Role, { home: HTMLElement; find: HTMLElement; hazards: HTMLElement; paths: HTMLElement; update(plan: HomeSafetyActionPlan | null): void }>();
 
-  const tabButtons: HTMLElement[] = [];
-  const bodiesMap: Record<string, HTMLElement> = {};
+  function buildSection(key: string, label: string, visible: boolean): { button: HTMLButtonElement; body: HTMLDivElement } {
+    const button = el<HTMLButtonElement>('button', 'tab-btn' + (visible ? ' active' : ''), label);
+    const body = el<HTMLDivElement>('div', 'tab-body' + (visible ? ' active' : ''));
+    button.dataset.roleTab = key;
+    tabBar.append(button);
+    bodies.append(body);
+    return { button, body };
+  }
 
-  tabDefs.forEach((def, i) => {
-    const btn = el<HTMLButtonElement>('button', 'tab-btn' + (i === 0 ? ' active' : ''), def.label);
-    const body = el<HTMLDivElement>('div', 'tab-body' + (i === 0 ? ' active' : ''));
-    btn.onclick = () => {
-      tabButtons.forEach(b => b.classList.remove('active'));
-      Object.values(bodiesMap).forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      body.classList.add('active');
-      if (def.key !== 'paths') cb.onSelectPath(null);
-    };
-    tabButtons.push(btn);
-    bodiesMap[def.key] = body;
-    tabs.append(btn);
-  });
-  bodies.append(...Object.values(bodiesMap));
+  const residentHome = buildSection('home', '我的家', role === 'resident');
+  const residentFind = buildSection('find', '找东西', role === 'resident');
+  const familyHome = buildSection('family-home', '家庭状态', role === 'family');
+  const familyHazards = buildSection('family-hazards', '风险证据', false);
+  const familyPaths = buildSection('family-paths', '影响路线', false);
+  const sections = [residentHome, residentFind, familyHome, familyHazards, familyPaths];
+
+  function activate(button: HTMLButtonElement, body: HTMLElement): void {
+    sections.forEach(section => {
+      section.button.classList.remove('active');
+      section.body.classList.remove('active');
+    });
+    button.classList.add('active');
+    body.classList.add('active');
+    if (body !== familyPaths.body) cb.onSelectPath(null);
+  }
+
+  sections.forEach(section => section.button.onclick = () => activate(section.button, section.body));
 
   const counts = { high: 0, medium: 0, low: 0 };
   data.hazards.forEach(h => counts[h.level]++);
-  const stats = el<HTMLDivElement>('stats', undefined, `
+
+  const homeController = renderRoleHome(data, residentHome.body, cb, mode, 'resident', actionPlan);
+  const familyController = renderRoleHome(data, familyHome.body, cb, mode, 'family', actionPlan);
+
+  const stats = el<HTMLDivElement>('div', 'stats', `
     <span class="badge lv-high">高 ${counts.high}</span>
     <span class="badge lv-mid">中 ${counts.medium}</span>
     <span class="badge lv-low">低 ${counts.low}</span>
     <div class="muted small">${mode === 'demo' ? '演示数据来自预置 Home Twin' : '仅显示已完成真实空间标定的数据，不伪造未标定结果'}</div>
   `);
-  const list = el<HTMLDivElement>('hazard-list');
+  const hazardList = el<HTMLDivElement>('div', 'hazard-list');
   data.hazards.forEach(h => {
     const calibrated = mode === 'demo' || Boolean(h.realPos);
     const row = el<HTMLButtonElement>('button', 'hazard-row' + (calibrated ? '' : ' disabled'), `
@@ -115,18 +157,17 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
     `);
     row.disabled = !calibrated;
     row.onclick = () => cb.onSelectHazard(h);
-    list.append(row);
+    hazardList.append(row);
   });
-  bodiesMap.hazards.append(stats, list);
+  familyHazards.body.append(stats, hazardList);
 
-  const pathIntro = el<HTMLDivElement>('div', 'muted small', '真实模式只开放已经完成坐标标定的路线；未标定路线不会被伪造成可导航路径。');
-  bodiesMap.paths.append(pathIntro);
+  const pathIntro = el<HTMLDivElement>('div', 'muted small', '路线用于解释风险影响范围，不代表 AI 已预测老人实际会怎么走。');
+  familyPaths.body.append(pathIntro);
   data.paths.forEach(p => {
     const calibrated = mode === 'demo' || Boolean(p.realPoints && p.realPoints.length >= 2);
     const btn = el<HTMLButtonElement>('button', 'path-row' + (calibrated ? '' : ' disabled'), `
       <span class="path-ico ${p.mode === 'night' ? 'night' : ''}">${p.mode === 'night' ? '🌙' : '☀'}</span>
-      <div class="hazard-text"><b>${p.title}</b>
-      <span class="muted small">${calibrated ? `途经 ${p.hazardIds.length} 处风险点` : '尚未完成真实空间标定'}</span></div>
+      <div class="hazard-text"><b>${p.title}</b><span class="muted small">${calibrated ? `影响 ${p.hazardIds.length} 个已标注风险` : '尚未完成真实空间标定'}</span></div>
     `);
     btn.disabled = !calibrated;
     let active = false;
@@ -134,18 +175,14 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
       if (btn.disabled) return;
       active = !active;
       btn.classList.toggle('active', active);
-      document.querySelectorAll('.path-row').forEach(b => {
-        if (b !== btn) (b as HTMLElement).classList.remove('active');
-      });
+      document.querySelectorAll('.path-row').forEach(b => { if (b !== btn) (b as HTMLElement).classList.remove('active'); });
       cb.onSelectPath(active ? p : null);
     };
-    bodiesMap.paths.append(btn);
+    familyPaths.body.append(btn);
   });
 
-  renderActionPlan(bodiesMap.actions, actionPlan, cb.onRescan);
-
-  const findIntro = el<HTMLDivElement>('div', 'muted small', mode === 'demo' ? '演示模式使用预置物品位置；真实模式只显示已完成空间标定的物品。' : '真实模式只使用已经完成空间标定的物品位置.');
-  bodiesMap.find.append(findIntro);
+  const findIntro = el<HTMLDivElement>('div', 'muted small', mode === 'demo' ? '演示模式使用预置物品位置；真实模式只显示已完成空间标定的物品。' : '只使用已经完成空间标定的物品位置。');
+  residentFind.body.append(findIntro);
   data.items.forEach(item => {
     const calibrated = mode === 'demo' || Boolean(item.realPos);
     const btn = el<HTMLButtonElement>('button', 'item-row' + (calibrated ? '' : ' disabled'), `
@@ -154,13 +191,31 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
     `);
     btn.disabled = !calibrated;
     btn.onclick = () => cb.onSelectItem(item);
-    bodiesMap.find.append(btn);
+    residentFind.body.append(btn);
   });
 
+  function setRole(nextRole: Route2Role): void {
+    role = nextRole;
+    sections.forEach(section => {
+      const belongsToRole = nextRole === 'resident'
+        ? (section.button.dataset.roleTab === 'home' || section.button.dataset.roleTab === 'find')
+        : section.button.dataset.roleTab === 'family-home' || section.button.dataset.roleTab === 'family-hazards' || section.button.dataset.roleTab === 'family-paths';
+      section.button.style.display = belongsToRole ? '' : 'none';
+      section.body.classList.remove('active');
+      section.button.classList.remove('active');
+    });
+    const first = nextRole === 'resident' ? residentHome : familyHome;
+    first.button.style.display = '';
+    activate(first.button, first.body);
+  }
+
+  setRole(role);
+
   return {
-    updateActionPlan(plan: HomeSafetyActionPlan | null) {
-      renderActionPlan(bodiesMap.actions, plan, cb.onRescan);
+    updateActionPlan(plan) {
+      familyController.updateActionPlan(plan);
     },
+    setRole,
   };
 }
 
