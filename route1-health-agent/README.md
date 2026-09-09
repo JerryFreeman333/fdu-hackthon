@@ -138,6 +138,8 @@ no_record   → 该次对话不写入持久健康事件/家属视图
 
 家属通知会经过 `familySharing` 和 `familyEligible` 双重过滤；家属详细变化与周报进一步要求 `familySharing === granted`。这样“系统知道”与“家属应该知道”不是同一件事。
 
+撤销家属共享后，家属端详细记录与观察也会在数据进入家属组件前按当前授权状态过滤；one-time sharing 仍必须依赖明确的事件 ID，不能用旧 ID 绕过 `private` 或 `familyEligible=false` 的边界。
+
 ## 行动闭环
 
 `engine/tasks.ts` 提供第一阶段的最小行动状态机：
@@ -155,6 +157,8 @@ completed
 ```
 
 只有可行动 Finding 或明确事件才生成任务，稳定状态不会自动生成每日噪声。
+
+同一天的服药确认任务使用稳定日期键；任务完成后，后续重复提醒仍复用当天任务，不会生成第二个相同任务。
 
 ## 周报
 
@@ -183,21 +187,14 @@ interface DeviceAdapter {
 
 ## 回归测试
 
-`tests/detection.test.ts` 当前覆盖：
+除原有 `tests/detection.test.ts` 外，本轮硬化新增：
 
-- 多信号变化；
-- 稳定 Finding；
-- 稀疏数据沉默；
-- 单指标 `watch`；
-- 极高血压安全分流；
-- 胸痛 / 跌倒等危险症状；
-- 三类健康输入统一事件流；
-- Person Twin Context；
-- 隐私过滤；
-- 中文数值抽取；
-- Agent Adapter 与有理由追问；
-- 周报私密信息隔离；
-- `pending → completed` 任务状态机。
+- `tests/user-input-regression.test.ts`：第三人称主体、比较式否定、混合主体漏服药等回归；
+- `tests/detection-privacy-isolation.test.ts`：历史私密事件不得屏蔽今日独立可共享风险；
+- `tests/claim-lineage.test.ts`：更正只删除对应 claim 的事件；
+- `tests/stateful-correction-flow.test.ts`：更正后下游 Finding 随状态重新计算，不留下 ghost finding；
+- `tests/family-sharing-state.test.ts`：撤销共享、one-time sharing 与 private 边界；
+- `tests/task-regression.test.ts`：当天服药任务幂等与完成后重复提醒。
 
 ## 运行
 
