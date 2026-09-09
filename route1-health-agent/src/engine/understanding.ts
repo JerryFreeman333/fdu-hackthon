@@ -86,10 +86,18 @@ function subjectAfterRelationCue(clause: string, mentions: SubjectMention[]): El
   const cues = [...clause.matchAll(relationCue)].map((match) => match.index ?? 0);
   if (cues.length === 0) return null;
 
-  for (const cue of cues) {
+  for (let i = 0; i < cues.length; i += 1) {
+    const cue = cues[i];
+    const nextCue = cues[i + 1] ?? Number.POSITIVE_INFINITY;
     const left = mentions.filter((mention) => mention.index < cue).at(-1);
-    const right = mentions.find((mention) => mention.index > cue);
-    if (left && right) return right.subject;
+    const rightMentions = mentions.filter((mention) => mention.index > cue && mention.index < nextCue);
+    const rightSubjects = [...new Set(rightMentions.map((mention) => mention.subject))];
+    if (!left || rightSubjects.length === 0) continue;
+
+    // 关系词后的多个不同人物仍然无法唯一确定健康事实主体：
+    // “我看到我爸和我妈都不舒服”必须 fail closed，而不能挑第一个人。
+    if (rightSubjects.length > 1) return 'unknown';
+    return rightSubjects[0];
   }
 
   return null;
