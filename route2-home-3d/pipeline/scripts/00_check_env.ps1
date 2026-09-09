@@ -1,9 +1,10 @@
 ﻿# 路线二 · 居家安全 3D 建模 —— 环境检查脚本
 # 用法: powershell -ExecutionPolicy Bypass -File scripts\00_check_env.ps1
 $ErrorActionPreference = 'Continue'
-$fail = 0
+$script:fail = 0
 function Check($name, $ok, $detail) {
-    $tag = if ($ok) { "[OK]  " } else { $fail++; "[MISS]" }
+    if (-not $ok) { $script:fail++ }
+    $tag = if ($ok) { "[OK]  " } else { "[MISS]" }
     Write-Host ("{0} {1,-28} {2}" -f $tag, $name, $detail)
 }
 
@@ -35,6 +36,9 @@ Check "MSVC 编译器 (cl.exe)" ($null -ne $cl) $(if ($cl) { $cl.FullName } else
 
 $ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
 Check "ffmpeg（视频抽帧）" ($null -ne $ff) $(if ($ff) { (ffmpeg -version 2>$null | Select-Object -First 1) } else { "仅视频采集需要" })
+
+$ultra = python -c "import ultralytics; print('ultralytics ' + ultralytics.__version__)" 2>&1
+Check "Ultralytics（语义检测）" ($LASTEXITCODE -eq 0) $ultra
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $colmapLocal = Get-ChildItem "$repoRoot\pipeline\external\colmap*\colmap.bat","$repoRoot\pipeline\external\colmap*\colmap.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
