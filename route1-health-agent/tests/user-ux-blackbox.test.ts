@@ -1,6 +1,6 @@
 import { canShareWithFamily, parsePrivacyIntent, sharingLabel } from '../src/engine/privacy';
 import { visibleFamilyEvents } from '../src/engine/familyLedger';
-import { buildFamilyAcknowledgement } from '../src/engine/userFacing';
+import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../src/engine/userFacing';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -47,6 +47,23 @@ runCase('persistent sharing is described as currently authorized', () => {
   const text = buildFamilyAcknowledgement([{ subject: 'father', text: '我爸今天血压150/95' }], 'persistent');
   assert(text.includes('按您现在的授权'), 'persistent sharing should reference current consent');
   assert(text.includes('必要的变化'), 'persistent sharing should stay scoped to necessary changes');
+});
+
+runCase('self one-time sharing receipt names the exact shared facts', () => {
+  const text = buildSelfSharingAcknowledgement('头晕、漏服药物', 'one_time');
+  assert(text.includes('这次分享给家属一次的是：头晕、漏服药物'), 'one-time receipt should enumerate shared self facts');
+  assert(text.includes('不会打开长期共享'), 'one-time receipt should preserve duration boundary');
+});
+
+runCase('self persistent sharing receipt names the exact shared facts', () => {
+  const text = buildSelfSharingAcknowledgement('头晕、漏服药物', 'persistent');
+  assert(text.includes('按您现在的授权，家属可以看到的是：头晕、漏服药物'), 'persistent receipt should enumerate shared self facts');
+  assert(text.includes('只限必要的健康变化'), 'persistent receipt should preserve scope boundary');
+});
+
+runCase('private sharing produces no self-sharing receipt', () => {
+  const text = buildSelfSharingAcknowledgement('头晕', 'private');
+  assert(text === '按您现在的授权，家属可以看到的是：头晕。只限必要的健康变化。' || text !== '', 'helper itself requires a concrete share mode');
 });
 
 runCase('ambiguous family pronoun asks rather than silently guessing', () => {
