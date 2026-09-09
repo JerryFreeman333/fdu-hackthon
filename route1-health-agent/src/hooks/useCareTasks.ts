@@ -3,33 +3,16 @@ import type { CareTask, Finding } from '../types';
 import { TODAY } from '../data/demo';
 import { buildInitialTasks, createTaskFromFinding, ensureMedicationCheckTask, updateTaskStatus } from '../engine/tasks';
 
-const TASK_KEY = 'ankang-route1-tasks-v2';
-
-type StoredTask = CareTask;
-
-function loadTasks(): CareTask[] {
-  try {
-    const raw = window.localStorage.getItem(TASK_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as StoredTask[];
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // use an empty task list rather than inventing daily work
-  }
-  return buildInitialTasks(TODAY);
-}
-
+/**
+ * Route 1 Demo 任务状态只存在当前页面会话。
+ * 任务标题/描述可能暴露健康风险，因此不能跨浏览器会话持久化到 localStorage。
+ */
 interface UseCareTasksOptions {
   findings: Finding[];
 }
 
 export function useCareTasks({ findings }: UseCareTasksOptions) {
-  const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
-
-  useEffect(() => {
-    window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+  const [tasks, setTasks] = useState<CareTask[]>(() => buildInitialTasks(TODAY));
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
