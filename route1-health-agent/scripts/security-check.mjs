@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const findings = [];
+const policyFindings = [];
 
 function walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -23,10 +24,31 @@ function walk(dir) {
 
 walk(ROOT);
 
+const authBoundaryFiles = [
+  'src/App.tsx',
+  'src/hooks/useFamilyBinding.ts',
+  'src/components/FamilyDashboard.tsx',
+  'src/components/RoleGate.tsx',
+];
+
+for (const relativePath of authBoundaryFiles) {
+  const path = join(ROOT, relativePath);
+  const text = readFileSync(path, 'utf8');
+  if (/localStorage\.(?:getItem|setItem|removeItem)\(/.test(text)) {
+    policyFindings.push(`${relativePath}: security-sensitive role/authorization UI must not persist localStorage state`);
+  }
+}
+
 if (findings.length) {
   console.error('Potential hard-coded secret detected:');
   for (const file of findings) console.error(` - ${file}`);
   process.exit(1);
 }
 
-console.log('Security check passed: no obvious hard-coded API keys or private keys found.');
+if (policyFindings.length) {
+  console.error('Security boundary policy violation:');
+  for (const finding of policyFindings) console.error(` - ${finding}`);
+  process.exit(1);
+}
+
+console.log('Security check passed: no obvious hard-coded API keys/private keys and no persisted auth boundary state found.');
