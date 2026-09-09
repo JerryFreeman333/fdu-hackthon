@@ -1,5 +1,5 @@
 /** Detection Engine 主入口：事件流 → 个人基线 → 变化发现 → 安全分级。 */
-import type { Finding, SymptomTag } from '../types';
+import type { Finding } from '../types';
 import { METRICS, type MetricKey } from '../types';
 import { diffDays } from './baseline';
 import { materializeHealthData, type HealthEvent } from '../pipeline/events';
@@ -61,20 +61,15 @@ function dedupeFindings(findings: Finding[]): Finding[] {
   return [...byId.values()];
 }
 
-function applyObservationPrivacy(findings: Finding[], observations: DetectionContext['observations']): Finding[] {
-  const privateTags = new Set<SymptomTag>();
-  for (const observation of observations) {
-    if (observation.visibility === 'private') {
-      for (const tag of observation.tags) privateTags.add(tag);
-    }
-  }
-  if (privateTags.size === 0) return findings;
-  return findings.map((finding) => {
-    const protectedSignals = (finding.signalKeys ?? []).some((key) => privateTags.has(key as SymptomTag));
-    return protectedSignals ? { ...finding, familyEligible: false } : finding;
-  });
-}
-
+/**
+ * Privacy is evaluated by each detection rule from the exact evidence it used.
+ *
+ * Do not add a global “private tag ever seen” veto here. A historical private
+ * observation must not suppress a later, independently shareable emergency event
+ * with the same symptom tag (for example, an old private fall vs today's explicit
+ * family-ok fall). Each rule already sets familyEligible from its own source
+ * observations/measurements, which keeps privacy decisions local to the finding.
+ */
 export function runDetection(events: HealthEvent[], today: string, options: DetectionOptions = {}): Finding[] {
   const config: DetectionConfig = { ...DEFAULT_CONFIG, ...options };
   const materialized = materializeHealthData(events);
@@ -97,7 +92,7 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
     else if (result) findings.push(result);
   }
 
-  const privacyAware = applyObservationPrivacy(dedupeFindings(findings), materialized.observations);
+  const privacyAware = dedupeFindings(findings);
   const order = { urgent: 0, alert: 1, watch: 2, info: 3 } as const;
   return privacyAware.sort((a, b) => {
     const severityDelta = order[a.severity] - order[b.severity];
@@ -106,14 +101,14 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
   });
 }
 
-export function todayTags(events: HealthEvent[], today: string): SymptomTag[] {
+export function todayTags(events: HealthEvent[], today: string) {
   return materializeHealthData(events)
     .observations.filter((observation) => observation.date === today)
     .flatMap((observation) => observation.tags)
     .filter((tag, index, array) => array.indexOf(tag) === index);
 }
 
-export function recentTag(events: HealthEvent[], tag: SymptomTag, endDate: string, days: number) {
+export function recentTag(events: HealthEvent[], tag: Parameters<typeof hadTag>[1], endDate: string, days: number) {
   return hadTag(materializeHealthData(events).observations, tag, endDate, days);
 }
 
