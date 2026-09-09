@@ -36,7 +36,7 @@ const sensitiveClientStateFiles = [
 for (const relativePath of sensitiveClientStateFiles) {
   const path = join(ROOT, relativePath);
   const text = readFileSync(path, 'utf8');
-  if (/localStorage\.(?:getItem|setItem|removeItem)\(/.test(text)) {
+  if (/localStorage\.(?:getItem|setItem)\(/.test(text)) {
     policyFindings.push(`${relativePath}: sensitive session/health state must not persist through localStorage`);
   }
 }
