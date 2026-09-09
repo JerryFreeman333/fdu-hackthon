@@ -16,8 +16,9 @@ type SharingAuditCandidate = Omit<SharingAuditEntry, 'shareMode'> & {
   shareMode: string;
 };
 
-const SHARING_AUDIT_KEY = 'ankang-route1-sharing-audit-v1';
+const LEGACY_SHARING_AUDIT_KEY = 'ankang-route1-sharing-audit-v1';
 const DEFAULT_LIMIT = 100;
+let sessionAudit: SharingAuditEntry[] = [];
 
 function isFamilyShareMode(value: string): value is FamilyShareMode {
   return value === 'private' || value === 'persistent' || value === 'one_time';
@@ -39,40 +40,32 @@ export function appendSharingAudit(
   return [...entries, ...validNext].slice(-limit);
 }
 
+function cloneEntries(entries: SharingAuditEntry[]): SharingAuditEntry[] {
+  return entries.map((entry) => ({ ...entry }));
+}
+
+/** Session-only audit. Sensitive sharing content is never restored from browser persistence. */
 export function loadSharingAudit(): SharingAuditEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(SHARING_AUDIT_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((entry): entry is SharingAuditEntry => {
-      if (!entry || typeof entry !== 'object') return false;
-      const candidate = entry as Record<string, unknown>;
-      return (
-        typeof candidate.id === 'string' &&
-        typeof candidate.createdAt === 'string' &&
-        (candidate.scope === 'self' || candidate.scope === 'family') &&
-        (candidate.recipient === 'daughter' || candidate.recipient === 'son' || candidate.recipient === 'family') &&
-        (candidate.shareMode === 'private' ||
-          candidate.shareMode === 'persistent' ||
-          candidate.shareMode === 'one_time') &&
-        typeof candidate.content === 'string'
-      );
-    });
-  } catch {
-    return [];
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(LEGACY_SHARING_AUDIT_KEY);
   }
+  return cloneEntries(sessionAudit);
 }
 
 export function saveSharingAudit(entries: SharingAuditEntry[]): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(SHARING_AUDIT_KEY, JSON.stringify(entries.slice(-DEFAULT_LIMIT)));
+  sessionAudit = cloneEntries(entries.slice(-DEFAULT_LIMIT));
+}
+
+export function clearSharingAudit(): void {
+  sessionAudit = [];
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(LEGACY_SHARING_AUDIT_KEY);
+  }
 }
 
 export function recordSharingAudit(next: SharingAuditCandidate[]): void {
   if (next.length === 0) return;
-  saveSharingAudit(appendSharingAudit(loadSharingAudit(), next));
+  saveSharingAudit(appendSharingAudit(sessionAudit, next));
 }
 
 export function historicalSharesForRecipient(
