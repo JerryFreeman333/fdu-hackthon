@@ -76,8 +76,9 @@ jobs:
 
   build-route1:
     if: >-
-      github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci')
+      (github.event_name != 'push' || github.ref != 'refs/heads/main') &&
+      (github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -126,8 +127,9 @@ jobs:
   blackbox-route1:
     needs: build-route1
     if: >-
-      github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci')
+      (github.event_name != 'push' || github.ref != 'refs/heads/main') &&
+      (github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request && github.event.comment.body == '/route1-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
