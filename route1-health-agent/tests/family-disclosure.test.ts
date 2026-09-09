@@ -70,8 +70,17 @@ const tasks: CareTask[] = [
     description: '家属协同',
     dueDate: '2026-09-09',
     status: 'pending',
+    kind: 'contact_family',
+  },
+  {
+    id: 'visible-family-linked',
+    title: '联系老人确认变化',
+    description: '与可共享 finding 关联的家属任务',
+    dueDate: '2026-09-09',
+    status: 'pending',
     createdAt: '2026-09-09T08:00:00Z',
     kind: 'contact_family',
+    sourceFindingId: visibleFinding.id,
   },
   {
     id: 'safety',
@@ -114,11 +123,12 @@ const tasks: CareTask[] = [
   },
 ];
 
-runCase('family task disclosure excludes unrelated private tasks', () => {
+runCase('family task disclosure excludes unlinked and private tasks', () => {
   const visible = familyVisibleTasks(tasks, [visibleFinding]);
   const ids = visible.map((task) => task.id);
   assert(!ids.includes('med'), 'medication task must remain elder-only');
-  assert(ids.includes('family'), 'contact-family task should remain visible');
+  assert(!ids.includes('family'), 'unlinked contact-family task must fail closed');
+  assert(ids.includes('visible-family-linked'), 'contact-family task linked to a visible finding should remain visible');
   assert(ids.includes('safety'), 'generic safety-check task should remain visible');
   assert(ids.includes('visible-linked'), 'task linked to a visible finding should remain visible');
   assert(!ids.includes('private-safety'), 'safety task linked to a private finding must stay hidden');
