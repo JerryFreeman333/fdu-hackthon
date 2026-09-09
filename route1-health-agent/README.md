@@ -1,4 +1,4 @@
-# 安康 Agent（A1 路线一：先认识老人）
+# 安康 Agent（A1 路线一路：先认识老人）
 
 > 不是把老人变成“健康数据”，而是让 Agent 逐步认识一个老人平时是什么状态，只在出现有意义的变化时帮助他，并把真正需要家属介入的事情说明白。
 
@@ -133,7 +133,7 @@ Baseline / Detection / Person Twin
 ```text
 private      → 只保留给老人自己的上下文
 family_ok    → 在当前授权下可用于必要的家属协同
-no_record   → 该次对话不写入持久健康事件/家属视图
+no_record    → 该次对话不写入持久健康事件/家属视图
 ```
 
 家属通知会经过 `familySharing` 和 `familyEligible` 双重过滤；家属详细变化与周报进一步要求 `familySharing === granted`。这样“系统知道”与“家属应该知道”不是同一件事。
@@ -204,6 +204,8 @@ npm install
 npm run dev
 npm test
 ```
+
+CI 使用锁定的 `package-lock.json`、Prettier 3.5.3 格式检查以及 typecheck、测试、生产构建和安全检查作为合并门槛。
 
 ### 可选：接入真实 LLM 服务端
 
