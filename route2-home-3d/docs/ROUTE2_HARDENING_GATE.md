@@ -47,11 +47,15 @@
 
 `on-route` 关系代表“已经有证据确认与当前路线相关的危险项”，不能声称覆盖空间中的所有危险物。
 
+当路线没有显式 `hazardIds` 时，风险层必须将路线危险覆盖标记为 `unknown`，不得退回使用全屋同类危险物列表推断“这条路线存在该危险”。
+
 ## P1-02 Risk Evidence Lineage
 
 每一个 Risk 必须能回溯到：
 
 `Risk → evidence object/relation → snapshot/version → capture/reconstruction provenance`
+
+Person × Home 风险结果现在通过 `evidenceRefs` 显式记录 Person Twin、Home Twin 版本以及具体 Home Object。
 
 每一个 Action 必须能回溯到：
 
@@ -77,6 +81,7 @@
 3. rescan provenance mismatch tests
 4. risk-to-evidence lineage tests
 5. demo-source cannot masquerade as real-source tests
+6. route hazard coverage tests
 
 ## 真人 UI Gate
 
@@ -86,6 +91,8 @@
 2. 没有尺度标定时，用户界面不出现米制距离。
 3. 复扫使用旧版本结果时，不会自动把当前风险标为已解决。
 4. 家属看到的每条建议都能说明“哪里、什么风险、为什么现在行动”。
+5. 路线上没有明确 hazard evidence 时，UI 不把全屋危险物冒充为该路线危险物。
+6. 风险详情可以定位到具体 Home Object 与 snapshot version。
 
 ## Merge Gate
 
