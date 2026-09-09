@@ -9,15 +9,17 @@ export function familyVisibleFindings(findings: Finding[]): Finding[] {
   );
 }
 
-/** 家属只处理与可共享安全发现直接相关的任务，避免把老人私域任务变成家属待办。 */
+/**
+ * 家属任务也必须通过同一条披露边界。
+ * 与私密 finding 关联的 safety_check 不能仅凭任务类型被家属看到；
+ * 无 sourceFindingId 的 safety_check 才可作为不泄露具体病情的通用安全协同任务展示。
+ */
 export function familyVisibleTasks(tasks: CareTask[], visibleFindings: Finding[]): CareTask[] {
   const visibleFindingIds = new Set(visibleFindings.map((finding) => finding.id));
-  return tasks.filter(
-    (task) =>
-      task.status !== 'completed' &&
-      task.status !== 'dismissed' &&
-      (task.kind === 'contact_family' ||
-        task.kind === 'safety_check' ||
-        (typeof task.sourceFindingId === 'string' && visibleFindingIds.has(task.sourceFindingId))),
-  );
+  return tasks.filter((task) => {
+    if (task.status === 'completed' || task.status === 'dismissed') return false;
+    if (task.kind === 'contact_family') return true;
+    if (typeof task.sourceFindingId === 'string') return visibleFindingIds.has(task.sourceFindingId);
+    return task.kind === 'safety_check';
+  });
 }
