@@ -28,6 +28,17 @@ export interface Vec3 {
   z: number;
 }
 
+export interface HomeObjectEvidence {
+  imageIds?: string[];
+  annotationId?: string;
+}
+
+export interface HomeObjectLocalization {
+  supportPointCount?: number;
+  supportingCandidates?: number;
+  coordinateFrame?: string;
+}
+
 export interface HomeObject {
   id: string;
   category: HomeObjectCategory;
@@ -37,10 +48,8 @@ export interface HomeObject {
   confidence: number;
   source: ObjectSource;
   observedAt: string;
-  evidence?: {
-    imageIds?: string[];
-    annotationId?: string;
-  };
+  evidence?: HomeObjectEvidence;
+  localization?: HomeObjectLocalization;
 }
 
 export interface HomeRoom {
@@ -68,11 +77,20 @@ export interface HomeRoute {
   source: ObjectSource;
 }
 
+export interface HomeTwinProvenance {
+  captureId?: string;
+  reconstructionId?: string;
+  pipelineVersion?: string;
+  captureSource?: 'browser-upload' | 'local-pipeline' | 'server-pipeline' | 'demo';
+  notes?: string;
+}
+
 export interface HomeTwinSnapshot {
   homeId: string;
   version: number;
   capturedAt: string;
   scaleConfidence: number;
+  provenance?: HomeTwinProvenance;
   rooms: HomeRoom[];
   objects: HomeObject[];
   relations: SpatialRelation[];
@@ -90,7 +108,7 @@ export function validateHomeTwin(snapshot: HomeTwinSnapshot): string[] {
   if (!snapshot.capturedAt) errors.push('capturedAt is required');
   if (!isConfidence(snapshot.scaleConfidence)) errors.push('scaleConfidence must be between 0 and 1');
 
-  const roomIds = new Set(snapshot.rooms.map(r => r.id));
+  const roomIds = new Set(snapshot.rooms.map((r) => r.id));
   const objectIds = new Set<string>();
   for (const obj of snapshot.objects) {
     if (objectIds.has(obj.id)) errors.push(`duplicate object id: ${obj.id}`);
@@ -100,6 +118,9 @@ export function validateHomeTwin(snapshot: HomeTwinSnapshot): string[] {
     if (!Number.isFinite(obj.position.x) || !Number.isFinite(obj.position.y) || !Number.isFinite(obj.position.z)) {
       errors.push(`object ${obj.id} has invalid position`);
     }
+    if (obj.localization?.supportPointCount !== undefined && obj.localization.supportPointCount < 0) {
+      errors.push(`object ${obj.id} has invalid supportPointCount`);
+    }
   }
 
   for (const relation of snapshot.relations) {
@@ -107,7 +128,9 @@ export function validateHomeTwin(snapshot: HomeTwinSnapshot): string[] {
     if (!objectIds.has(relation.objectId)) errors.push(`relation object missing: ${relation.objectId}`);
     if (relation.subjectId === relation.objectId) errors.push(`relation self-reference: ${relation.subjectId}`);
     if (!isConfidence(relation.confidence)) errors.push(`relation ${relation.subjectId}->${relation.objectId} has invalid confidence`);
-    if (!['vision', 'manual', 'inferred', 'demo'].includes(relation.source)) errors.push(`relation ${relation.subjectId}->${relation.objectId} has invalid source`);
+    if (!['vision', 'manual', 'inferred', 'demo'].includes(relation.source)) {
+      errors.push(`relation ${relation.subjectId}->${relation.objectId} has invalid source`);
+    }
   }
 
   for (const route of snapshot.routes) {

@@ -3,7 +3,7 @@ import './style.css';
 import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin } from './hometwin/model';
-import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
+import { acceptRescanActionPlan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
 import { submitRescanBatch, waitForRescanJob, type RescanSubmitResponse } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
@@ -15,7 +15,6 @@ import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
-
 
 async function hasRealModel(): Promise<boolean> {
   try {
@@ -47,6 +46,8 @@ async function main() {
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
+  let rescanInFlight = false;
+  let rescanGeneration = 0;
 
   const badge = document.getElementById('scene-badge')!;
   badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
@@ -83,15 +84,12 @@ async function main() {
   const clickables = markers.objects;
   const domEl = () => (app as any).renderer?.domElement ?? (app as any).gsViewer?.renderer?.domElement;
   let downXY: [number, number] | null = null;
-  window.addEventListener('pointerdown', (e) => {
-    downXY = [e.clientX, e.clientY];
-  });
+  window.addEventListener('pointerdown', (e) => { downXY = [e.clientX, e.clientY]; });
   window.addEventListener('pointerup', (e) => {
     if (!downXY) return;
     const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]);
     downXY = null;
-    if (moved > 6) return;
-    if (e.target !== domEl()) return;
+    if (moved > 6 || e.target !== domEl()) return;
     const hit = app.pick(e.clientX, e.clientY, clickables)[0];
     if (!hit) return;
     const id = markers.idOf(hit.object);
@@ -110,10 +108,7 @@ async function main() {
   const pathVisuals = data.paths
     .filter((p) => mode === 'demo' || (p.realPoints && p.realPoints.length >= 2))
     .map((p) => createPathVisual(p, mode, (cb) => app.onUpdate(cb)));
-  pathVisuals.forEach((v) => {
-    v.group.visible = false;
-    app.scene.add(v.group);
-  });
+  pathVisuals.forEach((v) => { v.group.visible = false; app.scene.add(v.group); });
   let dangerZones: THREE.Group | null = null;
 
   function selectPath(p: PathItem | null) {
@@ -136,15 +131,9 @@ async function main() {
     app.setNight(p.mode === 'night');
     markers.filter(new Set(p.hazardIds));
     const posMap = new Map<string, THREE.Vector3>();
-    p.hazardIds.forEach((id) => {
-      const q = markers.positionOf(id);
-      if (q) posMap.set(id, q);
-    });
+    p.hazardIds.forEach((id) => { const q = markers.positionOf(id); if (q) posMap.set(id, q); });
     const zones = highlightDangerZones(p, posMap, mode);
-    if (zones) {
-      dangerZones = zones;
-      app.scene.add(zones);
-    }
+    if (zones) { dangerZones = zones; app.scene.add(zones); }
     const names = p.hazardIds.map((id) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
     setHint(`${p.title} — 途经风险: ${names || '暂无已标注风险'}`);
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
@@ -153,11 +142,11 @@ async function main() {
   let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void };
 
   async function handleRescanFiles(files: File[]): Promise<void> {
+    if (rescanInFlight) { setHint('复扫正在进行，本次不会重复提交。'); return; }
     const input = prepareRescanFiles(files);
-    if (!input) {
-      setHint('没有识别到支持的 JPG/PNG/WebP/HEIC/HEIF 图片或 MP4/WebM/MOV/M4V 视频。');
-      return;
-    }
+    if (!input) { setHint('没有识别到支持的 JPG/PNG/WebP/HEIC/HEIF 图片或 MP4/WebM/MOV/M4V 视频。'); return; }
+    rescanInFlight = true;
+    const generation = ++rescanGeneration;
     lastRescanInput = input;
     const batch = input.batch;
     setHint(`已选择 ${batch.files.length} 个复扫文件。正在提交到 Home Twin…`);
@@ -168,14 +157,17 @@ async function main() {
         if (!result.jobId) throw new Error('复扫服务未返回 jobId');
         result = await waitForRescanJob(result.jobId, { endpoint: RESCAN_ENDPOINT, maxAttempts: 90, intervalMs: 1000 });
       }
-      if (result.status === 'failed') {
-        throw new Error(result.message ?? '复扫处理失败');
-      }
+      if (generation !== rescanGeneration) throw new Error('复扫响应已过期，拒绝覆盖当前风险/行动状态');
+      if (result.status === 'failed') throw new Error(result.message ?? '复扫处理失败');
       if (result.actionPlan) {
         const parsed = parseHomeSafetyActionPlan(result.actionPlan);
-        if (parsed) currentActionPlan = parsed;
-      } else if (result.latestRiskIds && currentActionPlan) {
-        currentActionPlan = applyRescan(currentActionPlan, result.latestRiskIds);
+        if (!parsed?.provenance?.current) throw new Error('复扫行动计划缺少当前 provenance，拒绝自动更新风险状态');
+        if (!currentActionPlan) throw new Error('缺少当前行动计划基线，拒绝接受复扫结果');
+        const acceptance = acceptRescanActionPlan(currentActionPlan, parsed);
+        if (!acceptance.accepted) throw new Error(`复扫结果不是当前基线的可信后继：${acceptance.reason}`);
+        currentActionPlan = parsed;
+      } else {
+        throw new Error('复扫服务未返回可验证的行动计划，拒绝仅凭 riskId 自动关闭历史风险');
       }
       panelController.updateActionPlan(currentActionPlan);
       setHint(result.message ?? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`);
@@ -185,10 +177,12 @@ async function main() {
     } finally {
       revokeRescanPreview(lastRescanInput);
       lastRescanInput = null;
+      rescanInFlight = false;
     }
   }
 
   function onRescan(): void {
+    if (rescanInFlight) { setHint('复扫正在进行，请等待当前复扫完成。'); return; }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime,video/x-m4v';
@@ -208,10 +202,7 @@ async function main() {
     onSelectPath: selectPath,
     onSelectItem(item: ItemInfo) {
       const pos = mode === 'demo' ? item.demoPos : item.realPos;
-      if (!pos) {
-        setHint(`「${item.title}」尚未完成真实空间标定，当前不会伪造位置。`);
-        return;
-      }
+      if (!pos) { setHint(`「${item.title}」尚未完成真实空间标定，当前不会伪造位置。`); return; }
       const p = new THREE.Vector3(pos[0], pos[1], pos[2]);
       rings.pulseAt(p, 0x53d8ff);
       app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);
@@ -227,8 +218,4 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error(err);
-  const message = err instanceof Error ? err.message : String(err);
-  setHint('初始化失败: ' + message);
-});
+main().catch((err) => { console.error(err); setHint('初始化失败: ' + (err instanceof Error ? err.message : String(err))); });
