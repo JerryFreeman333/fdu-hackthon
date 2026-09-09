@@ -125,6 +125,20 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     [sharedFindingIds, sharedFamilyEventIds],
   );
 
+  const consumeSharedFindingIds = useCallback(
+    (findingIds: string[]) => {
+      void claimOneTimeShares(findingIds, []);
+    },
+    [claimOneTimeShares],
+  );
+
+  const consumeSharedFamilyEventIds = useCallback(
+    (familyEventIds: string[]) => {
+      void claimOneTimeShares([], familyEventIds);
+    },
+    [claimOneTimeShares],
+  );
+
   return {
     familySharing,
     consentUpdatedAt,
@@ -141,5 +155,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     shareFindingIds,
     shareFamilyEventIds,
     claimOneTimeShares,
+    consumeSharedFindingIds,
+    consumeSharedFamilyEventIds,
   };
 }
