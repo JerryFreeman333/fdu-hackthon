@@ -36,6 +36,37 @@ export function createTaskFromFinding(finding: Finding, today: string): CareTask
   };
 }
 
+/**
+ * Medication checks are keyed by calendar day, not by each utterance.
+ * Once a task for the same day exists, repeated mentions must never create a
+ * second object with the same React key. This remains true even after the task
+ * is completed: a later reminder reuses the existing task rather than cloning it.
+ */
+export function ensureMedicationCheckTask(
+  tasks: CareTask[],
+  today: string,
+  createdAt: string,
+): CareTask[] {
+  const taskId = `task-medication-${today}`;
+  if (tasks.some((task) => task.id === taskId)) return tasks;
+  if (tasks.some((task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending')) {
+    return tasks;
+  }
+
+  return [
+    ...tasks,
+    {
+      id: taskId,
+      title: '确认今天是否按原来的医生方案服药',
+      description: '不要自行加倍或调整药量，只确认并按原方案处理。',
+      dueDate: today,
+      status: 'pending',
+      createdAt,
+      kind: 'medication_check',
+    },
+  ];
+}
+
 export function updateTaskStatus(task: CareTask, status: TaskStatus, completionNote?: string): CareTask {
   const next: CareTask = { ...task, status };
   if (status === 'completed') next.completionNote = completionNote ?? '已完成';
