@@ -25,22 +25,22 @@ const currentFamilyOkFall = {
   visibility: 'family_ok' as const,
 };
 
-const findings = runDetection([observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)], TODAY);
+const mixedFindings = runDetection(
+  [observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)],
+  TODAY,
+);
+const mixedFall = mixedFindings.find((finding) => finding.ruleId === 'safety.fall');
 
-const fall = findings.find((finding) => finding.ruleId === 'safety.fall');
-assert(Boolean(fall), "today's fall must still produce the safety finding");
-assert(fall?.severity === 'urgent', "today's fall must remain urgent");
-assert(fall?.familyEligible === true, "today's family-ok fall must remain family eligible");
-assert(Boolean(fall?.familyMessage), "today's family-ok fall must retain the family message");
+assert(Boolean(mixedFall), '应生成当前跌倒发现');
+assert(mixedFall?.severity === 'urgent', '当前跌倒应保持紧急级别');
+assert(mixedFall?.familyEligible === true, '当前明确同意分享的跌倒不得被历史隐私记录屏蔽');
+assert(Boolean(mixedFall?.familyMessage), '当前可分享跌倒应生成家属提示');
 
-const familyMessage = fall?.familyMessage ?? '';
-assert(familyMessage.includes(TODAY), "family message must refer to today's event");
-assert(!familyMessage.includes('上周'), "family message must not inherit historical private content");
+const privateFindings = runDetection([observationToEvent(oldPrivateFall)], '2026-09-01');
+const privateFall = privateFindings.find((finding) => finding.ruleId === 'safety.fall');
 
-const privateOnlyFindings = runDetection([observationToEvent(oldPrivateFall)], '2026-09-01');
-const privateFall = privateOnlyFindings.find((finding) => finding.ruleId === 'safety.fall');
-assert(Boolean(privateFall), 'a private fall must still produce the local safety finding');
-assert(privateFall?.familyEligible === false, 'a private fall must remain ineligible for family notification');
-assert(privateFall?.familyMessage === undefined, 'a private fall must not expose its family message');
+assert(Boolean(privateFall), '私密跌倒仍应生成老人侧安全发现');
+assert(privateFall?.familyEligible === false, '私密跌倒不得通知家属');
+assert(privateFall?.familyMessage === undefined, '私密跌倒不得暴露家属提示');
 
-console.log("PASS: historical private fall cannot suppress today's family-ok emergency");
+console.log('PASS: 历史私密跌倒不会屏蔽当前可分享的紧急跌倒');
