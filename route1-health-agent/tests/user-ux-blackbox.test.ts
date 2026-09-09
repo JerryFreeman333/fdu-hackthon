@@ -61,9 +61,9 @@ runCase('self persistent sharing receipt names the exact shared facts', () => {
   assert(text.includes('只限必要的健康变化'), 'persistent receipt should preserve scope boundary');
 });
 
-runCase('private sharing produces no self-sharing receipt', () => {
+runCase('private self-sharing receipt stays empty', () => {
   const text = buildSelfSharingAcknowledgement('头晕', 'private');
-  assert(text === '按您现在的授权，家属可以看到的是：头晕。只限必要的健康变化。' || text !== '', 'helper itself requires a concrete share mode');
+  assert(text === '', 'private mode must never produce a self-sharing receipt');
 });
 
 runCase('ambiguous family pronoun asks rather than silently guessing', () => {
