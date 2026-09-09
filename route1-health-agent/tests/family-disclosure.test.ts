@@ -32,7 +32,10 @@ const baseFinding: Finding = {
 runCase('family disclosure is fail-closed when familyEligible is omitted', () => {
   const finding = { ...baseFinding, familyEligible: undefined };
   assert(familyVisibleFindings([finding]).length === 0, 'undefined family eligibility must stay hidden');
-  assert(collectFamilyNotifications([finding], 'granted').length === 0, 'undefined eligibility must never notify family');
+  assert(
+    collectFamilyNotifications([finding], 'granted').length === 0,
+    'undefined eligibility must never notify family',
+  );
 });
 
 runCase('watch-level findings remain elder-only', () => {
@@ -44,12 +47,20 @@ runCase('only explicitly shareable alert and urgent findings are disclosed', () 
   const urgent = { ...baseFinding, id: 'urgent', severity: 'urgent' as const };
   const alert = { ...baseFinding, id: 'alert', severity: 'alert' as const };
   const info = { ...baseFinding, id: 'info', severity: 'info' as const };
-  assert(familyVisibleFindings([urgent, alert, info]).length === 2, 'only alert and urgent findings should be shared');
+  assert(
+    familyVisibleFindings([urgent, alert, info]).length === 2,
+    'only alert and urgent findings should be shared',
+  );
 });
 
 const visibleFinding: Finding = { ...baseFinding, id: 'visible' };
 const privateFinding: Finding = { ...baseFinding, id: 'private', familyEligible: false, severity: 'urgent' };
-const unspecifiedFinding: Finding = { ...baseFinding, id: 'unspecified', familyEligible: undefined, severity: 'urgent' };
+const unspecifiedFinding: Finding = {
+  ...baseFinding,
+  id: 'unspecified',
+  familyEligible: undefined,
+  severity: 'urgent',
+};
 
 runCase('non-shareable urgent findings never create family contact tasks', () => {
   const task = createTaskFromFinding(unspecifiedFinding, '2026-09-09');
@@ -120,7 +131,7 @@ const tasks: CareTask[] = [
   {
     id: 'visible-linked',
     title: '跟进变化',
-    description: '与可共享发现关联',
+    description: '与可共享 finding 关联',
     dueDate: '2026-09-09',
     status: 'pending',
     createdAt: '2026-09-09T08:00:00Z',
@@ -134,7 +145,10 @@ runCase('family task disclosure excludes unlinked and private tasks', () => {
   const ids = visible.map((task) => task.id);
   assert(!ids.includes('med'), 'medication task must remain elder-only');
   assert(!ids.includes('family'), 'unlinked contact-family task must fail closed');
-  assert(ids.includes('visible-family-linked'), 'contact-family task linked to a visible finding should remain visible');
+  assert(
+    ids.includes('visible-family-linked'),
+    'contact-family task linked to a visible finding should remain visible',
+  );
   assert(ids.includes('safety'), 'generic safety-check task should remain visible');
   assert(ids.includes('visible-linked'), 'task linked to a visible finding should remain visible');
   assert(!ids.includes('private-safety'), 'safety task linked to a private finding must stay hidden');
@@ -142,19 +156,34 @@ runCase('family task disclosure excludes unlinked and private tasks', () => {
 });
 
 runCase('revoked family sharing hides every family task, including generic safety tasks', () => {
-  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'granted').length === 3, 'granted sharing should expose only three allowed tasks');
-  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'ask').length === 0, 'ask state must expose no family tasks');
-  assert(familyVisibleTasksForSharing(tasks, [visibleFinding], 'denied').length === 0, 'denied state must expose no family tasks');
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'granted').length === 3,
+    'granted sharing should expose only three allowed tasks',
+  );
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'ask').length === 0,
+    'ask state must expose no family tasks',
+  );
+  assert(
+    familyVisibleTasksForSharing(tasks, [visibleFinding], 'denied').length === 0,
+    'denied state must expose no family tasks',
+  );
 });
 
 runCase('revocation cannot be bypassed by a stale visible finding list', () => {
   const staleVisibleFindings = [visibleFinding];
-  assert(familyVisibleTasksForSharing(tasks, staleVisibleFindings, 'denied').length === 0, 'denied state must override stale derived findings');
+  assert(
+    familyVisibleTasksForSharing(tasks, staleVisibleFindings, 'denied').length === 0,
+    'denied state must override stale derived findings',
+  );
 });
 
 runCase('one-time share consumption removes only consumed ids', () => {
   const result = consumeOneTimeShareIds(['a', 'b', 'c'], ['b']);
-  assert(result.length === 2 && result[0] === 'a' && result[1] === 'c', 'unrelated share ids must survive consumption');
+  assert(
+    result.length === 2 && result[0] === 'a' && result[1] === 'c',
+    'unrelated share ids must survive consumption',
+  );
 });
 
 console.log('PASS: family minimum-necessary disclosure boundary');
