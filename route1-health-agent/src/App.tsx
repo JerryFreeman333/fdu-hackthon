@@ -77,12 +77,22 @@ export default function App() {
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations, measurements } = healthData;
   const familyRecords = useMemo(
-    () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
-    [measurements],
+    () =>
+      familySharing === 'granted'
+        ? measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private'))
+        : [],
+    [measurements, familySharing],
   );
   const visibleFamilyFacts = useMemo(
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
+  );
+  const familyObservations = useMemo(
+    () =>
+      familySharing === 'granted'
+        ? observations.filter((observation) => observation.visibility !== 'private')
+        : [],
+    [observations, familySharing],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
@@ -221,7 +231,7 @@ export default function App() {
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
           records={familyRecords}
-          observations={observations}
+          observations={familyObservations}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onContactElder={contactElder}
