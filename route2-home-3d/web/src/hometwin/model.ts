@@ -54,6 +54,7 @@ export interface SpatialRelation {
   relation: RelationType;
   objectId: string;
   confidence: number;
+  source: ObjectSource;
 }
 
 export interface HomeRoute {
@@ -106,6 +107,7 @@ export function validateHomeTwin(snapshot: HomeTwinSnapshot): string[] {
     if (!objectIds.has(relation.objectId)) errors.push(`relation object missing: ${relation.objectId}`);
     if (relation.subjectId === relation.objectId) errors.push(`relation self-reference: ${relation.subjectId}`);
     if (!isConfidence(relation.confidence)) errors.push(`relation ${relation.subjectId}->${relation.objectId} has invalid confidence`);
+    if (!['vision', 'manual', 'inferred', 'demo'].includes(relation.source)) errors.push(`relation ${relation.subjectId}->${relation.objectId} has invalid source`);
   }
 
   for (const route of snapshot.routes) {
