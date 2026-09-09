@@ -77,7 +77,10 @@ runCase('correction changes the downstream detection state instead of leaving a 
   const text = '我今天摔了一下';
   const event = selfObservation(text);
   const before = runDetection([event], TODAY);
-  assert(before.some((finding) => finding.ruleId === 'safety.fall'), '更正前应存在跌倒发现');
+  assert(
+    before.some((finding) => finding.ruleId === 'safety.fall'),
+    '更正前应存在跌倒发现',
+  );
 
   const after = removeCorrectedChatEvents([event], [claimIdForMessage(text, 0)]);
   assert(after.length === 0, '对应 claim 的事件应全部撤销');

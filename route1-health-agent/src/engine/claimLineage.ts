@@ -28,10 +28,7 @@ export function removeCorrectedChatEvents(events: HealthEvent[], claimIds: strin
 }
 
 /** Remove only family events attached to the corrected claim ids. */
-export function removeCorrectedFamilyEvents(
-  events: FamilyHealthEvent[],
-  claimIds: string[],
-): FamilyHealthEvent[] {
+export function removeCorrectedFamilyEvents(events: FamilyHealthEvent[], claimIds: string[]): FamilyHealthEvent[] {
   if (claimIds.length === 0) return events;
   const ids = new Set(claimIds);
   return events.filter((event) => !ids.has(event.claimId ?? ''));

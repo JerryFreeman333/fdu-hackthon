@@ -22,9 +22,7 @@ runCase('口语化“我觉得他……”不会归到本人', () => {
 });
 
 runCase('已有明确家属上下文时第三人称可以延续主体', () => {
-  const messages = [
-    { id: 'm1', role: 'elder' as const, text: '我爸今天走路不稳', time: '09-08 09:00' },
-  ];
+  const messages = [{ id: 'm1', role: 'elder' as const, text: '我爸今天走路不稳', time: '09-08 09:00' }];
   const input = understandElderInput('我觉得他喘得厉害', TODAY, messages);
   assert(input.claims.length === 1, '应识别第三人称事实');
   assert(input.claims[0].subject === 'father', '应继承上一条明确家属主体');

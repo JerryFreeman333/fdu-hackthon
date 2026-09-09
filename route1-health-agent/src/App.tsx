@@ -89,9 +89,7 @@ export default function App() {
   );
   const familyObservations = useMemo(
     () =>
-      familySharing === 'granted'
-        ? observations.filter((observation) => observation.visibility !== 'private')
-        : [],
+      familySharing === 'granted' ? observations.filter((observation) => observation.visibility !== 'private') : [],
     [observations, familySharing],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);

@@ -59,10 +59,10 @@ runCase('correction removes only chat events attached to the corrected claims', 
     },
     source: 'chat',
   };
-  const removed = removeCorrectedChatEvents([keepMeasurement, removeMeasurement, removeObservation], [
-    firstClaimId,
-    secondClaimId,
-  ]);
+  const removed = removeCorrectedChatEvents(
+    [keepMeasurement, removeMeasurement, removeObservation],
+    [firstClaimId, secondClaimId],
+  );
 
   assert(removed.length === 1, 'only unrelated chat events should remain');
   assert(

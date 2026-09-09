@@ -28,10 +28,7 @@ runCase('persistent family events disappear immediately after consent is revoked
     visibleFamilyEvents([baseEvent], 'granted').length === 1,
     'granted consent should expose persistent family events',
   );
-  assert(
-    visibleFamilyEvents([baseEvent], 'denied').length === 0,
-    'revoked consent must hide persistent family events',
-  );
+  assert(visibleFamilyEvents([baseEvent], 'denied').length === 0, 'revoked consent must hide persistent family events');
 });
 
 runCase('one-time family events require the explicit event id even when persistent sharing is denied', () => {
@@ -65,8 +62,5 @@ runCase('revocation plus cleared one-time ids removes previously explicit family
     visibleFamilyEvents([oneTimeEvent], 'denied', ['family-once-2']).length === 1,
     'the explicit share is visible before revocation state is cleared',
   );
-  assert(
-    visibleFamilyEvents([oneTimeEvent], 'denied', []).length === 0,
-    'cleared ids make the event disappear',
-  );
+  assert(visibleFamilyEvents([oneTimeEvent], 'denied', []).length === 0, 'cleared ids make the event disappear');
 });

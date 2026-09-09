@@ -28,11 +28,7 @@ import {
   understandElderInput,
   type StructuredElderInput,
 } from '../engine/understanding';
-import {
-  claimIdForMessage,
-  removeCorrectedChatEvents,
-  removeCorrectedFamilyEvents,
-} from '../engine/claimLineage';
+import { claimIdForMessage, removeCorrectedChatEvents, removeCorrectedFamilyEvents } from '../engine/claimLineage';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT

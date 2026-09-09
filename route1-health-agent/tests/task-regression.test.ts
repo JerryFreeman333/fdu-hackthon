@@ -58,19 +58,9 @@ async function main(): Promise<void> {
     kind: 'medication_check',
     completionNote: '已完成',
   };
-  const afterRepeat = ensureMedicationCheckTask(
-    [completedMedicationTask],
-    '2026-09-08',
-    '2026-09-08T12:00:00',
-  );
-  assert(
-    afterRepeat.length === 1,
-    'a completed medication check must not be duplicated later the same day',
-  );
-  assert(
-    afterRepeat[0]?.id === 'task-medication-2026-09-08',
-    'medication task id must remain stable for the day',
-  );
+  const afterRepeat = ensureMedicationCheckTask([completedMedicationTask], '2026-09-08', '2026-09-08T12:00:00');
+  assert(afterRepeat.length === 1, 'a completed medication check must not be duplicated later the same day');
+  assert(afterRepeat[0]?.id === 'task-medication-2026-09-08', 'medication task id must remain stable for the day');
 
   const withPending = ensureMedicationCheckTask([], '2026-09-08', '2026-09-08T09:00:00');
   const withRepeat = ensureMedicationCheckTask(withPending, '2026-09-08', '2026-09-08T10:00:00');
