@@ -15,7 +15,6 @@ export interface RescanResult {
 function parseTopLevelProvenance(value: unknown): RescanResult['provenance'] | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object') return undefined;
-  const raw = value as Record<string, unknown>;
   const synthetic = {
     schemaVersion: 1,
     type: 'person-home-action-plan',
@@ -44,8 +43,9 @@ export function parseRescanResult(value: unknown): RescanResult | null {
   if (raw.schemaVersion !== 1 || raw.type !== 'home-twin-rescan-result' ||
       !['queued', 'processing', 'completed', 'failed'].includes(raw.status as string)) return null;
 
-  const actionPlan = raw.actionPlan !== undefined ? parseHomeSafetyActionPlan(raw.actionPlan) : undefined;
-  if (raw.actionPlan !== undefined && !actionPlan) return null;
+  const parsedActionPlan = raw.actionPlan !== undefined ? parseHomeSafetyActionPlan(raw.actionPlan) : undefined;
+  if (raw.actionPlan !== undefined && !parsedActionPlan) return null;
+  const actionPlan: HomeSafetyActionPlan | undefined = parsedActionPlan ?? undefined;
 
   const topLevelProvenance = parseTopLevelProvenance(raw.provenance);
   if (raw.provenance !== undefined && !topLevelProvenance) return null;
