@@ -97,10 +97,10 @@ export function parseHomeSafetyActionPlan(value: unknown): HomeSafetyActionPlan 
     const status = a.status as HomeActionStatus;
 
     if (status === 'resolved') {
-      if (!planProvenance?.current || !resolvedAtProvenance) return null;
-      if (!sameProvenance(planProvenance.current, resolvedAtProvenance)) return null;
+      if (!current || !resolvedAtProvenance) return null;
+      if (!sameProvenance(current, resolvedAtProvenance)) return null;
     }
-    if (actionProvenance && planProvenance?.current && !sameProvenance(actionProvenance, planProvenance.current)) return null;
+    if (actionProvenance && current && !sameProvenance(actionProvenance, current)) return null;
 
     actions.push({
       id: a.id, riskId: a.riskId, kind: a.kind as HomeSafetyAction['kind'],
@@ -112,7 +112,7 @@ export function parseHomeSafetyActionPlan(value: unknown): HomeSafetyActionPlan 
     });
   }
   if (actions.length !== raw.actions.length) return null;
-  if (actions.some((action) => action.status === 'resolved' && action.requiresRescan) && !planProvenance?.current) return null;
+  if (actions.some((action) => action.status === 'resolved' && action.requiresRescan) && !current) return null;
 
   return {
     schemaVersion: 1, type: 'person-home-action-plan', status: raw.status as HomeSafetyActionPlan['status'],
@@ -133,7 +133,8 @@ export function acceptRescanActionPlan(
   if (candidate.homeVersion <= previous.homeVersion) return { accepted: false, reason: 'candidate snapshot 不是更新版本' };
   if (candidate.captureId === previous.captureId) return { accepted: false, reason: 'capture did not change' };
   if (candidate.reconstructionId === previous.reconstructionId) return { accepted: false, reason: 'reconstruction did not change' };
-  if (candidatePlan.provenance?.previous && !sameProvenance(candidatePlan.provenance.previous, previous)) {
+  const candidatePrevious = candidatePlan.provenance?.previous;
+  if (candidatePrevious && !sameProvenance(candidatePrevious, previous)) {
     return { accepted: false, reason: 'candidate previous provenance does not match current snapshot' };
   }
 
