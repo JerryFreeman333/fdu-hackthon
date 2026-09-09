@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "source": "route1-person-twin",
+  "asOf": "2026-09-09",
+  "activity": "stable",
+  "mobility": "declining",
+  "sleep": "stable",
+  "nightActivity": "declining",
+  "recentSymptoms": ["dizziness"],
+  "functionalProfile": {
+    "mobility": "uses_cane",
+    "usesCane": true,
+    "nightVision": "reduced",
+    "cognition": "stable"
+  },
+  "sharing": {
+    "familySharing": "granted",
+    "privacyScope": "family_ok"
+  }
+}
