@@ -1,4 +1,4 @@
-﻿# 路线二 —— 一键环境搭建：克隆官方 gaussian-splatting + 安装 Python 依赖 + 编译 CUDA 子模块
+# 路线二 —— 一键环境搭建：克隆 official gaussian-splatting + 安装 Python 依赖 + 编译 CUDA 子模块
 # 前置: Python(含 PyTorch+CUDA)、CUDA Toolkit(nvcc)、VS 2022 Build Tools(C++ 工作负载)
 # 用法: powershell -ExecutionPolicy Bypass -File scripts\01_setup.ps1
 $ErrorActionPreference = 'Stop'
@@ -7,7 +7,7 @@ $external = "$repoRoot\pipeline\external"
 $gsDir = "$external\gaussian-splatting"
 New-Item -ItemType Directory -Force -Path $external | Out-Null
 
-Write-Host "===== [1/3] 克隆官方 gaussian-splatting =====" -ForegroundColor Cyan
+Write-Host "===== [1/4] 克隆官方 gaussian-splatting =====" -ForegroundColor Cyan
 if (Test-Path "$gsDir\train.py") {
     Write-Host "已存在，跳过: $gsDir"
 } else {
@@ -31,13 +31,17 @@ $vcvars = Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\Bui
 if (-not $vcvars) { throw "未找到 vcvars64.bat，请先安装 VS 2022 Build Tools (C++ 工作负载)" }
 Write-Host "vcvars64   = $($vcvars.FullName)"
 
-Write-Host "===== [2/3] 安装 Python 依赖 =====" -ForegroundColor Cyan
+Write-Host "===== [2/4] 安装 3DGS + 视觉语义依赖 =====" -ForegroundColor Cyan
 Push-Location $gsDir
 pip install -q plyfile tqdm torch torchaudio --no-input
-if ($LASTEXITCODE -ne 0) { Pop-Location; throw "pip 依赖安装失败" }
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "3DGS Python 依赖安装失败" }
+Pop-Location
+pip install -q -r "$repoRoot\pipeline\semantic\requirements.txt" --no-input
+if ($LASTEXITCODE -ne 0) { throw "语义识别依赖安装失败" }
 
-Write-Host "===== [3/3] 编译 CUDA 子模块（首次约 3~10 分钟） =====" -ForegroundColor Cyan
+Write-Host "===== [3/4] 编译 CUDA 子模块（首次约 3~10 分钟） =====" -ForegroundColor Cyan
 # 在 vcvars64 环境中编译，确保 cl.exe 可用
+Push-Location $gsDir
 foreach ($sub in @("submodules\diff-gaussian-rasterization", "submodules\simple-knn", "submodules\fused-ssim")) {
     if (-not (Test-Path $sub)) { Write-Host "跳过不存在的子模块: $sub"; continue }
     Write-Host ">>> 编译 $sub"
@@ -47,6 +51,7 @@ foreach ($sub in @("submodules\diff-gaussian-rasterization", "submodules\simple-
 }
 Pop-Location
 
-python -c "import diff_gaussian_rasterization, simple_knn; print('CUDA 子模块安装成功')" 
-if ($LASTEXITCODE -ne 0) { throw "子模块导入验证失败" }
+Write-Host "===== [4/4] 运行时依赖验证 =====" -ForegroundColor Cyan
+python -c "import torch; assert torch.cuda.is_available(), 'PyTorch CUDA 不可用'; import diff_gaussian_rasterization, simple_knn; import ultralytics; print('CUDA + 3DGS + YOLO-World runtime ok')"
+if ($LASTEXITCODE -ne 0) { throw "运行时依赖验证失败" }
 Write-Host "===== 环境搭建完成 =====" -ForegroundColor Green
