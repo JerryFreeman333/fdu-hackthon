@@ -33,8 +33,8 @@ class RescanActionMergeTests(unittest.TestCase):
         self,
         *risks: dict,
         home_version: int = 2,
-        capture_id: str = "capture-2",
-        reconstruction_id: str = "recon-2",
+        capture_id: str | None = "capture-2",
+        reconstruction_id: str | None = "recon-2",
         home_id: str = "home-demo",
         rule_version: str = "person-home-risk-v1",
     ) -> dict:
@@ -58,7 +58,13 @@ class RescanActionMergeTests(unittest.TestCase):
             "risks": list(risks),
         }
 
-    def _previous(self, *, home_version: int = 1, capture_id: str = "capture-1", reconstruction_id: str = "recon-1") -> dict:
+    def _previous(
+        self,
+        *,
+        home_version: int = 1,
+        capture_id: str | None = "capture-1",
+        reconstruction_id: str | None = "recon-1",
+    ) -> dict:
         provenance = {
             "homeId": "home-demo",
             "homeVersion": home_version,
@@ -105,6 +111,16 @@ class RescanActionMergeTests(unittest.TestCase):
         previous = self._previous(home_version=1, capture_id="capture-1", reconstruction_id="recon-1")
         with self.assertRaisesRegex(RuntimeError, "reconstructionId 未变化"):
             merge(previous, self._risk_payload(home_version=2, capture_id="capture-2", reconstruction_id="recon-1"))
+
+    def test_missing_capture_id_blocks_auto_close(self) -> None:
+        previous = self._previous()
+        with self.assertRaisesRegex(RuntimeError, "captureId"):
+            merge(previous, self._risk_payload(capture_id=None, reconstruction_id="recon-2"))
+
+    def test_missing_reconstruction_id_blocks_auto_close(self) -> None:
+        previous = self._previous()
+        with self.assertRaisesRegex(RuntimeError, "reconstructionId"):
+            merge(previous, self._risk_payload(capture_id="capture-2", reconstruction_id=None))
 
     def test_home_id_mismatch_cannot_close_previous_risk(self) -> None:
         previous = self._previous()
