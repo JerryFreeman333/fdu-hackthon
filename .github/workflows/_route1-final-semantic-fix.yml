@@ -1,0 +1,50 @@
+name: route1 final semantic fix
+
+on:
+  push:
+    branches:
+      - 'route1/ci-green-blackbox-2026-09-08'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch natural-language dizziness
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('route1-health-agent/src/engine/agent.ts')
+          text = p.read_text(encoding='utf-8')
+          old = "    patterns: [/头晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/],"
+          new = "    patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/],"
+          if old not in text:
+              raise SystemExit('dizziness rule anchor not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Format
+        working-directory: route1-health-agent
+        run: npx --yes prettier@3.5.3 --write src/engine/agent.ts
+
+      - name: Remove temporary workflow
+        run: rm -f .github/workflows/_route1-final-semantic-fix.yml
+
+      - name: Remove trigger and commit
+        shell: bash
+        run: |
+          rm -f route1-health-agent/.semantic-final-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add route1-health-agent/src/engine/agent.ts .github/workflows/_route1-final-semantic-fix.yml route1-health-agent/.semantic-final-trigger.txt
+          git commit -m 'fix(route1): recognize common spoken dizziness phrasing'
+          git push
