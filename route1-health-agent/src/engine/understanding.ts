@@ -69,7 +69,9 @@ function explicitSubjectMentions(clause: string): SubjectMention[] {
   }
 
   // “我”必须排除已经被更具体的“我爸/我妈/我老公”等人物短语覆盖的情况。
-  const familySpans = mentions.map((mention) => [mention.index, mention.index + mention.text.length] as const);
+  const familySpans = mentions.map(
+    (mention) => [mention.index, mention.index + mention.text.length] as const,
+  );
   for (const match of clause.matchAll(/(我自己|本人|我的|我)/g)) {
     const index = match.index ?? 0;
     const insideFamilySpan = familySpans.some(([start, end]) => index >= start && index < end);
@@ -119,7 +121,9 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
   // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
-    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
+    const unique = [
+      ...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown')),
+    ];
     if (unique.length === 1) return unique[0];
     return 'unknown';
   }
@@ -134,7 +138,9 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
   // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
-  if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
+  if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) {
+    return 'self';
+  }
 
   const mentions = explicitSubjectMentions(clause);
 
@@ -239,7 +245,9 @@ export function understandElderInput(
   recentMessages: ChatMessage[] = [],
 ): StructuredElderInput {
   const trimmed = text.trim();
-  const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
+  const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(
+    trimmed,
+  );
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
   const clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
