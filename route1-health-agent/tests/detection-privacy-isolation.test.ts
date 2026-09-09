@@ -25,10 +25,7 @@ const currentFamilyOkFall = {
   visibility: 'family_ok' as const,
 };
 
-const findings = runDetection(
-  [observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)],
-  TODAY,
-);
+const findings = runDetection([observationToEvent(oldPrivateFall), observationToEvent(currentFamilyOkFall)], TODAY);
 
 const fall = findings.find((finding) => finding.ruleId === 'safety.fall');
 assert(Boolean(fall), "today's fall must still produce the safety finding");
@@ -39,5 +36,11 @@ assert(Boolean(fall?.familyMessage), "today's family-ok fall must retain the fam
 const familyMessage = fall?.familyMessage ?? '';
 assert(familyMessage.includes(TODAY), "family message must refer to today's event");
 assert(!familyMessage.includes('上周'), "family message must not inherit historical private content");
+
+const privateOnlyFindings = runDetection([observationToEvent(oldPrivateFall)], '2026-09-01');
+const privateFall = privateOnlyFindings.find((finding) => finding.ruleId === 'safety.fall');
+assert(Boolean(privateFall), 'a private fall must still produce the local safety finding');
+assert(privateFall?.familyEligible === false, 'a private fall must remain ineligible for family notification');
+assert(privateFall?.familyMessage === undefined, 'a private fall must not expose its family message');
 
 console.log("PASS: historical private fall cannot suppress today's family-ok emergency");
