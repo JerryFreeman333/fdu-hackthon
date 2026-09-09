@@ -49,7 +49,7 @@ class LocalPipelineProcessor(RescanProcessor):
 
     def __init__(self, repo_root: Path) -> None:
         self.repo_root = repo_root
-        self.script = repo_root / "scripts" / "12_rescan_home.ps1"
+        self.script = repo_root / "pipeline" / "scripts" / "12_rescan_home.ps1"
         self.person_profile = Path(
             os.getenv(
                 "ROUTE2_PERSON_PROFILE",
