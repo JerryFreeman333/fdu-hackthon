@@ -151,7 +151,7 @@ def _run_job(job_id: str, batch_payload: dict[str, Any]) -> None:
             update["actionPlan"] = result.action_plan
         with _jobs_lock:
             _jobs[job_id].update(update)
-    except Exception as exc:  # defensive boundary for async jobs
+    except Exception as exc:
         with _jobs_lock:
             _jobs[job_id].update({
                 "status": "failed",
@@ -188,6 +188,8 @@ async def submit_rescan(
         raise HTTPException(status_code=413, detail="文件数量不合法")
     if len(manifest_files) != len(files):
         raise HTTPException(status_code=422, detail="manifest.files 与实际上传文件数量不一致")
+    if mediaKind == "video" and len(files) != 1:
+        raise HTTPException(status_code=422, detail="当前真实 pipeline 的视频复扫一次只允许一个视频文件")
 
     job_id = f"rs-{uuid.uuid4().hex[:20]}"
     input_dir = DATA_ROOT / "jobs" / job_id / "input"
