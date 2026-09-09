@@ -17,6 +17,12 @@ import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
 import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../engine/userFacing';
 import {
+  buildHistoricalSharingAnswer,
+  inferSharingRecipient,
+  loadSharingAudit,
+  recordSharingAudit,
+} from '../engine/sharingAudit';
+import {
   acceptedSelfClaims,
   hasDeathReport,
   understandElderInput,
@@ -53,6 +59,12 @@ function recallSummary(chat: ChatMessage[]): string {
   const prior = chat.filter((message) => message.role === 'elder').slice(-4);
   if (prior.length === 0) return '我这次对话里还没有找到您之前说的话。您可以再告诉我一次，我不会自己编造记忆。';
   return `我能看到这次对话里您之前说过：\n${prior.map((message) => `“${message.text}”`).join('\n')}`;
+}
+
+function sharingHistoryRequested(text: string): boolean {
+  return /(?:有没有|刚才|之前|到底|究竟).*(?:告诉|说给|分享给).*(?:女儿|儿子|家属|孩子)?.*(?:什么|哪些|哪条)|(?:告诉|分享给).*(?:什么|哪些|哪条)/.test(
+    text,
+  );
 }
 
 function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): boolean {
@@ -130,6 +142,7 @@ export function useElderChat({
 }: UseElderChatOptions) {
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
+    const sharingHistoryQuery = sharingHistoryRequested(text);
     const understanding = understandElderInput(text, TODAY, chat);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
@@ -145,7 +158,10 @@ export function useElderChat({
     const persisted = intent !== 'no_record';
 
     let agentText: string;
-    if (understanding.recallRequested) {
+    if (sharingHistoryQuery) {
+      const recipient = /女儿/.test(text) ? 'daughter' : /儿子/.test(text) ? 'son' : /家属|孩子/.test(text) ? 'family' : undefined;
+      agentText = buildHistoricalSharingAnswer(loadSharingAudit(), recipient ?? inferSharingRecipient(text));
+    } else if (understanding.recallRequested) {
       agentText = recallSummary(chat);
     } else if (understanding.clarificationQuestion) {
       agentText = understanding.clarificationQuestion;
@@ -220,6 +236,28 @@ export function useElderChat({
       );
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
       if (intent === 'share_family') onShareFamilyEventIds(incomingFamilyEvents.map((event) => event.id));
+    }
+
+    if (canShare && shareMode !== 'private' && !sharingHistoryQuery) {
+      const recipient = inferSharingRecipient(text);
+      recordSharingAudit([
+        ...acceptedClaims.map((claim, claimIndex) => ({
+          id: `share-audit-${Date.now()}-self-${claimIndex}`,
+          createdAt: localIsoTimestamp(),
+          scope: 'self' as const,
+          recipient,
+          shareMode,
+          content: claim.text,
+        })),
+        ...familyClaims.map((claim, claimIndex) => ({
+          id: `share-audit-${Date.now()}-family-${claimIndex}`,
+          createdAt: localIsoTimestamp(),
+          scope: 'family' as const,
+          recipient,
+          shareMode,
+          content: claim.text,
+        })),
+      ]);
     }
 
     if (acceptedClaims.length === 0) {
