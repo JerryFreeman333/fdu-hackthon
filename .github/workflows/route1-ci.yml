@@ -1,5 +1,6 @@
 name: route1-health-agent-ci
 
+# Route 1 has a push-backed recovery verifier because PR event delivery can be unreliable in some automation paths.
 on:
   push:
     branches:
@@ -42,20 +43,16 @@ jobs:
         with:
           fetch-depth: 1
           ref: ${{ format('refs/pull/{0}/head', github.event.issue.number) }}
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: route1-health-agent/package-lock.json
-
       - name: Install locked dependencies
         run: npm ci
-
       - name: Format with locked Prettier
         run: npx --yes prettier@3.5.3 --write .
-
       - name: Commit formatting fixes to PR branch
         shell: bash
         env:
