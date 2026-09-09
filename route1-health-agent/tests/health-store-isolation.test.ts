@@ -7,14 +7,17 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const event: HealthEvent = {
-  id: 'health-isolation-1',
+  id: 'observation:health-isolation-1',
+  type: 'observation',
   timestamp: '2026-09-09T09:00:00Z',
   source: 'chat',
-  subject: 'self',
-  text: '今天有一点头晕',
-  tags: ['dizziness'],
-  hasHealthValue: false,
-  status: 'occurred',
+  observation: {
+    id: 'health-isolation-1',
+    date: '2026-09-09',
+    source: 'chat',
+    text: '今天有一点头晕',
+    tags: ['dizziness'],
+  },
 };
 
 const familyEvent: FamilyHealthEvent = {
@@ -50,11 +53,13 @@ assert(fresh.events.length === 0, 'a fresh store instance must not inherit prior
 assert(fresh.familyEvents.length === 0, 'a fresh store instance must not inherit prior family facts');
 assert(fresh.chat.length === 0, 'a fresh store instance must not inherit prior chat');
 
-loaded.events[0]!.evidence.push('mutated outside store');
+loaded.events[0]!.observation.text = 'mutated outside store';
+loaded.events[0]!.observation.tags.push('pain');
 loaded.familyEvents[0]!.tags.push('extra');
 loaded.chat[0]!.text = 'mutated outside store';
 const cloned = firstSession.load();
-assert(cloned.events[0]?.evidence.includes('mutated outside store') === false, 'loaded events must not expose internal mutable arrays');
+assert(cloned.events[0]?.observation.text === event.observation.text, 'loaded observations must be cloned');
+assert(cloned.events[0]?.observation.tags.includes('pain') === false, 'loaded observation tags must not be shared');
 assert(cloned.familyEvents[0]?.tags.includes('extra') === false, 'loaded family events must be cloned');
 assert(cloned.chat[0]?.text === chat.text, 'loaded chat must be cloned');
 
