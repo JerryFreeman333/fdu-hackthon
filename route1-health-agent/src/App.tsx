@@ -9,7 +9,6 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
-import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
@@ -54,6 +53,7 @@ export default function App() {
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const { fontScale, setFontScale } = useFontScale();
+
   const showToast = useCallback((text: string) => {
     setToast(text);
     window.setTimeout(() => setToast(null), 3200);
@@ -62,8 +62,8 @@ export default function App() {
   const {
     familySharing,
     familyLink,
-    sharedFindingIds,
-    sharedFamilyEventIds,
+    claimedOneTimeFindingIds,
+    claimedOneTimeFamilyEventIds,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
@@ -71,16 +71,15 @@ export default function App() {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
+    claimOneTimeShares,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records } = healthData;
   const visibleFamilyFacts = useMemo(
-    () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
-    [familyEvents, familySharing, sharedFamilyEventIds],
+    () => visibleFamilyEvents(familyEvents, familySharing, claimedOneTimeFamilyEventIds),
+    [familyEvents, familySharing, claimedOneTimeFamilyEventIds],
   );
   const findings = useMemo(() => runDetection(events, TODAY), [events]);
   const agentContext = useMemo(
@@ -88,8 +87,8 @@ export default function App() {
     [activeProfile, events, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds),
-    [findings, familySharing, sharedFindingIds],
+    () => collectFamilyNotifications(findings, familySharing, claimedOneTimeFindingIds),
+    [findings, familySharing, claimedOneTimeFindingIds],
   );
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
   const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
@@ -125,24 +124,8 @@ export default function App() {
 
   useEffect(() => {
     if (role !== 'family' || familyLink?.status !== 'active') return;
-
-    const oneTimeFindingIds = familyNotifs
-      .filter((notification) => notification.oneTime)
-      .map((notification) => notification.finding.id);
-    const oneTimeFamilyEventIds = visibleFamilyFacts
-      .filter((event) => event.shareMode === 'one_time')
-      .map((event) => event.id);
-
-    consumeSharedFindingIds(oneTimeFindingIds);
-    consumeSharedFamilyEventIds(oneTimeFamilyEventIds);
-  }, [
-    role,
-    familyLink?.status,
-    familyNotifs,
-    visibleFamilyFacts,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
-  ]);
+    void claimOneTimeShares();
+  }, [role, familyLink?.status, claimOneTimeShares]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
