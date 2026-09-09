@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding, Observation } from '../types';
+import { useEffect, useState } from 'react';
+import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
+import { familyVisibleFindings, familyVisibleTasks } from '../engine/familyDisclosure';
 import ProfileView from './ProfileView';
 import ReportView from './ReportView';
 
@@ -16,8 +17,7 @@ interface FamilyDashboardProps {
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
   homeSafetyActions: HomeSafetyAction[];
-  records: DayRecord[];
-  observations: Observation[];
+  records: never[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
@@ -25,6 +25,8 @@ interface FamilyDashboardProps {
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
   onViewChange: (view: 'home' | 'detail' | 'report') => void;
+  onConsumeFindingShare: (findingIds: string[]) => void;
+  onConsumeFamilyEventShare: (eventIds: string[]) => void;
   view: 'home' | 'detail' | 'report';
 }
 
@@ -54,11 +56,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
   const state = overallMessage(props.notifications);
-  const familyFindings = props.findings.filter((finding) => finding.familyEligible !== false);
-  const familyObservations = props.observations.filter((observation) => observation.visibility !== 'private');
+  const familyFindings = familyVisibleFindings(props.findings);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
+  const activeTasks = familyVisibleTasks(props.tasks, familyFindings).slice(0, 3);
   const openHomeActions = props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3);
+
+  useEffect(() => {
+    const oneTimeFindingIds = props.notifications.filter((notification) => notification.oneTime).map((notification) => notification.finding.id);
+    const oneTimeFamilyEventIds = recentFamilyEvents
+      .filter((event) => event.shareMode === 'one_time')
+      .map((event) => event.id);
+    props.onConsumeFindingShare(oneTimeFindingIds);
+    props.onConsumeFamilyEventShare(oneTimeFamilyEventIds);
+  }, [props.notifications, recentFamilyEvents, props.onConsumeFindingShare, props.onConsumeFamilyEventShare]);
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -82,18 +93,41 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             查看周报
           </button>
         </div>
-        <ProfileView
-          records={props.records}
-          observations={familyObservations}
-          findings={familyFindings}
-          today={props.today}
-        />
+        <section className="card">
+          <div className="eyebrow">家属共享摘要</div>
+          <h3>只展示需要您介入的变化</h3>
+          <p className="muted">不会显示步数、血压曲线、完整健康档案或最近聊天记录。</p>
+          {familyFindings.length === 0 ? (
+            <p className="family-empty">目前没有需要家属介入的变化。</p>
+          ) : (
+            <div className="family-feed">
+              {familyFindings.map((finding) => (
+                <div className={`family-item family-item-${finding.severity}`} key={finding.id}>
+                  <div className="finding-head">
+                    <span className={`badge ${severityBadge(finding.severity).className}`}>
+                      {severityBadge(finding.severity).text}
+                    </span>
+                    <b>{finding.title}</b>
+                    <span className="muted right">{finding.date}</span>
+                  </div>
+                  <p>{finding.familyMessage ?? '建议联系老人确认当前状态。'}</p>
+                  {finding.carePath && (
+                    <div className="care-path">
+                      <b>建议行动：</b>
+                      {finding.carePath}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
         {recentFamilyEvents.length > 0 && (
           <section className="card">
             <div className="section-head">
               <div>
                 <h3>家人近况记录</h3>
-                <span className="muted">这些内容来自老人主动提到的家人情况，不会混入老人的健康档案。</span>
+                <span className="muted">这些内容来自老人主动提到并授权家属查看的家人事实。</span>
               </div>
             </div>
             <div className="family-feed">
@@ -119,7 +153,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     if (!canViewSharedDetail) {
       return (
         <div className="card privacy-card">
-          <h3>当前未共享周报</h3>
+          <h3>当前未共享家属周报</h3>
           <p>老人尚未授权家属查看周报。需要了解情况，请直接联系老人。</p>
           <button className="btn-primary" onClick={props.onContactElder}>
             联系老人
@@ -134,20 +168,51 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             ← 返回
           </button>
         </div>
-        <ReportView
-          records={props.records}
-          observations={familyObservations}
-          findings={familyFindings}
-          tasks={props.tasks}
-          today={props.today}
-        />
+        <section className="card">
+          <div className="eyebrow">家属周报</div>
+          <h3>{familyFindings.length > 0 ? `本周有 ${familyFindings.length} 项需要您留意` : '本周没有需要您介入的变化'}</h3>
+          <p className="muted">这份摘要只汇总明确需要家属行动的信息；详细健康资料仍留在老人端。</p>
+          {familyFindings.length > 0 && (
+            <div className="family-feed">
+              {familyFindings.map((finding) => (
+                <div className={`family-item family-item-${finding.severity}`} key={finding.id}>
+                  <div className="finding-head">
+                    <span className={`badge ${severityBadge(finding.severity).className}`}>
+                      {severityBadge(finding.severity).text}
+                    </span>
+                    <b>{finding.title}</b>
+                    <span className="muted right">{finding.date}</span>
+                  </div>
+                  <p>{finding.familyMessage ?? '建议联系老人确认当前状态。'}</p>
+                  {finding.carePath && (
+                    <div className="care-path">
+                      <b>建议行动：</b>
+                      {finding.carePath}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {recentFamilyEvents.length > 0 && (
+            <div className="family-feed">
+              <h4>本周主动分享的家人近况</h4>
+              {recentFamilyEvents.map((event) => (
+                <div className="family-item" key={event.id}>
+                  <div className="finding-head">
+                    <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
+                    <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
+                    <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                  </div>
+                  <p>{event.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     );
   }
-
-  const activeTasks = props.tasks
-    .filter((task) => task.status !== 'completed' && task.status !== 'dismissed')
-    .slice(0, 3);
 
   function bind() {
     const ok = props.onBindFamily(inviteCode.trim());
@@ -195,7 +260,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             📞 联系老人
           </button>
           <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
-            查看详细变化
+            查看共享摘要
           </button>
         </div>
       </section>
@@ -307,11 +372,11 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         <div className="section-head">
           <div>
             <h3>帮老人把事情做完</h3>
-            <span className="muted">提醒不是终点，处理完成才算闭环。</span>
+            <span className="muted">这里只显示与家属协同或可共享安全发现直接相关的任务。</span>
           </div>
         </div>
         {activeTasks.length === 0 ? (
-          <p className="family-empty">今天的事情都完成了。</p>
+          <p className="family-empty">今天没有需要您处理的协同任务。</p>
         ) : (
           activeTasks.map((task) => (
             <div className="family-task" key={task.id}>
@@ -329,10 +394,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
 
       <div className="family-secondary-nav">
         <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
-          健康详细变化
+          健康共享摘要
         </button>
         <button className="btn-secondary" onClick={() => props.onViewChange('report')}>
-          这一周发生了什么
+          家属周报
         </button>
       </div>
     </div>
