@@ -106,6 +106,43 @@ async function caseFamilyBinding(browser) {
   }
 }
 
+async function caseFamilySessionReset(browser) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await expectRoleGate(page);
+    await page.locator('button.role-option', { hasText: '我是老人' }).click();
+    const shareButton = page.locator('button', { hasText: '同意以后需要时告诉家属' });
+    if (await shareButton.isVisible({ timeout: 1500 }).catch(() => false)) await shareButton.click();
+    const inviteButton = page.locator('button', { hasText: '生成家属邀请码' });
+    await inviteButton.waitFor({ state: 'visible', timeout: 5000 });
+    await inviteButton.click();
+    const elderBody = (await page.locator('body').textContent()) ?? '';
+    const match = elderBody.match(/AN-\d{4}-\d{4}/);
+    assert(match, 'session-isolation probe failed to generate an invite');
+    const invite = match[0];
+
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.locator('button.role-option', { hasText: '我是家属' }).click();
+    await page.locator('.family-dashboard input.chat-input').fill(invite);
+    await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
+    await page.waitForTimeout(200);
+    assert(((await page.locator('body').textContent()) ?? '').includes('现在最需要知道的'), 'family session did not bind');
+
+    await page.reload({ waitUntil: 'networkidle' });
+    const elderGate = page.locator('button.role-option', { hasText: '我是老人' });
+    const familyGate = page.locator('button.role-option', { hasText: '我是家属' });
+    await elderGate.waitFor({ state: 'visible', timeout: 5000 });
+    await familyGate.waitFor({ state: 'visible', timeout: 5000 });
+    const bodyAfterReload = (await page.locator('body').textContent()) ?? '';
+    assert(!bodyAfterReload.includes('本地演示家属'), 'family binding survived page reload');
+    assert(!bodyAfterReload.includes('已允许必要的家属协同'), 'family consent survived page reload');
+    return 'PASS family session reset';
+  } finally {
+    await context.close();
+  }
+}
+
 const vite = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'], {
   cwd: ROOT,
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -116,7 +153,7 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 try {
   await waitForServer();
   const browser = await chromium.launch({ headless: true });
-  const cases = [caseStartup, caseElderSmoke, caseFamilySmoke, caseFamilyBinding];
+  const cases = [caseStartup, caseElderSmoke, caseFamilySmoke, caseFamilyBinding, caseFamilySessionReset];
   const results = [];
   for (const test of cases) {
     try {
