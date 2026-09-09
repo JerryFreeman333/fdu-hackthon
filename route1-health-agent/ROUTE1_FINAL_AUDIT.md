@@ -6,24 +6,24 @@
 
 ## A. 已由自动化测试验证
 
-| 场景 | 期望不变量 | 当前验证 |
-| --- | --- | --- |
-| 老人说“我觉得他喘得厉害” | 不得静默写入老人本人健康流；主体应保持 `unknown` 并要求澄清 | `tests/user-input-regression.test.ts` |
-| 已知唯一家属后再说“他……” | 可以继承唯一明确家属主体，但不得进入老人本人档案 | `tests/user-input-regression.test.ts` |
-| 多个家属候选下再说“他……” | 不得猜测主体，必须保持 `unknown` | `tests/user-input-regression.test.ts` |
-| “我看他今天走路不太稳，摔了一下” | 前后两个事实都不能变成 `self`；跌倒事实不能丢失 | `tests/user-input-regression.test.ts` |
-| “今天没有像昨天那样喘得厉害了” | 属于今天的改善中症状，不应被当成完整否定，也不应偷换成昨天 | `tests/user-input-regression.test.ts` |
-| “我爸今天没吃降压药，我也没吃” | 父亲与老人本人必须拆成两条 claim | `tests/user-input-regression.test.ts` |
-| 历史私密跌倒 + 今天明确可分享跌倒 | 历史 private 不得按 tag 全局压制今天独立 finding | `tests/detection-privacy-isolation.test.ts` |
-| 私密跌倒单独存在 | 老人侧仍可得到安全 finding，但不得生成家属提示 | `tests/detection-privacy-isolation.test.ts` |
-| 更正聊天 claim | 只能删除对应 `claimId` 的 chat-derived event | `tests/claim-lineage.test.ts` |
-| 更正带数值 claim | 对应 measurement lineage 必须一并删除，避免 ghost measurement | `tests/claim-lineage.test.ts`, `tests/stateful-correction-flow.test.ts` |
-| 旧版无 `claimId` 的记录 | 不得通过猜测方式删除，避免误伤历史数据 | `tests/claim-lineage.test.ts` |
-| 撤销长期家属共享 | 当前家属详细记录与 observation 必须停止进入家属组件 | `tests/family-sharing-state.test.ts`, `App.tsx` |
-| 撤销后遗留 one-time finding ID | one-time ID 不得绕过 `familyEligible=false`；撤销后应清除其未来可见性 | `tests/user-input-regression.test.ts`, `tests/family-sharing-state.test.ts` |
-| 重新开启长期共享 | 已被撤销的旧 one-time event 不得因为重新 grant 而自动复活 | `tests/family-sharing-state.test.ts` |
-| 同一天重复服药提醒 | 必须复用当天 `task-medication-${today}`，不得生成重复任务 | `tests/task-regression.test.ts` |
-| 服药任务已完成后再次提醒 | 不得克隆新任务 | `tests/task-regression.test.ts` |
+| 场景                              | 期望不变量                                                            | 当前验证                                                                    |
+| --------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 老人说“我觉得他喘得厉害”          | 不得静默写入老人本人健康流；主体应保持 `unknown` 并要求澄清           | `tests/user-input-regression.test.ts`                                       |
+| 已知唯一家属后再说“他……”          | 可以继承唯一明确家属主体，但不得进入老人本人档案                      | `tests/user-input-regression.test.ts`                                       |
+| 多个家属候选下再说“他……”          | 不得猜测主体，必须保持 `unknown`                                      | `tests/user-input-regression.test.ts`                                       |
+| “我看他今天走路不太稳，摔了一下”  | 前后两个事实都不能变成 `self`；跌倒事实不能丢失                       | `tests/user-input-regression.test.ts`                                       |
+| “今天没有像昨天那样喘得厉害了”    | 属于今天的改善中症状，不应被当成完整否定，也不应偷换成昨天            | `tests/user-input-regression.test.ts`                                       |
+| “我爸今天没吃降压药，我也没吃”    | 父亲与老人本人必须拆成两条 claim                                      | `tests/user-input-regression.test.ts`                                       |
+| 历史私密跌倒 + 今天明确可分享跌倒 | 历史 private 不得按 tag 全局压制今天独立 finding                      | `tests/detection-privacy-isolation.test.ts`                                 |
+| 私密跌倒单独存在                  | 老人侧仍可得到安全 finding，但不得生成家属提示                        | `tests/detection-privacy-isolation.test.ts`                                 |
+| 更正聊天 claim                    | 只能删除对应 `claimId` 的 chat-derived event                          | `tests/claim-lineage.test.ts`                                               |
+| 更正带数值 claim                  | 对应 measurement lineage 必须一并删除，避免 ghost measurement         | `tests/claim-lineage.test.ts`, `tests/stateful-correction-flow.test.ts`     |
+| 旧版无 `claimId` 的记录           | 不得通过猜测方式删除，避免误伤历史数据                                | `tests/claim-lineage.test.ts`                                               |
+| 撤销长期家属共享                  | 当前家属详细记录与 observation 必须停止进入家属组件                   | `tests/family-sharing-state.test.ts`, `App.tsx`                             |
+| 撤销后遗留 one-time finding ID    | one-time ID 不得绕过 `familyEligible=false`；撤销后应清除其未来可见性 | `tests/user-input-regression.test.ts`, `tests/family-sharing-state.test.ts` |
+| 重新开启长期共享                  | 已被撤销的旧 one-time event 不得因为重新 grant 而自动复活             | `tests/family-sharing-state.test.ts`                                        |
+| 同一天重复服药提醒                | 必须复用当天 `task-medication-${today}`，不得生成重复任务             | `tests/task-regression.test.ts`                                             |
+| 服药任务已完成后再次提醒          | 不得克隆新任务                                                        | `tests/task-regression.test.ts`                                             |
 
 ## B. 本轮 CI 已实际通过
 

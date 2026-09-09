@@ -28,11 +28,11 @@ async function sendChat(page, text) {
   const before = await page.locator('#elder-chat .chat-row').count();
   await page.fill('#elder-chat input.chat-input', text);
   await page.locator('#elder-chat button', { hasText: '发送' }).click();
-  await page.waitForFunction(
-    (p) => document.querySelectorAll('#elder-chat .chat-row').length >= p + 2,
-    before,
-    { timeout: 10000 },
-  ).catch(() => {});
+  await page
+    .waitForFunction((p) => document.querySelectorAll('#elder-chat .chat-row').length >= p + 2, before, {
+      timeout: 10000,
+    })
+    .catch(() => {});
   await page.waitForTimeout(300);
 }
 
@@ -49,7 +49,10 @@ async function openProfile(page) {
   const s = page.locator('details.advanced-details summary');
   if (await s.isVisible({ timeout: 2000 }).catch(() => false)) {
     const open = await page.locator('details.advanced-details').evaluate((el) => el.open);
-    if (!open) { await s.click(); await page.waitForTimeout(400); }
+    if (!open) {
+      await s.click();
+      await page.waitForTimeout(400);
+    }
   }
 }
 
@@ -60,8 +63,18 @@ async function getFindings(page) {
   const n = await items.count();
   const out = [];
   for (let i = 0; i < n; i++) {
-    const title = (await items.nth(i).locator('.finding-head b').textContent().catch(() => '')) ?? '';
-    const detail = (await items.nth(i).locator('p').textContent().catch(() => '')) ?? '';
+    const title =
+      (await items
+        .nth(i)
+        .locator('.finding-head b')
+        .textContent()
+        .catch(() => '')) ?? '';
+    const detail =
+      (await items
+        .nth(i)
+        .locator('p')
+        .textContent()
+        .catch(() => '')) ?? '';
     out.push({ title: title.trim(), detail: detail.trim() });
   }
   return out;
@@ -72,7 +85,12 @@ async function getObservations(page) {
   const n = await items.count();
   const out = [];
   for (let i = 0; i < n; i++) {
-    const text = (await items.nth(i).locator('.tl-text').textContent().catch(() => '')) ?? '';
+    const text =
+      (await items
+        .nth(i)
+        .locator('.tl-text')
+        .textContent()
+        .catch(() => '')) ?? '';
     out.push(text.trim());
   }
   return out;
@@ -105,7 +123,10 @@ async function ensureGranted(page) {
     return true;
   }
   await page.evaluate(() => {
-    localStorage.setItem('ankang-route1-consent-v2', JSON.stringify({ familySharing: 'granted', updatedAt: new Date().toISOString() }));
+    localStorage.setItem(
+      'ankang-route1-consent-v2',
+      JSON.stringify({ familySharing: 'granted', updatedAt: new Date().toISOString() }),
+    );
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -122,11 +143,18 @@ async function revokeSharing(page) {
 }
 
 async function familyBodyText(page) {
-  return ((await page.locator('.family-dashboard').textContent().catch(() => '')) ?? '').trim();
+  return (
+    (await page
+      .locator('.family-dashboard')
+      .textContent()
+      .catch(() => '')) ?? ''
+  ).trim();
 }
 
 function hasFallFinding(findings) {
-  return findings.some((f) => f.title.includes('跌倒') || f.title.includes('摔') || f.detail.includes('跌倒') || f.detail.includes('摔'));
+  return findings.some(
+    (f) => f.title.includes('跌倒') || f.title.includes('摔') || f.detail.includes('跌倒') || f.detail.includes('摔'),
+  );
 }
 
 // ── P0-01 ──
@@ -145,7 +173,9 @@ async function p0_01(browser) {
     const pass = replyClarifies && !obsHasNewDyspnea && !findingsHasDyspnea;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-01.png'), fullPage: true });
     return { id: 'P0-01', result: pass ? 'PASS' : 'FAIL', reply, findings, obs };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-02 ──
@@ -157,12 +187,15 @@ async function p0_02(browser) {
     const reply = await lastAgentReply(page);
     await openProfile(page);
     const obs = await getObservations(page);
-    const replyHasBoth = reply.includes('爸') && (reply.includes('我') || reply.includes('本人') || reply.includes('漏服'));
+    const replyHasBoth =
+      reply.includes('爸') && (reply.includes('我') || reply.includes('本人') || reply.includes('漏服'));
     const obsHasSelfMed = obs.some((o) => o.includes('我也没吃') || o.includes('没吃'));
     const pass = replyHasBoth && obsHasSelfMed;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-02.png'), fullPage: true });
     return { id: 'P0-02', result: pass ? 'PASS' : 'FAIL', reply, obs };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-03 ──
@@ -177,7 +210,9 @@ async function p0_03(browser) {
     const pass = hasFallFinding(findings);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-03.png'), fullPage: true });
     return { id: 'P0-03', result: pass ? 'PASS' : 'FAIL', findings };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-04 ──
@@ -197,8 +232,16 @@ async function p0_04(browser) {
     const familyLeaked = familyText.includes('上周摔了一下') || familyText.includes('先别告诉');
     const pass = elderHasFall && !familyLeaked;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-04.png'), fullPage: true });
-    return { id: 'P0-04', result: pass ? 'PASS' : 'FAIL', elderHasFall, familyLeaked, familyText: familyText.slice(0, 500) };
-  } finally { await context.close(); }
+    return {
+      id: 'P0-04',
+      result: pass ? 'PASS' : 'FAIL',
+      elderHasFall,
+      familyLeaked,
+      familyText: familyText.slice(0, 500),
+    };
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-05 ──
@@ -225,8 +268,17 @@ async function p0_05(browser) {
     const afterHasNotif = !afterText.includes('目前没有新的家属通知');
     const pass = beforeHasNotif && !afterHasNotif;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-05.png'), fullPage: true });
-    return { id: 'P0-05', result: pass ? 'PASS' : 'FAIL', beforeHasNotif, afterHasNotif, beforeText: beforeText.slice(0, 300), afterText: afterText.slice(0, 300) };
-  } finally { await context.close(); }
+    return {
+      id: 'P0-05',
+      result: pass ? 'PASS' : 'FAIL',
+      beforeHasNotif,
+      afterHasNotif,
+      beforeText: beforeText.slice(0, 300),
+      afterText: afterText.slice(0, 300),
+    };
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-06 ──
@@ -244,7 +296,9 @@ async function p0_06(browser) {
     const pass = !leaked;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-06.png'), fullPage: true });
     return { id: 'P0-06', result: pass ? 'PASS' : 'FAIL', leaked, familyText: familyText.slice(0, 500) };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-07 ──
@@ -262,7 +316,9 @@ async function p0_07(browser) {
     const pass = hasA && !hasB;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-07.png'), fullPage: true });
     return { id: 'P0-07', result: pass ? 'PASS' : 'FAIL', hasA, hasB, obs };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── P0-08 ──
@@ -281,7 +337,9 @@ async function p0_08(browser) {
     const pass = hadFall && !stillHasFall;
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'p0-08.png'), fullPage: true });
     return { id: 'P0-08', result: pass ? 'PASS' : 'FAIL', hadFall, stillHasFall, findingsBefore, findingsAfter };
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 }
 
 // ── start vite dev server inside the script ──
@@ -297,7 +355,10 @@ vite.stderr.on('data', (d) => process.stderr.write(`[vite-err] ${d}`));
 async function waitForServer(url, timeout = 20000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    try { const r = await fetch(url); if (r.ok) return; } catch {}
+    try {
+      const r = await fetch(url);
+      if (r.ok) return;
+    } catch {}
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error('vite did not start within timeout');
