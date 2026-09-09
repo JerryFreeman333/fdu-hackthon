@@ -26,7 +26,7 @@ runCase('已有明确家属上下文时第三人称可以延续主体', () => {
   const input = understandElderInput('我觉得他喘得厉害', TODAY, messages);
   assert(input.claims.length === 1, '应识别第三人称事实');
   assert(input.claims[0].subject === 'father', '应继承上一条明确家属主体');
-  assert(acceptedSelfClaims(input).length === 0, '家属事实不能进入本人健康事件流');
+  assert(acceptedSelfClaims(input).length === 0, '家属事实不能进入老人本人健康流');
 });
 
 runCase('多个家属同时出现时“他”不能猜成其中任何一个', () => {
@@ -50,15 +50,36 @@ runCase('口语化“我看他……”不会丢掉跌倒事实', () => {
   assert(acceptedSelfClaims(input).length === 0, '家属跌倒不能进入老人本人档案');
 });
 
-runCase('“今天没有像昨天那样喘得厉害了”保留为今天的持续症状', () => {
-  const input = understandElderInput('今天没有像昨天那样喘得厉害了', TODAY);
-  assert(input.claims.length === 1, '比较式症状应形成一条 claim');
-  const claim = input.claims[0];
-  assert(claim.status === 'occurred', '比较/缓解表达不应被当成完全否定');
-  assert(claim.timeScope === 'today', '事件主体是今天的状态');
-  assert(claim.eventDate === TODAY, '事件日期应绑定到今天而非比较基准昨天');
-  assert(claim.tags.includes('dyspnea'), '应继续保留喘的症状标签');
-  assert(acceptedSelfClaims(input).length === 1, '改善中的症状仍应进入本人健康事件流');
+runCase('“我爸说我妈喘得厉害”把健康事实归给关系词后的对象', () => {
+  const input = understandElderInput('我爸说我妈喘得厉害', TODAY);
+  assert(input.claims.length === 1, '关系句应识别为一条健康事实');
+  assert(input.claims[0].subject === 'mother', '“说”的接收/被描述对象应成为健康事实主体');
+  assert(input.claims[0].tags.includes('dyspnea'), '应保留喘的症状标签');
+  assert(acceptedSelfClaims(input).length === 0, '母亲的症状不能进入老人本人档案');
+});
+
+runCase('“我妈告诉我我爸胸痛”把健康事实归给最后的明确人物', () => {
+  const input = understandElderInput('我妈告诉我我爸胸口痛', TODAY);
+  assert(input.claims.length === 1, '嵌套关系句应识别一条健康事实');
+  assert(input.claims[0].subject === 'father', '胸痛属于我爸而不是信息来源我妈');
+  assert(input.claims[0].tags.includes('chestPain'), '应识别胸痛标签');
+  assert(acceptedSelfClaims(input).length === 0, '家属胸痛不能进入老人本人档案');
+});
+
+runCase('“我妈觉得我最近走路不稳”不会把妈妈误当健康主体', () => {
+  const input = understandElderInput('我妈觉得我最近走路不稳', TODAY);
+  assert(input.claims.length === 1, '应识别一条健康事实');
+  assert(input.claims[0].subject === 'self', '“觉得”后的我才是健康事实主体');
+  assert(input.claims[0].tags.includes('dizziness'), '“走路不稳”应至少命中既有站不稳信号');
+  assert(acceptedSelfClaims(input).length === 1, '本人的事实应进入本人健康流');
+});
+
+runCase('同一句并列点名两个人但没有关系结构时必须 unknown', () => {
+  const input = understandElderInput('我爸和我妈今天都不舒服', TODAY);
+  assert(input.claims.length === 1, '无法安全拆解的并列人物应保留为单条待确认 claim');
+  assert(input.claims[0].subject === 'unknown', '无法区分多人健康事实主体时必须 fail closed');
+  assert(acceptedSelfClaims(input).length === 0, '多人的健康事实不能进入老人本人档案');
+  assert(Boolean(input.clarificationQuestion), '多人并列且主体不明时应要求澄清');
 });
 
 runCase('“我爸……，我也……”拆成两条独立事实', () => {
@@ -71,6 +92,17 @@ runCase('“我爸……，我也……”拆成两条独立事实', () => {
   assert(input.claims[1].tags.includes('medicationMissed'), '第二条也应识别漏服药物');
   assert(input.claims[1].status === 'occurred', '本人的“没吃药”同样应作为已发生的漏服事件');
   assert(acceptedSelfClaims(input).length === 1, '本人漏服药物事实不能被前面的“我爸”吞掉');
+});
+
+runCase('“今天没有像昨天那样喘得厉害了”保留为今天的持续症状', () => {
+  const input = understandElderInput('今天没有像昨天那样喘得厉害了', TODAY);
+  assert(input.claims.length === 1, '比较式症状应形成一条 claim');
+  const claim = input.claims[0];
+  assert(claim.status === 'occurred', '比较/缓解表达不应被当成完全否定');
+  assert(claim.timeScope === 'today', '事件主体是今天的状态');
+  assert(claim.eventDate === TODAY, '事件日期应绑定到今天而非比较基准昨天');
+  assert(claim.tags.includes('dyspnea'), '应继续保留喘的症状标签');
+  assert(acceptedSelfClaims(input).length === 1, '改善中的症状仍应进入本人健康事件流');
 });
 
 runCase('撤销共享后历史一次性 finding 不再触发家属通知', () => {
