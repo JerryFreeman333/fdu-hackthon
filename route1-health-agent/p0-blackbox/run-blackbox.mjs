@@ -54,7 +54,9 @@ async function newPage(context) {
 }
 
 async function chooseRole(page, role) {
-  await page.locator('button.role-option', { hasText: role }).click();
+  const option = page.locator('button.role-option', { hasText: role });
+  await option.waitFor();
+  await option.click();
 }
 
 async function elderChat(page, message) {
