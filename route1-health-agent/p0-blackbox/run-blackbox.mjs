@@ -180,7 +180,11 @@ async function caseFamilyRevocation(browser) {
     const dashboard = page.locator('.family-dashboard');
     await dashboard.waitFor();
     const familyText = (await dashboard.textContent()) ?? '';
-    assert(familyText.includes('绑定关系：家属'), 'binding was removed unexpectedly');
+    const familyHeader = (await page.locator('.persona-sub').textContent()) ?? '';
+    assert(
+      familyHeader.includes('绑定关系：家属'),
+      'family binding was removed unexpectedly',
+    );
     assert(
       familyText.includes('目前没有新的家属通知'),
       'revoked family notification is still visible',
