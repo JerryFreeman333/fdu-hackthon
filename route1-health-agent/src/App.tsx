@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
@@ -70,6 +70,7 @@ export default function App() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
+  const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
     setToast(text);
@@ -81,6 +82,7 @@ export default function App() {
     familyLink,
     sharedFindingIds,
     sharedFamilyEventIds,
+    promptFamilyShare,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
@@ -144,6 +146,19 @@ export default function App() {
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
   }, [events, familyEvents, chat]);
+
+  useEffect(() => {
+    if (familySharing !== 'denied') return;
+    const newFamilyRelevantFindings = findings.filter(
+      (finding) =>
+        finding.familyEligible === true &&
+        (finding.severity === 'alert' || finding.severity === 'urgent') &&
+        !promptedFamilyFindingIdsRef.current.has(finding.id),
+    );
+    if (newFamilyRelevantFindings.length === 0) return;
+    for (const finding of newFamilyRelevantFindings) promptedFamilyFindingIdsRef.current.add(finding.id);
+    promptFamilyShare();
+  }, [familySharing, findings, promptFamilyShare]);
 
   useEffect(() => {
     if (role !== 'family' || familyLink?.status !== 'active') return;
