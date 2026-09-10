@@ -27,15 +27,30 @@ const DIGITS: Record<string, number> = {
 };
 
 function parseChineseNumber(input: string): number | null {
-  if (/^\d/.test(input)) return Number(input);
-  if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) {
-    return (DIGITS[input[0]] + DIGITS[input[1]]) / 2;
+  const normalized = input.replace(/\s/g, '');
+  if (!normalized) return null;
+  if (/^\d+(?:\.\d+)?$/.test(normalized)) return Number(normalized);
+  if (/^[零〇一二两三四五六七八九]$/.test(normalized)) return DIGITS[normalized];
+
+  // 老人口语中“一百五”通常表示 150，“二百三”表示 230，而不是 105/203。
+  const abbreviatedHundreds = normalized.match(/^([一二两三四五六七八九])百([零〇]?)([一二两三四五六七八九])$/);
+  if (abbreviatedHundreds) {
+    const hundreds = DIGITS[abbreviatedHundreds[1]] * 100;
+    return hundreds + DIGITS[abbreviatedHundreds[3]] * 10;
   }
-  if (input in DIGITS) return DIGITS[input];
+  const abbreviatedThousands = normalized.match(/^([一二两三四五六七八九])千([零〇]?)([一二两三四五六七八九])$/);
+  if (abbreviatedThousands) {
+    const thousands = DIGITS[abbreviatedThousands[1]] * 1000;
+    return thousands + DIGITS[abbreviatedThousands[3]] * 100;
+  }
+
+  if (/^[零〇一二两三四五六七八九]{2}$/.test(normalized)) {
+    return (DIGITS[normalized[0]] + DIGITS[normalized[1]]) / 2;
+  }
 
   let total = 0;
   let current = 0;
-  for (const ch of input) {
+  for (const ch of normalized) {
     if (ch === '十') {
       total += (current || 1) * 10;
       current = 0;
@@ -108,20 +123,64 @@ const RULES: Rule[] = [
   },
 ];
 
-function extractBloodPressure(text: string): ExtractedValue[] {
-  const match = text.match(new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`));
-  if (!match) return [];
-  const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
-  const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));
-  if (systolic === null || diastolic === null) return [];
-  return [
-    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: match[0] },
-    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: match[0] },
+interface BloodPressureParts {
+  systolic?: { value: number; sourceText: string };
+  diastolic?: { value: number; sourceText: string };
+}
+
+function parsedNumber(raw: string): number | null {
+  return parseChineseNumber(raw.replace(/\s/g, ''));
+}
+
+function parseBloodPressure(text: string): BloodPressureParts | null {
+  const pairPatterns: RegExp[] = [
+    new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／\\，,、:：比+])\s*(${NUMBER})`),
+    new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s+(${NUMBER})`),
+    new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})\s*(?:[,，、:：/／\s]|比|和|及|，)*\s*(?:低压|舒张压|下压)\s*(${NUMBER})`),
+    new RegExp(String.raw`(?:低压|舒张压|下压)\s*(${NUMBER})\s*(?:[,，、:：/／\s]|比|和|及|，)*\s*(?:高压|收缩压|上压)\s*(${NUMBER})`),
   ];
+
+  for (const pattern of pairPatterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const first = parsedNumber(match[1]);
+    const second = parsedNumber(match[2]);
+    if (first === null || second === null) continue;
+    const sourceText = match[0];
+    if (/(?:低压|舒张压|下压)\s*${0}/.test('')) {
+      // Unreachable marker kept out of the matching logic; label-aware handling is below.
+    }
+    const lowFirst = /^(?:低压|舒张压|下压)/.test(sourceText.trim());
+    return lowFirst
+      ? { systolic: { value: second, sourceText }, diastolic: { value: first, sourceText } }
+      : { systolic: { value: first, sourceText }, diastolic: { value: second, sourceText } };
+  }
+
+  const highOnlyPatterns = [
+    new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})`),
+    new RegExp(String.raw`(?:血压)\s*(${NUMBER})`),
+  ];
+  for (const pattern of highOnlyPatterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const value = parsedNumber(match[1]);
+    if (value !== null) return { systolic: { value, sourceText: match[0] } };
+  }
+
+  return null;
+}
+
+export function extractBloodPressureValues(text: string): ExtractedValue[] {
+  const parts = parseBloodPressure(text);
+  if (!parts) return [];
+  const values: ExtractedValue[] = [];
+  if (parts.systolic) values.push({ metric: 'systolic', value: parts.systolic.value, unit: 'mmHg', sourceText: parts.systolic.sourceText });
+  if (parts.diastolic) values.push({ metric: 'diastolic', value: parts.diastolic.value, unit: 'mmHg', sourceText: parts.diastolic.sourceText });
+  return values;
 }
 
 export function extractHealthValues(text: string): ExtractedValue[] {
-  const results: ExtractedValue[] = [...extractBloodPressure(text)];
+  const results: ExtractedValue[] = [...extractBloodPressureValues(text)];
   for (const rule of RULES) {
     for (const pattern of rule.patterns) {
       const match = text.match(pattern);
