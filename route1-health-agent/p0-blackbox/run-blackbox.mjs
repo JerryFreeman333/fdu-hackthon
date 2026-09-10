@@ -112,8 +112,18 @@ async function caseFamilyRevocation(browser) {
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
+
+    const elderChat = page.locator('#elder-chat input.chat-input');
+    await elderChat.waitFor({ state: 'visible', timeout: 5000 });
+    await elderChat.fill('我胸口痛');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+
     const shareButton = page.locator('button', { hasText: '同意以后需要时告诉家属' });
-    if (await shareButton.isVisible({ timeout: 1500 }).catch(() => false)) await shareButton.click();
+    await shareButton.waitFor({ state: 'visible', timeout: 5000 });
+    await shareButton.click();
+
+    const elderGranted = (await page.locator('body').textContent()) ?? '';
+    assert(elderGranted.includes('已允许必要的家属协同'), 'family sharing was not granted through the real user flow');
 
     const inviteButton = page.locator('button', { hasText: '生成家属邀请码' });
     await inviteButton.waitFor({ state: 'visible', timeout: 5000 });
@@ -141,18 +151,24 @@ async function caseFamilyRevocation(browser) {
 
     const elderAfterRevoke = (await page.locator('body').textContent()) ?? '';
     assert(!elderAfterRevoke.includes('暂停家属共享'), 'revoke control remained visible after sharing was disabled');
+    assert(elderAfterRevoke.includes('暂不共享给家属'), 'elder UI did not reflect revoked sharing state');
 
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.locator('button.role-option', { hasText: '我是家属' }).click();
     await page.waitForTimeout(250);
     const familyAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
-    assert(familyAfterRevoke.includes('尚未绑定老人'), 'revoked family session still appeared bound');
-    assert(!familyAfterRevoke.includes('健康共享摘要'), 'revoked family session exposed health navigation');
-    assert(!familyAfterRevoke.includes('家属周报'), 'revoked family session exposed report navigation');
+    assert(familyAfterRevoke.includes('绑定关系：家属'), 'revocation unexpectedly removed the family binding itself');
+    assert(familyAfterRevoke.includes('目前没有新的家属通知'), 'revoked family session still exposed a family notification');
     assert(
       !familyAfterRevoke.includes('居家安全，需要您做的一件事'),
       'revoked family session exposed home safety actions',
     );
+
+    await page.locator('.family-dashboard button', { hasText: '查看共享摘要' }).click();
+    await page.waitForTimeout(150);
+    const detailAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
+    assert(detailAfterRevoke.includes('当前未共享详细健康资料'), 'revoked family detail view did not fail closed');
+
     return 'PASS family revocation';
   } finally {
     await context.close();
