@@ -35,19 +35,25 @@ function subtractDays(today: string, days: number): string {
   return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
 }
 
-/** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
+/**
+ * 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。
+ * 但逗号也可能只是血压的分隔符，例如“血压150,90”或“高压150，低压90”。
+ * 因此先保护血压内部连接符，再按自然语言分句，避免上层理解重新破坏已解析的事实。
+ */
 function splitClauses(text: string): string[] {
-  return text
-    .split(/[。！？!?；;，,\n]+/)
-    .map((clause) => clause.trim())
+  const protectedText = text
+    .replace(/((?:血压|高压|收缩压|上压)\s*[0-9０-９一二两三四五六七八九十百千万零〇]+)[,，](\s*(?:低压|舒张压|下压)\s*[0-9０-９一二两三四五六七八九十百千万零〇]+)/g, '$1@@BP_COMMA@@$2')
+    .replace(/([0-9０-９一二两三四五六七八九十百千万零〇]+)[,，](?=[0-9０-９一二两三四五六七八九十百千万零〇]+)/g, '$1@@BP_COMMA@@');
+
+  return protectedText
+    .split(/[。！？!?；;\n]+/)
+    .map((clause) => clause.replace(/@@BP_COMMA@@/g, '，').trim())
     .filter(Boolean);
 }
 
 function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
   if (!/(他|她|他们|她们)/.test(clause)) return null;
 
-  // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
-  // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
@@ -56,15 +62,13 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'family_other';
+    return unique.length === 1 ? unique[0] : unique.length > 1 ? 'unknown' : 'family_other';
   }
 
   return null;
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
-  // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
   if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
@@ -75,7 +79,6 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
   const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
@@ -102,44 +105,21 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
-    return 'hypothetical';
-  }
+  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'hypothetical';
 
-  // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏，
-  // 虽然表面有否定词，但业务事件本身是“漏服药物”而不是“没有漏服”。
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
-    return 'occurred';
-  }
-
-  // “没睡好”含有口语否定词，但它表达的是已经发生的睡眠问题。
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) return 'occurred';
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
-  // 比较/缓解结构不是“完全没有症状”。
   const comparativeImprovement =
     /(今天|现在|目前)/.test(clause) &&
     /(没|没有|不再|不那么)/.test(clause) &&
     /(像|那么|这么|那样|比)/.test(clause) &&
     /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
   if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
-  if (
-    /(今天|现在|目前)/.test(clause) &&
-    /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
-    tags.length > 0
-  ) {
-    return 'occurred';
-  }
+  if (/(今天|现在|目前)/.test(clause) && /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) && tags.length > 0) return 'occurred';
 
-  if (
-    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
-      clause,
-    )
-  ) {
-    return 'negated';
-  }
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
-    return 'uncertain';
-  }
+  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) return 'negated';
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'uncertain';
   return 'occurred';
 }
 
@@ -151,11 +131,7 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
-export function understandElderInput(
-  text: string,
-  today: string,
-  recentMessages: ChatMessage[] = [],
-): StructuredElderInput {
+export function understandElderInput(text: string, today: string, recentMessages: ChatMessage[] = []): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
@@ -163,9 +139,7 @@ export function understandElderInput(
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
-  if (recallRequested || clarificationQuestion) {
-    return { claims: [], recallRequested, clarificationQuestion, correction };
-  }
+  if (recallRequested || clarificationQuestion) return { claims: [], recallRequested, clarificationQuestion, correction };
 
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
@@ -178,53 +152,24 @@ export function understandElderInput(
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
     const subject = subjectFromText(clause, subjectsSeen);
-    const isOmittedComparison =
-      explicitTags.length === 0 &&
-      /(今天|现在|目前)/.test(clause) &&
-      /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
-      lastTags.length > 0;
-    const isOmittedParallelAction =
-      explicitTags.length === 0 &&
-      /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
-      lastTags.length > 0;
-    const tags =
-      explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
-    const hasHealthValue: boolean =
-      hasExplicitHealthValue ||
-      (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
+    const isOmittedComparison = explicitTags.length === 0 && /(今天|现在|目前)/.test(clause) && /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) && lastTags.length > 0;
+    const isOmittedParallelAction = explicitTags.length === 0 && /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) && lastTags.length > 0;
+    const tags = explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
+    const hasHealthValue = hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
     const time = timeFromText(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
-      claims.push({
-        text: clause,
-        subject,
-        status: 'uncertain',
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-        outcome: 'death_reported',
-      });
+      claims.push({ text: clause, subject, status: 'uncertain', timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue, outcome: 'death_reported' });
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
-    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
     if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
-      claims.push({
-        text: clause,
-        subject,
-        status,
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-      });
+      claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -238,23 +183,13 @@ export function understandElderInput(
       continue;
     }
 
-    claims.push({
-      text: clause,
-      subject,
-      status,
-      timeScope: time.scope,
-      eventDate: time.eventDate,
-      tags,
-      hasHealthValue,
-    });
+    claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
     subjectsSeen.push(subject);
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
 
-  const hasUnclearFamilyReference = claims.some(
-    (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
-  );
+  const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue));
   const privacyIntents = splitClauses(trimmed)
     .map((clause) => parsePrivacyIntent(clause))
     .filter((intent) => intent !== 'none');
@@ -265,8 +200,7 @@ export function understandElderInput(
     return {
       claims: [],
       recallRequested,
-      clarificationQuestion:
-        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      clarificationQuestion: '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
       correction,
     };
   }
@@ -286,11 +220,7 @@ export function acceptedSelfClaims(input: StructuredElderInput): StructuredClaim
     (claim) =>
       claim.subject === 'self' &&
       claim.status === 'occurred' &&
-      (claim.tags.length > 0 || claim.hasHealthValue) &&
-      claim.eventDate !== null,
+      claim.eventDate !== null &&
+      (claim.tags.length > 0 || claim.hasHealthValue),
   );
-}
-
-export function hasDeathReport(input: StructuredElderInput): boolean {
-  return input.claims.some((claim) => claim.outcome === 'death_reported');
 }
