@@ -184,7 +184,10 @@ export interface LlmAdapter {
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
-    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context, userText), tags: parsed.tags };
+    return {
+      text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context, userText),
+      tags: parsed.tags,
+    };
   },
 };
 

@@ -67,8 +67,14 @@ runCase('hypothetical fall is not treated as an actual fall', () => {
 
 runCase('one utterance can switch from a family member to the elder', () => {
   const input = understandElderInput('我爸刚才摔了一跤，我也喘', TODAY);
-  assert(input.claims.some((claim) => claim.subject === 'father' && claim.tags.includes('fall')), 'father fall must stay with father');
-  assert(input.claims.some((claim) => claim.subject === 'self' && claim.tags.includes('dyspnea')), 'second clause must switch to self');
+  assert(
+    input.claims.some((claim) => claim.subject === 'father' && claim.tags.includes('fall')),
+    'father fall must stay with father',
+  );
+  assert(
+    input.claims.some((claim) => claim.subject === 'self' && claim.tags.includes('dyspnea')),
+    'second clause must switch to self',
+  );
   assert(acceptedSelfClaims(input).length === 1, 'only the elder symptom should enter the self timeline');
 });
 
@@ -84,7 +90,10 @@ runCase('omitted subject follows the most recent explicit family subject', () =>
   const input = understandElderInput('我爸今天喘，后来更喘了', TODAY);
   const familyClaims = input.claims.filter((claim) => claim.subject === 'father' && claim.tags.includes('dyspnea'));
   assert(familyClaims.length >= 2, 'omitted second clause should preserve the father subject');
-  assert(!acceptedSelfClaims(input).some((claim) => claim.tags.includes('dyspnea')), 'omitted family symptom must not become a self fact');
+  assert(
+    !acceptedSelfClaims(input).some((claim) => claim.tags.includes('dyspnea')),
+    'omitted family symptom must not become a self fact',
+  );
 });
 
 runCase('a historical family statement does not become a current self event', () => {
@@ -114,7 +123,9 @@ runCase('family improvement-only follow-up does not leak a self symptom', () => 
   const accepted = acceptedSelfClaims(input);
   assert(accepted.length === 0, 'family improvement must never become a self health fact');
   assert(
-    input.claims.some((claim) => claim.subject === 'father' && claim.eventDate === '2026-09-07' && claim.tags.includes('dyspnea')),
+    input.claims.some(
+      (claim) => claim.subject === 'father' && claim.eventDate === '2026-09-07' && claim.tags.includes('dyspnea'),
+    ),
     'the actual family symptom should remain attributable to the father',
   );
 });

@@ -33,15 +33,11 @@ function parseChineseNumber(input: string): number | null {
   if (/^[零〇一二两三四五六七八九]$/.test(normalized)) return DIGITS[normalized];
 
   // 老人口语中“一百五”通常表示 150，“二百三”表示 230，而不是 105/203。
-  const abbreviatedHundreds = normalized.match(
-    /^([一二两三四五六七八九])百([零〇]?)([一二两三四五六七八九])$/,
-  );
+  const abbreviatedHundreds = normalized.match(/^([一二两三四五六七八九])百([零〇]?)([一二两三四五六七八九])$/);
   if (abbreviatedHundreds) {
     return DIGITS[abbreviatedHundreds[1]] * 100 + DIGITS[abbreviatedHundreds[3]] * 10;
   }
-  const abbreviatedThousands = normalized.match(
-    /^([一二两三四五六七八九])千([零〇]?)([一二两三四五六七八九])$/,
-  );
+  const abbreviatedThousands = normalized.match(/^([一二两三四五六七八九])千([零〇]?)([一二两三四五六七八九])$/);
   if (abbreviatedThousands) {
     return DIGITS[abbreviatedThousands[1]] * 1000 + DIGITS[abbreviatedThousands[3]] * 100;
   }
@@ -117,9 +113,7 @@ const RULES: Rule[] = [
   {
     metric: 'restingHr',
     unit: 'bpm',
-    patterns: [
-      new RegExp(String.raw`(?:静息心率|心率|脉搏).{0,6}?${RANGE}\s*(?:次(?:/分钟|每分钟)?|bpm)?`),
-    ],
+    patterns: [new RegExp(String.raw`(?:静息心率|心率|脉搏).{0,6}?${RANGE}\s*(?:次(?:/分钟|每分钟)?|bpm)?`)],
   },
 ];
 
@@ -136,9 +130,7 @@ function parseBloodPressure(text: string): BloodPressureParts | null {
   // 完整双值：血压 150/90、150，90、150比90、150-90，以及“高压150低压90”。
   const bloodPressurePairPatterns: Array<{ pattern: RegExp; lowFirst?: boolean }> = [
     {
-      pattern: new RegExp(
-        String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及-~])\s*(${NUMBER})`,
-      ),
+      pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及-~])\s*(${NUMBER})`),
     },
     {
       pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s+(${NUMBER})`),
