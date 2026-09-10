@@ -168,9 +168,12 @@ async function caseFamilyRevocation(browser) {
     const revoke = page.locator('button', { hasText: '暂停家属共享' });
     await revoke.waitFor();
     await revoke.click();
-    const elderText = await bodyText(page);
-    assert(!elderText.includes('暂停家属共享'), 'revoke control remained visible');
-    assert(elderText.includes('暂不共享给家属'), 'revoke state is missing');
+    const elderState = page.locator('body');
+    await elderState.getByText('暂不共享给家属').waitFor();
+    assert(
+      (await page.locator('button', { hasText: '暂停家属共享' }).count()) === 0,
+      'revoke control remained visible',
+    );
 
     await page.locator('button', { hasText: '切换身份' }).click();
     await chooseRole(page, '我是家属');
