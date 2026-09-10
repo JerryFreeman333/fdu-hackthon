@@ -1,101 +1,111 @@
-/** 从老人自然语言中提取少量可用于趋势计算的结构化数值。 */
-import type { MetricKey } from '../types';
+import type { HealthMetric, SymptomTag } from '../types';
 
 export interface ExtractedValue {
-  metric: MetricKey;
+  metric: HealthMetric;
   value: number;
   unit: string;
   sourceText: string;
 }
 
-const SIMPLE_DIGIT = '零〇一二两三四五六七八九';
-const NUMBER = String.raw`(?:\d+(?:\.\d+)?|[${SIMPLE_DIGIT}十百千万]+)`;
-const RANGE = String.raw`(${NUMBER}(?:\s*(?:到|至|~|-)\s*${NUMBER})?)`;
-const DIGITS: Record<string, number> = {
-  零: 0,
-  〇: 0,
-  一: 1,
-  二: 2,
-  两: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-};
+const NUMBER = String.raw`(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)`;
+const RANGE = String.raw`(?:\d+(?:\.\d+)?)`;
 
-function parseChineseNumber(input: string): number | null {
-  const normalized = input.replace(/\s/g, '');
-  if (!normalized) return null;
-  if (/^\d+(?:\.\d+)?$/.test(normalized)) return Number(normalized);
-  if (/^[零〇一二两三四五六七八九]$/.test(normalized)) return DIGITS[normalized];
+function chineseDigitValue(char: string): number | null {
+  const digits: Record<string, number> = {
+    零: 0,
+    〇: 0,
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  };
+  return digits[char] ?? null;
+}
 
-  // 老人口语中“一百五”通常表示 150，“二百三”表示 230，而不是 105/203。
-  const abbreviatedHundreds = normalized.match(/^([一二两三四五六七八九])百([零〇]?)([一二两三四五六七八九])$/);
-  if (abbreviatedHundreds) {
-    return DIGITS[abbreviatedHundreds[1]] * 100 + DIGITS[abbreviatedHundreds[3]] * 10;
-  }
-  const abbreviatedThousands = normalized.match(/^([一二两三四五六七八九])千([零〇]?)([一二两三四五六七八九])$/);
-  if (abbreviatedThousands) {
-    return DIGITS[abbreviatedThousands[1]] * 1000 + DIGITS[abbreviatedThousands[3]] * 100;
-  }
+function parseChineseNumber(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text);
 
+  if (!/[零〇一二两三四五六七八九十百千万]/.test(text)) return null;
+
+  const chars = [...text];
   let total = 0;
-  let current = 0;
-  for (const ch of normalized) {
-    if (ch === '十') {
-      total += (current || 1) * 10;
-      current = 0;
-    } else if (ch === '百') {
-      total += (current || 1) * 100;
-      current = 0;
-    } else if (ch === '千') {
-      total += (current || 1) * 1000;
-      current = 0;
-    } else if (ch === '万') {
-      total = (total + current) * 10000;
-      current = 0;
-    } else if (ch in DIGITS) {
-      current = DIGITS[ch];
-    } else {
-      return null;
+  let section = 0;
+  let number = 0;
+  let lastUnit = 1;
+
+  const unitMap: Record<string, number> = { 十: 10, 百: 100, 千: 1000, 万: 10000 };
+
+  for (const char of chars) {
+    const digit = chineseDigitValue(char);
+    if (digit !== null) {
+      number = number * 10 + digit;
+      continue;
     }
+
+    const unit = unitMap[char];
+    if (!unit) return null;
+
+    if (unit === 10000) {
+      section += number;
+      total += section * unit;
+      section = 0;
+      number = 0;
+      lastUnit = unit;
+      continue;
+    }
+
+    const normalized = number === 0 ? (lastUnit > unit ? 0 : 1) : number;
+    section += normalized * unit;
+    number = 0;
+    lastUnit = unit;
   }
-  return total + current;
+
+  const result = total + section + number;
+  return Number.isFinite(result) ? result : null;
 }
 
-function parseValue(raw: string): number {
-  const parts = raw
-    .split(/[到至~-]/)
-    .map((part) => parseChineseNumber(part.trim()))
-    .filter((value): value is number => value !== null);
-  return parts.length > 1 ? (parts[0] + parts[1]) / 2 : (parseChineseNumber(raw) ?? Number.NaN);
-}
-
-interface Rule {
-  metric: MetricKey;
+interface MetricPattern {
+  metric: HealthMetric;
   unit: string;
   patterns: RegExp[];
 }
 
-const RULES: Rule[] = [
+const METRIC_PATTERNS: MetricPattern[] = [
   {
-    metric: 'nightWakes',
-    unit: '次',
+    metric: 'systolicBp',
+    unit: 'mmHg',
     patterns: [
-      new RegExp(String.raw`(?:起夜|晚上|夜里|夜间).{0,12}?${RANGE}\s*(?:次|遍|趟)`),
-      new RegExp(String.raw`${RANGE}\s*(?:次|遍|趟).{0,12}?(?:起夜|夜里|晚上|夜间)`),
+      new RegExp(String.raw`(?:收缩压|高压|上压)\s*(${RANGE})`),
+      new RegExp(String.raw`(?:收缩压|高压|上压)(?:大约|差不多|约)?\s*(${NUMBER})`),
     ],
   },
   {
-    metric: 'steps',
-    unit: '步',
-    patterns: [
-      new RegExp(String.raw`(?:走了|走|步数|今天).{0,8}?${RANGE}\s*(?:步|步数)`),
-      new RegExp(String.raw`${RANGE}\s*(?:步|步数)`),
-    ],
+    metric: 'diastolicBp',
+    unit: 'mmHg',
+    patterns: [new RegExp(String.raw`(?:舒张压|低压|下压)\s*(${RANGE})`)],
+  },
+  {
+    metric: 'spo2',
+    unit: '%',
+    patterns: [new RegExp(String.raw`(?:血氧|血氧饱和度|指尖血氧|氧饱和度)\s*(${RANGE})\s*%?`)],
+  },
+  {
+    metric: 'temperature',
+    unit: '°C',
+    patterns: [new RegExp(String.raw`(?:体温|温度)\s*(${RANGE})\s*(?:°\s*C|℃|度)?`)],
+  },
+  {
+    metric: 'glucose',
+    unit: 'mmol/L',
+    patterns: [new RegExp(String.raw`(?:血糖|血糖值)\s*(${RANGE})\s*(?:mmol/L)?`)],
   },
   {
     metric: 'weight',
@@ -130,7 +140,7 @@ function parseBloodPressure(text: string): BloodPressureParts | null {
   // 完整双值：血压 150/90、150，90、150比90、150-90，以及“高压150低压90”。
   const bloodPressurePairPatterns: Array<{ pattern: RegExp; lowFirst?: boolean }> = [
     {
-      pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及-~])\s*(${NUMBER})`),
+      pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及\-~])\s*(${NUMBER})`),
     },
     {
       pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s+(${NUMBER})`),
@@ -178,10 +188,11 @@ function parseBloodPressure(text: string): BloodPressureParts | null {
 export function extractBloodPressureValues(text: string): ExtractedValue[] {
   const parts = parseBloodPressure(text);
   if (!parts) return [];
+
   const values: ExtractedValue[] = [];
   if (parts.systolic) {
     values.push({
-      metric: 'systolic',
+      metric: 'systolicBp',
       value: parts.systolic.value,
       unit: 'mmHg',
       sourceText: parts.systolic.sourceText,
@@ -189,7 +200,7 @@ export function extractBloodPressureValues(text: string): ExtractedValue[] {
   }
   if (parts.diastolic) {
     values.push({
-      metric: 'diastolic',
+      metric: 'diastolicBp',
       value: parts.diastolic.value,
       unit: 'mmHg',
       sourceText: parts.diastolic.sourceText,
@@ -199,17 +210,37 @@ export function extractBloodPressureValues(text: string): ExtractedValue[] {
 }
 
 export function extractHealthValues(text: string): ExtractedValue[] {
-  const results: ExtractedValue[] = [...extractBloodPressureValues(text)];
-  for (const rule of RULES) {
-    for (const pattern of rule.patterns) {
+  const bloodPressureValues = extractBloodPressureValues(text);
+  const values = [...bloodPressureValues];
+
+  for (const { metric, unit, patterns } of METRIC_PATTERNS) {
+    if (metric === 'systolicBp' || metric === 'diastolicBp') continue;
+    for (const pattern of patterns) {
       const match = text.match(pattern);
       if (!match) continue;
-      const value = parseValue(match[1].replace(/\s/g, ''));
-      if (Number.isFinite(value)) {
-        results.push({ metric: rule.metric, value, unit: rule.unit, sourceText: match[0] });
-      }
+      const value = parseChineseNumber(match[1]);
+      if (value === null) continue;
+      values.push({ metric, value, unit, sourceText: match[0] });
       break;
     }
   }
-  return results;
+  return values;
+}
+
+export function extractSymptomTags(text: string): SymptomTag[] {
+  const tags: SymptomTag[] = [];
+  const checks: Array<[SymptomTag, RegExp]> = [
+    ['chestPain', /胸痛|胸口痛|胸口疼|胸部疼/],
+    ['dyspnea', /喘不上气|喘不过气|气短|呼吸困难|呼吸不畅|胸闷气短|喘/],
+    ['dizziness', /头晕|眩晕|晕乎乎/],
+    ['fall', /摔倒|摔了一跤|跌倒|跌了一跤|滑倒/],
+    ['edema', /水肿|浮肿|脚肿|腿肿|眼皮肿/],
+    ['nocturia', /夜尿|起夜|晚上尿多/],
+    ['poorSleep', /睡不好|睡不着|失眠|睡眠差/],
+    ['medicationMissed', /没吃药|漏服|忘记吃药|忘了吃药|没按时吃药/],
+  ];
+  for (const [tag, pattern] of checks) {
+    if (pattern.test(text)) tags.push(tag);
+  }
+  return tags;
 }
