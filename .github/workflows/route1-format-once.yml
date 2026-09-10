@@ -1,0 +1,38 @@
+name: route1-format-once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'route1-health-agent/p0-blackbox/run-blackbox.mjs'
+      - '.github/workflows/route1-format-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Format Route 1
+        run: npx --yes prettier@3.5.3 --write p0-blackbox/run-blackbox.mjs
+      - name: Commit formatting changes
+        run: |
+          if git diff --quiet -- p0-blackbox/run-blackbox.mjs; then
+            echo "No formatting changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add p0-blackbox/run-blackbox.mjs
+          git commit -m "style(route1): format blackbox with CI Prettier"
+          git push
