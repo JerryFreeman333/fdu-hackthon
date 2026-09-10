@@ -35,17 +35,11 @@ function parseChineseNumber(input: string): number | null {
   // 老人口语中“一百五”通常表示 150，“二百三”表示 230，而不是 105/203。
   const abbreviatedHundreds = normalized.match(/^([一二两三四五六七八九])百([零〇]?)([一二两三四五六七八九])$/);
   if (abbreviatedHundreds) {
-    const hundreds = DIGITS[abbreviatedHundreds[1]] * 100;
-    return hundreds + DIGITS[abbreviatedHundreds[3]] * 10;
+    return DIGITS[abbreviatedHundreds[1]] * 100 + DIGITS[abbreviatedHundreds[3]] * 10;
   }
   const abbreviatedThousands = normalized.match(/^([一二两三四五六七八九])千([零〇]?)([一二两三四五六七八九])$/);
   if (abbreviatedThousands) {
-    const thousands = DIGITS[abbreviatedThousands[1]] * 1000;
-    return thousands + DIGITS[abbreviatedThousands[3]] * 100;
-  }
-
-  if (/^[零〇一二两三四五六七八九]{2}$/.test(normalized)) {
-    return (DIGITS[normalized[0]] + DIGITS[normalized[1]]) / 2;
+    return DIGITS[abbreviatedThousands[1]] * 1000 + DIGITS[abbreviatedThousands[3]] * 100;
   }
 
   let total = 0;
@@ -128,42 +122,49 @@ interface BloodPressureParts {
   diastolic?: { value: number; sourceText: string };
 }
 
-function parsedNumber(raw: string): number | null {
+function parseBloodPressureNumber(raw: string): number | null {
   return parseChineseNumber(raw.replace(/\s/g, ''));
 }
 
 function parseBloodPressure(text: string): BloodPressureParts | null {
-  const pairPatterns: RegExp[] = [
-    new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／\\，,、:：比+])\s*(${NUMBER})`),
-    new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s+(${NUMBER})`),
-    new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})\s*(?:[,，、:：/／\s]|比|和|及|，)*\s*(?:低压|舒张压|下压)\s*(${NUMBER})`),
-    new RegExp(String.raw`(?:低压|舒张压|下压)\s*(${NUMBER})\s*(?:[,，、:：/／\s]|比|和|及|，)*\s*(?:高压|收缩压|上压)\s*(${NUMBER})`),
+  // 完整双值：血压 150/90、150，90、150比90、150-90，以及“高压150低压90”。
+  const bloodPressurePairPatterns: Array<{ pattern: RegExp; lowFirst?: boolean }> = [
+    {
+      pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及-~])\s*(${NUMBER})`),
+    },
+    {
+      pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s+(${NUMBER})`),
+    },
+    {
+      pattern: new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})\s*(?:[,，、:：/／\s比和及\-~])*\s*(?:低压|舒张压|下压)\s*(${NUMBER})`),
+    },
+    {
+      pattern: new RegExp(String.raw`(?:低压|舒张压|下压)\s*(${NUMBER})\s*(?:[,，、:：/／\s比和及\-~])*\s*(?:高压|收缩压|上压)\s*(${NUMBER})`),
+      lowFirst: true,
+    },
   ];
 
-  for (const pattern of pairPatterns) {
+  for (const { pattern, lowFirst } of bloodPressurePairPatterns) {
     const match = text.match(pattern);
     if (!match) continue;
-    const first = parsedNumber(match[1]);
-    const second = parsedNumber(match[2]);
+    const first = parseBloodPressureNumber(match[1]);
+    const second = parseBloodPressureNumber(match[2]);
     if (first === null || second === null) continue;
     const sourceText = match[0];
-    if (/(?:低压|舒张压|下压)\s*${0}/.test('')) {
-      // Unreachable marker kept out of the matching logic; label-aware handling is below.
-    }
-    const lowFirst = /^(?:低压|舒张压|下压)/.test(sourceText.trim());
     return lowFirst
       ? { systolic: { value: second, sourceText }, diastolic: { value: first, sourceText } }
       : { systolic: { value: first, sourceText }, diastolic: { value: second, sourceText } };
   }
 
-  const highOnlyPatterns = [
+  // 单值也必须保留下来：血压计常先报高压，丢掉它会绕过 >180 的安全红线。
+  const systolicOnlyPatterns = [
     new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})`),
     new RegExp(String.raw`(?:血压)\s*(${NUMBER})`),
   ];
-  for (const pattern of highOnlyPatterns) {
+  for (const pattern of systolicOnlyPatterns) {
     const match = text.match(pattern);
     if (!match) continue;
-    const value = parsedNumber(match[1]);
+    const value = parseBloodPressureNumber(match[1]);
     if (value !== null) return { systolic: { value, sourceText: match[0] } };
   }
 
@@ -174,8 +175,12 @@ export function extractBloodPressureValues(text: string): ExtractedValue[] {
   const parts = parseBloodPressure(text);
   if (!parts) return [];
   const values: ExtractedValue[] = [];
-  if (parts.systolic) values.push({ metric: 'systolic', value: parts.systolic.value, unit: 'mmHg', sourceText: parts.systolic.sourceText });
-  if (parts.diastolic) values.push({ metric: 'diastolic', value: parts.diastolic.value, unit: 'mmHg', sourceText: parts.diastolic.sourceText });
+  if (parts.systolic) {
+    values.push({ metric: 'systolic', value: parts.systolic.value, unit: 'mmHg', sourceText: parts.systolic.sourceText });
+  }
+  if (parts.diastolic) {
+    values.push({ metric: 'diastolic', value: parts.diastolic.value, unit: 'mmHg', sourceText: parts.diastolic.sourceText });
+  }
   return values;
 }
 
