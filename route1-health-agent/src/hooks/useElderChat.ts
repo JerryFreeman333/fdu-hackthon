@@ -122,9 +122,10 @@ function correctionTargets(claims: StructuredElderInput['claims']): CorrectionCl
   return claims
     .filter(
       (claim) =>
-        claim.status === 'occurred' &&
         claim.eventDate !== null &&
-        (claim.tags.length > 0 || claim.hasHealthValue),
+        (claim.tags.length > 0 || claim.hasHealthValue) &&
+        ((claim.subject === 'self' && claim.status === 'occurred') ||
+          (isFamilySubject(claim.subject) && claim.status !== 'hypothetical')),
     )
     .map((claim) => ({
       text: claim.text,
