@@ -107,7 +107,7 @@ interface CorrectionClaimTarget {
   subject: ElderSubject;
   eventDate: string | null;
   tags: SymptomTag[];
-  healthValues: HealthMeasurement[];
+  healthValues: ReturnType<typeof extractHealthValues>;
 }
 
 function normalizedCorrectionText(text: string): string {
