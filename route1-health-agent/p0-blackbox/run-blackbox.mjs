@@ -227,15 +227,7 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 
 try {
   await waitForServer();
-  const launchOptions = { headless: true };
-  if (process.env.PLAYWRIGHT_BROWSER_CHANNEL) {
-    launchOptions.channel = process.env.PLAYWRIGHT_BROWSER_CHANNEL;
-  } else if (!process.env.PLAYWRIGHT_EXECUTABLE_PATH) {
-    launchOptions.channel = 'chrome';
-  } else {
-    launchOptions.executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
-  }
-  const browser = await chromium.launch(launchOptions);
+  const browser = await chromium.launch({ headless: true });
   const cases = [
     caseStartup,
     caseElderSmoke,
