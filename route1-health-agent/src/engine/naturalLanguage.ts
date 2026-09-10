@@ -23,23 +23,53 @@ const CONNECTOR_PATTERNS: Array<{
   { connector: 'otherwise', pattern: /^(?:反而|否则)[，,]?/ },
 ];
 
+const IMPLICIT_BOUNDARY = /(?:后来|然后|接着|但是|不过|只是|同时|这时候|当时|另外|此外|而且|再说|反而|否则)/g;
+
 function detectLeadingConnector(text: string): NaturalLanguageUnit['connector'] | undefined {
   return CONNECTOR_PATTERNS.find((candidate) => candidate.pattern.test(text))?.connector;
 }
 
 /**
+ * 一些老人说话时几乎不使用停顿标点，例如“我爸今天喘后来我也喘了”。
+ * 这些词本身携带了明显的话语边界，因此在没有标点时也要切开；但不解释连接词的医学含义。
+ */
+function splitImplicitBoundaries(text: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  IMPLICIT_BOUNDARY.lastIndex = 0;
+
+  for (const match of text.matchAll(IMPLICIT_BOUNDARY)) {
+    const index = match.index ?? -1;
+    if (index <= start) continue;
+
+    const before = text.slice(start, index).trim();
+    if (!before) continue;
+
+    parts.push(before);
+    start = index;
+  }
+
+  const tail = text.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts.length > 0 ? parts : [text];
+}
+
+/**
  * 把老人自然语言拆成“最小事实候选单元”：
  * - 句号/问号/感叹号/分号/逗号/换行均可作为边界；
+ * - 对没有标点的典型话语连接词再做一次保守切分；
  * - 保留原始分句文字，只去掉首尾空白；
  * - 识别但不删除“后来/然后/不过”等连接关系，供后续时间、状态层使用；
  * - 不做人物、时间、否定或症状推断。
  */
 export function splitNaturalLanguageUnits(input: string): NaturalLanguageUnit[] {
-  const rawUnits = input
+  const punctuationUnits = input
     .replace(/[\u3000\t\r]+/g, ' ')
     .split(/[。！？!?；;，,\n]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+
+  const rawUnits = punctuationUnits.flatMap((unit) => splitImplicitBoundaries(unit));
 
   return rawUnits.map((text, index) => {
     const connector = detectLeadingConnector(text);
