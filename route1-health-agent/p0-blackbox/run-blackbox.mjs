@@ -5,6 +5,7 @@ const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
 const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
 const CASE_TIMEOUT_MS = 20_000;
+const SYSTEM_CHROME = '/usr/bin/google-chrome';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -168,10 +169,7 @@ async function caseFamilyRevocation(browser) {
     await revoke.waitFor();
     await revoke.click();
     const elderText = await bodyText(page);
-    assert(
-      !elderText.includes('暂停家属共享'),
-      'revoke control remained visible',
-    );
+    assert(!elderText.includes('暂停家属共享'), 'revoke control remained visible');
     assert(elderText.includes('暂不共享给家属'), 'revoke state is missing');
 
     await page.locator('button', { hasText: '切换身份' }).click();
@@ -179,10 +177,7 @@ async function caseFamilyRevocation(browser) {
     const dashboard = page.locator('.family-dashboard');
     await dashboard.waitFor();
     const familyText = (await dashboard.textContent()) ?? '';
-    assert(
-      familyText.includes('绑定关系：家属'),
-      'binding was removed unexpectedly',
-    );
+    assert(familyText.includes('绑定关系：家属'), 'binding was removed unexpectedly');
     assert(
       familyText.includes('目前没有新的家属通知'),
       'revoked family notification is still visible',
@@ -263,6 +258,7 @@ try {
   const browser = await withFailFastTimeout(
     chromium.launch({
       headless: true,
+      executablePath: SYSTEM_CHROME,
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
     }),
     BROWSER_LAUNCH_TIMEOUT_MS,
