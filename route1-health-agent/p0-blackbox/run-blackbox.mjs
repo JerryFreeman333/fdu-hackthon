@@ -233,6 +233,10 @@ async function caseFamilySessionReset(browser) {
   }
 }
 
+async function runCase(test, browser) {
+  return withFailFastTimeout(test(browser), CASE_TIMEOUT_MS, test.name);
+}
+
 const cases = [
   caseStartup,
   caseElderSmoke,
