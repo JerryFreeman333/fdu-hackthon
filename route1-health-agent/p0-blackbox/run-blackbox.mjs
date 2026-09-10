@@ -146,7 +146,7 @@ async function caseFamilyRevocation(browser) {
   try {
     const page = await newPage(context);
     await chooseRole(page, '我是老人');
-    await elderChat(page, '我胸口痛');
+    await elderChat(page, '我刚刚摔倒了');
 
     const share = page.locator('button', {
       hasText: '同意以后需要时告诉家属',
