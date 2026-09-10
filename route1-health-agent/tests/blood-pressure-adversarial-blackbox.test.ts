@@ -84,6 +84,32 @@ async function main() {
   assert(accepted[0].hasHealthValue === true, 'dangerous BP statement must carry structured health value');
   assert(accepted[0].tags.includes('bpHigh'), 'dangerous BP claim must retain BP intent');
 
+  const commaStructured = understandElderInput('血压150,90', TODAY);
+  const commaClaim = acceptedSelfClaims(commaStructured)[0];
+  assert(commaClaim?.hasHealthValue === true, 'comma-separated BP must survive structured clause splitting');
+  const commaClaimValues = extractHealthValues(commaClaim?.text ?? '');
+  assert(
+    commaClaimValues.some((value) => value.metric === 'systolic' && value.value === 150),
+    'comma BP systolic must survive',
+  );
+  assert(
+    commaClaimValues.some((value) => value.metric === 'diastolic' && value.value === 90),
+    'comma BP diastolic must survive',
+  );
+
+  const labeledCommaStructured = understandElderInput('高压150,低压90', TODAY);
+  const labeledClaim = acceptedSelfClaims(labeledCommaStructured)[0];
+  assert(labeledClaim?.hasHealthValue === true, 'labeled comma BP must remain one health claim');
+  assert(
+    extractHealthValues(labeledClaim?.text ?? '').filter((value) => value.unit === 'mmHg').length === 2,
+    'labeled comma BP must keep both values',
+  );
+
+  const unrelatedCommaStructured = understandElderInput('我今天头晕，也想告诉你血压150,90', TODAY);
+  const unrelatedClaims = acceptedSelfClaims(unrelatedCommaStructured);
+  assert(unrelatedClaims.some((claim) => claim.tags.includes('dizziness')), 'ordinary comma symptom clause must remain parseable');
+  assert(unrelatedClaims.some((claim) => claim.hasHealthValue), 'ordinary comma must not swallow a later BP fact');
+
   const events: HealthEvent[] = [
     measurementToEvent(measurement('systolic', 210)),
     measurementToEvent(measurement('diastolic', 125)),
@@ -114,7 +140,7 @@ async function main() {
   const shouldNotCrash = await generateAgentReply('高压一百五低压九十', ['bpHigh'], [], false);
   assert(shouldNotCrash.length > 0, 'oral Chinese BP forms must produce a response');
 
-  console.log('PASS: adversarial blood pressure extraction, semantic routing, detection, and chat safety');
+  console.log('PASS: adversarial blood pressure extraction, semantic routing, detection, clause splitting, and chat safety');
 }
 
 void main().catch((error) => {
