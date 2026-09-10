@@ -24,7 +24,13 @@ function observation(id: string, text: string, tags: SymptomTag[], date = TODAY)
   });
 }
 
-function measurement(id: string, metric: HealthMeasurement['metric'], value: number, sourceText: string, date = TODAY): HealthEvent {
+function measurement(
+  id: string,
+  metric: HealthMeasurement['metric'],
+  value: number,
+  sourceText: string,
+  date = TODAY,
+): HealthEvent {
   return measurementToEvent({
     id,
     timestamp: `${date}T12:00:00`,
@@ -59,24 +65,12 @@ function familyEvent(
   };
 }
 
-const sameTagDifferentDays = understandElderInput('我今天头晕', TODAY).claims;
-const selfYesterday = understandElderInput('我昨天头晕', TODAY).claims;
-const correctionTargets = [...sameTagDifferentDays, ...selfYesterday];
-
+const todayClaim = understandElderInput('我今天头晕', TODAY).claims;
 const sameTagEvents: HealthEvent[] = [
   observation('old-dizziness', '我昨天头晕', ['dizziness'], '2026-09-09'),
   observation('latest-dizziness', '我今天头晕', ['dizziness'], TODAY),
 ];
-const correctedSameTagEvents = removeCorrectedChatEvents(sameTagEvents, [sameTagEvents[1] ? {
-  ...correctionTargets[0],
-  text: '我今天头晕',
-  subject: 'self',
-  status: 'occurred',
-  timeScope: 'today',
-  eventDate: TODAY,
-  tags: ['dizziness'],
-  hasHealthValue: false,
-} : selfYesterday[0]]);
+const correctedSameTagEvents = removeCorrectedChatEvents(sameTagEvents, todayClaim);
 assert(
   correctedSameTagEvents.some((event) => event.id === 'old-dizziness'),
   'correcting today dizziness must keep the unrelated yesterday dizziness',
@@ -106,7 +100,7 @@ assert(
 );
 assert(
   correctedMultiClaimEvents.some((event) => event.id === 'multi-dizziness'),
-  'correction of the later BP claim must not remove an earlier different claim',
+  'correction of the BP claim must not remove an earlier different claim',
 );
 assert(
   correctedMultiClaimEvents.some((event) => event.id === 'unrelated-future-dizziness'),
