@@ -143,21 +143,16 @@ function shouldInheritTime(
   previousSubject: ElderSubject | null,
   previousTime: TimeResolution | null,
 ): boolean {
-  if (!previousTime || previousTime.explicit === false) return false;
+  if (!previousTime || !previousTime.explicit) return false;
   if (subject === previousSubject) return true;
   return /^(?:后来|随后|之后|接着|然后|再|又|仍然|还是|一直)/.test(clause);
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
-    return 'hypothetical';
-  }
-
+  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'hypothetical';
   if (/(差点|差一点|险些|险点|差点儿)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'uncertain';
 
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
-    return 'occurred';
-  }
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) return 'occurred';
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
   const comparativeImprovement =
@@ -167,21 +162,9 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
   if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
 
-  if (
-    /(今天|现在|目前)/.test(clause) &&
-    /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
-    tags.length > 0
-  ) {
-    return 'occurred';
-  }
+  if (/(今天|现在|目前)/.test(clause) && /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) && tags.length > 0) return 'occurred';
 
-  if (
-    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
-      clause,
-    )
-  ) {
-    return 'negated';
-  }
+  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) return 'negated';
   if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'uncertain';
   return 'occurred';
 }
@@ -194,11 +177,7 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
-export function understandElderInput(
-  text: string,
-  today: string,
-  recentMessages: ChatMessage[] = [],
-): StructuredElderInput {
+export function understandElderInput(text: string, today: string, recentMessages: ChatMessage[] = []): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
@@ -206,9 +185,7 @@ export function understandElderInput(
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
-  if (recallRequested || clarificationQuestion) {
-    return { claims: [], recallRequested, clarificationQuestion, correction };
-  }
+  if (recallRequested || clarificationQuestion) return { claims: [], recallRequested, clarificationQuestion, correction };
 
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
@@ -228,26 +205,16 @@ export function understandElderInput(
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
     const tags = explicitTags.length > 0 ? explicitTags : isOmittedParallelAction ? lastTags : explicitTags;
-    const hasHealthValue: boolean =
-      hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && isOmittedParallelAction);
+    const hasHealthValue: boolean = hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && isOmittedParallelAction);
     const rawTime = timeFromText(clause, today);
     const time = !rawTime.explicit && shouldInheritTime(clause, subject, previousSubject, previousTime)
-      ? { ...previousTime, explicit: false }
+      ? previousTime ?? rawTime
       : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
-      claims.push({
-        text: clause,
-        subject,
-        status: 'uncertain',
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-        outcome: 'death_reported',
-      });
+      claims.push({ text: clause, subject, status: 'uncertain', timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue, outcome: 'death_reported' });
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -257,15 +224,7 @@ export function understandElderInput(
     }
 
     if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
-      claims.push({
-        text: clause,
-        subject,
-        status,
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-      });
+      claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -278,20 +237,10 @@ export function understandElderInput(
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
-      previousSubject = subject;
-      previousTime = time;
       continue;
     }
 
-    claims.push({
-      text: clause,
-      subject,
-      status,
-      timeScope: time.scope,
-      eventDate: time.eventDate,
-      tags,
-      hasHealthValue,
-    });
+    claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
     subjectsSeen.push(subject);
     lastTags = tags;
     lastHealthValue = hasHealthValue;
@@ -299,12 +248,8 @@ export function understandElderInput(
     previousTime = time;
   }
 
-  const hasUnclearFamilyReference = claims.some(
-    (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
-  );
-  const privacyIntents = splitClauses(trimmed)
-    .map((clause) => parsePrivacyIntent(clause))
-    .filter((intent) => intent !== 'none');
+  const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue));
+  const privacyIntents = splitClauses(trimmed).map((clause) => parsePrivacyIntent(clause)).filter((intent) => intent !== 'none');
   const uniquePrivacyIntents = [...new Set(privacyIntents)];
   const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
 
@@ -312,8 +257,7 @@ export function understandElderInput(
     return {
       claims: [],
       recallRequested,
-      clarificationQuestion:
-        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      clarificationQuestion: '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
       correction,
     };
   }
