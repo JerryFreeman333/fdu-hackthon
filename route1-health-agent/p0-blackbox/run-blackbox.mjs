@@ -35,7 +35,10 @@ async function newPage(context) {
   });
   await page.locator('button.role-option', { hasText: '我是老人' }).waitFor();
   await page.locator('button.role-option', { hasText: '我是家属' }).waitFor();
-  assert(!(await bodyText(page)).includes('Internal Server Error'), 'startup rendered an Internal Server Error');
+  assert(
+    !(await bodyText(page)).includes('Internal Server Error'),
+    'startup rendered an Internal Server Error',
+  );
   return page;
 }
 
@@ -88,7 +91,10 @@ async function caseElderSmoke(browser) {
     const page = await newPage(context);
     await chooseRole(page, '我是老人');
     await elderChat(page, '我觉得他喘得厉害');
-    assert((await bodyText(page)).includes('我觉得他喘得厉害'), 'elder smoke message was not rendered');
+    assert(
+      (await bodyText(page)).includes('我觉得他喘得厉害'),
+      'elder smoke message was not rendered',
+    );
     return 'PASS elder smoke';
   } finally {
     await context.close();
@@ -137,7 +143,10 @@ async function caseFamilyRevocation(browser) {
     });
     await share.waitFor();
     await share.click();
-    assert((await bodyText(page)).includes('已允许必要的家属协同'), 'family sharing was not granted');
+    assert(
+      (await bodyText(page)).includes('已允许必要的家属协同'),
+      'family sharing was not granted',
+    );
 
     const invite = await generateInvite(page);
     await page.locator('button', { hasText: '切换身份' }).click();
@@ -149,7 +158,10 @@ async function caseFamilyRevocation(browser) {
     await revoke.waitFor();
     await revoke.click();
     const elderText = await bodyText(page);
-    assert(!elderText.includes('暂停家属共享'), 'revoke control remained visible');
+    assert(
+      !elderText.includes('暂停家属共享'),
+      'revoke control remained visible',
+    );
     assert(elderText.includes('暂不共享给家属'), 'revoke state is missing');
 
     await page.locator('button', { hasText: '切换身份' }).click();
@@ -157,14 +169,26 @@ async function caseFamilyRevocation(browser) {
     const dashboard = page.locator('.family-dashboard');
     await dashboard.waitFor();
     const familyText = (await dashboard.textContent()) ?? '';
-    assert(familyText.includes('绑定关系：家属'), 'binding was removed unexpectedly');
-    assert(familyText.includes('目前没有新的家属通知'), 'revoked family notification is still visible');
-    assert(!familyText.includes('居家安全，需要您做的一件事'), 'revoked family home safety action is visible');
+    assert(
+      familyText.includes('绑定关系：家属'),
+      'binding was removed unexpectedly',
+    );
+    assert(
+      familyText.includes('目前没有新的家属通知'),
+      'revoked family notification is still visible',
+    );
+    assert(
+      !familyText.includes('居家安全，需要您做的一件事'),
+      'revoked family home safety action is visible',
+    );
 
     await dashboard.locator('button', { hasText: '查看共享摘要' }).click();
     await page.waitForTimeout(150);
     const detailText = (await dashboard.textContent()) ?? '';
-    assert(detailText.includes('当前未共享详细健康资料'), 'revoked family detail did not fail closed');
+    assert(
+      detailText.includes('当前未共享详细健康资料'),
+      'revoked family detail did not fail closed',
+    );
     return 'PASS family revocation';
   } finally {
     await context.close();
@@ -217,7 +241,10 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 
 try {
   await waitForServer();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    channel: 'chrome',
+  });
   const results = [];
   for (const test of cases) {
     console.log(`START ${test.name}`);
@@ -232,7 +259,9 @@ try {
     }
   }
   await browser.close();
-  const allPass = results.length === cases.length && results.every((result) => result.startsWith('PASS '));
+  const allPass =
+    results.length === cases.length &&
+    results.every((result) => result.startsWith('PASS '));
   console.log(`ROUTE 1 BLACKBOX: ${allPass ? 'ALL PASS' : 'NOT PASSING'}`);
   process.exitCode = allPass ? 0 : 1;
 } finally {
