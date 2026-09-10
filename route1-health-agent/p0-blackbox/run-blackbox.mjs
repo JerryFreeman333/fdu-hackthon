@@ -246,10 +246,14 @@ const cases = [
   caseFamilySessionReset,
 ];
 
-const vite = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'], {
-  cwd: ROOT,
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
+const vite = spawn(
+  'npm',
+  ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'],
+  {
+    cwd: ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  },
+);
 vite.stdout.on('data', (chunk) => process.stderr.write(`[vite] ${chunk}`));
 vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 
@@ -259,7 +263,6 @@ try {
   const browser = await withTimeout(
     chromium.launch({
       headless: true,
-      channel: 'chrome',
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
     }),
     BROWSER_LAUNCH_TIMEOUT_MS,
