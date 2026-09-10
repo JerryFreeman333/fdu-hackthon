@@ -11,7 +11,10 @@ export interface NaturalLanguageUnit {
   connector?: 'later' | 'then' | 'however' | 'meanwhile' | 'also' | 'otherwise';
 }
 
-const CONNECTOR_PATTERNS: Array<{ connector: NonNullable<NaturalLanguageUnit['connector']>; pattern: RegExp }> = [
+const CONNECTOR_PATTERNS: Array<{
+  connector: NonNullable<NaturalLanguageUnit['connector']>;
+  pattern: RegExp;
+}> = [
   { connector: 'later', pattern: /^后来[，,]?/ },
   { connector: 'then', pattern: /^(?:然后|接着|之后)[，,]?/ },
   { connector: 'however', pattern: /^(?:但是|不过|只是)[，,]?/ },
@@ -38,11 +41,14 @@ export function splitNaturalLanguageUnits(input: string): NaturalLanguageUnit[] 
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return rawUnits.map((text, index) => ({
-    text,
-    index,
-    ...(detectLeadingConnector(text) ? { connector: detectLeadingConnector(text) } : {}),
-  }));
+  return rawUnits.map((text, index) => {
+    const connector = detectLeadingConnector(text);
+    return {
+      text,
+      index,
+      ...(connector ? { connector } : {}),
+    };
+  });
 }
 
 /** 仅供旧调用点过渡；不会创建第二套解析逻辑。 */
