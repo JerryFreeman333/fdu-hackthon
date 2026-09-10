@@ -281,12 +281,14 @@ try {
       console.error(`FAIL ${message}`);
     }
   }
-  await browser.close();
   const allPass =
     results.length === cases.length &&
     results.every((result) => result.startsWith('PASS '));
   console.log(`ROUTE 1 BLACKBOX: ${allPass ? 'ALL PASS' : 'NOT PASSING'}`);
-  process.exitCode = allPass ? 0 : 1;
-} finally {
   vite.kill('SIGTERM');
+  process.exit(allPass ? 0 : 1);
+} catch (error) {
+  console.error(`FAIL ${String(error).slice(0, 400)}`);
+  vite.kill('SIGTERM');
+  process.exit(1);
 }
