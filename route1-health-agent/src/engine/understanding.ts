@@ -97,12 +97,28 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   return 'self';
 }
 
-function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  if (/(去年|上个月|上周|前几天|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
-  if (/(大前天)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
-  if (/(前天|两天前)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 2) };
-  if (/(三天前)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
-  if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
+interface TimeResolution {
+  scope: TimeScope;
+  eventDate: string | null;
+  explicit: boolean;
+}
+
+function timeFromText(clause: string, today: string): TimeResolution {
+  if (/(去年|上个月|上周|前几天|以前|之前|多年前|小时候)/.test(clause)) {
+    return { scope: 'historical', eventDate: null, explicit: true };
+  }
+  if (/(大前天)/.test(clause)) {
+    return { scope: 'historical', eventDate: subtractDays(today, 3), explicit: true };
+  }
+  if (/(前天|两天前)/.test(clause)) {
+    return { scope: 'historical', eventDate: subtractDays(today, 2), explicit: true };
+  }
+  if (/(三天前)/.test(clause)) {
+    return { scope: 'historical', eventDate: subtractDays(today, 3), explicit: true };
+  }
+  if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) {
+    return { scope: 'lastNight', eventDate: subtractDays(today, 1), explicit: true };
+  }
 
   const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
   const hasYesterday = /(昨天|昨日)/.test(clause);
@@ -111,10 +127,25 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
     hasYesterday &&
     /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
 
-  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
-  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+  if (currentComparison || (hasToday && !hasYesterday)) {
+    return { scope: 'today', eventDate: today, explicit: true };
+  }
+  if (hasYesterday) {
+    return { scope: 'yesterday', eventDate: subtractDays(today, 1), explicit: true };
+  }
 
-  return { scope: 'today', eventDate: today };
+  return { scope: 'today', eventDate: today, explicit: false };
+}
+
+function shouldInheritTime(
+  clause: string,
+  subject: ElderSubject,
+  previousSubject: ElderSubject | null,
+  previousTime: TimeResolution | null,
+): boolean {
+  if (!previousTime || previousTime.explicit === false) return false;
+  if (subject === previousSubject) return true;
+  return /^(?:后来|随后|之后|接着|然后|再|又|仍然|还是|一直)/.test(clause);
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
@@ -184,6 +215,8 @@ export function understandElderInput(
   let subjectsSeen = [...priorSubjects];
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
+  let previousSubject: ElderSubject | null = null;
+  let previousTime: TimeResolution | null = null;
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
@@ -197,7 +230,10 @@ export function understandElderInput(
     const tags = explicitTags.length > 0 ? explicitTags : isOmittedParallelAction ? lastTags : explicitTags;
     const hasHealthValue: boolean =
       hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && isOmittedParallelAction);
-    const time = timeFromText(clause, today);
+    const rawTime = timeFromText(clause, today);
+    const time = !rawTime.explicit && shouldInheritTime(clause, subject, previousSubject, previousTime)
+      ? { ...previousTime, explicit: false }
+      : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
@@ -215,6 +251,8 @@ export function understandElderInput(
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
+      previousSubject = subject;
+      previousTime = time;
       continue;
     }
 
@@ -231,6 +269,8 @@ export function understandElderInput(
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
+      previousSubject = subject;
+      previousTime = time;
       continue;
     }
 
@@ -238,6 +278,8 @@ export function understandElderInput(
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
+      previousSubject = subject;
+      previousTime = time;
       continue;
     }
 
@@ -253,6 +295,8 @@ export function understandElderInput(
     subjectsSeen.push(subject);
     lastTags = tags;
     lastHealthValue = hasHealthValue;
+    previousSubject = subject;
+    previousTime = time;
   }
 
   const hasUnclearFamilyReference = claims.some(
