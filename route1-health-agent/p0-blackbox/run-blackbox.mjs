@@ -14,12 +14,12 @@ function bodyText(page) {
   return page.locator('body').textContent();
 }
 
-function withTimeout(promise, timeoutMs, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} exceeded ${timeoutMs / 1000}s`)), timeoutMs);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+function withFailFastTimeout(promise, timeoutMs, label) {
+  const timer = setTimeout(() => {
+    console.error(`FAIL ${label} exceeded ${timeoutMs / 1000}s`);
+    process.exit(1);
+  }, timeoutMs);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 async function waitForServer(timeout = 20000) {
@@ -233,10 +233,6 @@ async function caseFamilySessionReset(browser) {
   }
 }
 
-async function runCase(test, browser) {
-  return withTimeout(test(browser), CASE_TIMEOUT_MS, test.name);
-}
-
 const cases = [
   caseStartup,
   caseElderSmoke,
@@ -260,7 +256,7 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 try {
   await waitForServer();
   console.log('START browser');
-  const browser = await withTimeout(
+  const browser = await withFailFastTimeout(
     chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
