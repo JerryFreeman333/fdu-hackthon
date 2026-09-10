@@ -123,10 +123,7 @@ async function caseFamilyRevocation(browser) {
     await shareButton.click();
 
     const elderGranted = (await page.locator('body').textContent()) ?? '';
-    assert(
-      elderGranted.includes('已允许必要的家属协同'),
-      'family sharing was not granted through the real user flow',
-    );
+    assert(elderGranted.includes('已允许必要的家属协同'), 'family sharing was not granted through the real user flow');
 
     const inviteButton = page.locator('button', { hasText: '生成家属邀请码' });
     await inviteButton.waitFor({ state: 'visible', timeout: 5000 });
@@ -160,10 +157,7 @@ async function caseFamilyRevocation(browser) {
     await page.locator('button.role-option', { hasText: '我是家属' }).click();
     await page.waitForTimeout(250);
     const familyAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
-    assert(
-      familyAfterRevoke.includes('绑定关系：家属'),
-      'revocation unexpectedly removed the family binding itself',
-    );
+    assert(familyAfterRevoke.includes('绑定关系：家属'), 'revocation unexpectedly removed the family binding itself');
     assert(
       familyAfterRevoke.includes('目前没有新的家属通知'),
       'revoked family session still exposed a family notification',
@@ -176,10 +170,7 @@ async function caseFamilyRevocation(browser) {
     await page.locator('.family-dashboard button', { hasText: '查看共享摘要' }).click();
     await page.waitForTimeout(150);
     const detailAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
-    assert(
-      detailAfterRevoke.includes('当前未共享详细健康资料'),
-      'revoked family detail view did not fail closed',
-    );
+    assert(detailAfterRevoke.includes('当前未共享详细健康资料'), 'revoked family detail view did not fail closed');
 
     return 'PASS family revocation';
   } finally {
