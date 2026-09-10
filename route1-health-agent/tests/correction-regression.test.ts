@@ -5,7 +5,12 @@ import {
 import { extractHealthValues } from '../src/engine/extract';
 import { understandElderInput } from '../src/engine/understanding';
 import { measurementToEvent, observationToEvent, type HealthEvent } from '../src/pipeline/events';
-import type { FamilyHealthEvent, HealthMeasurement, SymptomTag } from '../src/types';
+import type {
+  ClaimStatus,
+  FamilyHealthEvent,
+  HealthMeasurement,
+  SymptomTag,
+} from '../src/types';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -30,6 +35,7 @@ function measurement(
   value: number,
   sourceText: string,
   date = TODAY,
+  source: HealthMeasurement['source'] = 'chat',
 ): HealthEvent {
   return measurementToEvent({
     id,
@@ -37,7 +43,7 @@ function measurement(
     metric,
     value,
     unit: metric === 'systolic' || metric === 'diastolic' ? 'mmHg' : '%',
-    source: 'chat',
+    source,
     confidence: 0.9,
     visibility: 'private',
     metadata: { sourceText, extraction: 'rule', eventDate: date },
@@ -50,16 +56,18 @@ function familyEvent(
   text: string,
   tags: SymptomTag[],
   date = TODAY,
+  status: ClaimStatus = 'occurred',
+  source: FamilyHealthEvent['source'] = 'chat',
 ): FamilyHealthEvent {
   return {
     id,
     timestamp: `${date}T12:00:00`,
-    source: 'chat',
+    source,
     subject,
     text,
     tags,
     hasHealthValue: false,
-    status: 'occurred',
+    status,
     visibility: 'private',
     shareMode: 'private',
   };
@@ -88,6 +96,7 @@ const multiClaimEvents: HealthEvent[] = [
   measurement('multi-sys', 'systolic', 210, '血压210/125'),
   measurement('multi-dia', 'diastolic', 125, '血压210/125'),
   observation('unrelated-future-dizziness', '我今天头晕得轻一点了', ['dizziness']),
+  measurement('unrelated-device-bp', 'systolic', 150, '设备读数', TODAY, 'device'),
 ];
 const correctedMultiClaimEvents = removeCorrectedChatEvents(multiClaimEvents, multiClaim);
 assert(
@@ -105,6 +114,10 @@ assert(
 assert(
   correctedMultiClaimEvents.some((event) => event.id === 'unrelated-future-dizziness'),
   'correction must not use a broad symptom tag to delete a later different observation',
+);
+assert(
+  correctedMultiClaimEvents.some((event) => event.id === 'unrelated-device-bp'),
+  'correction must never delete a non-chat measurement',
 );
 assert(bpValues.length === 2, 'BP fixture must contain both systolic and diastolic values');
 
@@ -124,4 +137,19 @@ assert(
   'family correction must preserve a different same-tag observation',
 );
 
-console.log('PASS: claim-scoped correction removes only the corrected turn and its measurements');
+const uncertainFamilyClaims = understandElderInput('我爸可能头晕', TODAY).claims;
+const uncertainFamilyEvents = [
+  familyEvent('uncertain-father-dizziness', 'father', '我爸可能头晕', ['dizziness'], TODAY, 'uncertain'),
+  familyEvent('uncertain-father-other', 'father', '我爸今天头晕得轻一点了', ['dizziness']),
+];
+const correctedUncertainFamilyEvents = removeCorrectedFamilyEvents(uncertainFamilyEvents, uncertainFamilyClaims);
+assert(
+  !correctedUncertainFamilyEvents.some((event) => event.id === 'uncertain-father-dizziness'),
+  'correction must remove a previously persisted uncertain family claim',
+);
+assert(
+  correctedUncertainFamilyEvents.some((event) => event.id === 'uncertain-father-other'),
+  'uncertain family correction must not remove a different same-tag event',
+);
+
+console.log('PASS: claim-scoped correction removes only corrected facts and leaves unrelated evidence intact');
