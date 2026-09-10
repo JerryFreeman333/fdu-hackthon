@@ -1,0 +1,39 @@
+name: route1-format-pr32-main
+
+on:
+  push:
+    branches:
+      - verify-route1-blackbox-final-20260910
+    paths:
+      - 'route1-health-agent/p0-blackbox/run-blackbox.mjs'
+      - '.github/workflows/route1-format-pr32-main.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: verify-route1-blackbox-final-20260910
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Format blackbox
+        working-directory: route1-health-agent
+        run: npx --yes prettier@3.5.3 --write p0-blackbox/run-blackbox.mjs
+      - name: Commit formatting
+        run: |
+          if git diff --quiet -- route1-health-agent/p0-blackbox/run-blackbox.mjs; then
+            echo "No formatting changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent/p0-blackbox/run-blackbox.mjs
+          git commit -m "style(route1): format blackbox timeout updates"
+          git push origin HEAD:verify-route1-blackbox-final-20260910
