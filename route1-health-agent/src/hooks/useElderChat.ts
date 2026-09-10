@@ -1,6 +1,14 @@
 import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
+import type {
+  ChatMessage,
+  ElderProfile,
+  ElderSubject,
+  FamilyHealthEvent,
+  Finding,
+  HealthMeasurement,
+  SymptomTag,
+} from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
@@ -94,33 +102,116 @@ function shouldPersistFamilyClaim(
   );
 }
 
-function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
-  if (priorTags.length === 0) return events;
-  let removed = false;
-  const next = [...events].reverse().filter((event) => {
-    if (removed || event.source !== 'chat') return true;
-    if (event.type === 'observation' && event.observation.tags.some((tag) => priorTags.includes(tag))) {
-      removed = true;
-      return false;
-    }
-    return true;
-  });
-  return next.reverse();
+interface CorrectionClaimTarget {
+  text: string;
+  subject: ElderSubject;
+  eventDate: string | null;
+  tags: SymptomTag[];
+  healthValues: HealthMeasurement[];
 }
 
-function removeLatestCorrectedFamilyEvents(
+function normalizedCorrectionText(text: string): string {
+  return text.trim().replace(/\s+/g, '');
+}
+
+function sameSymptomTags(left: SymptomTag[], right: SymptomTag[]): boolean {
+  return [...left].sort().join('|') === [...right].sort().join('|');
+}
+
+function correctionTargets(claims: StructuredElderInput['claims']): CorrectionClaimTarget[] {
+  return claims
+    .filter(
+      (claim) =>
+        claim.status === 'occurred' &&
+        claim.eventDate !== null &&
+        (claim.tags.length > 0 || claim.hasHealthValue),
+    )
+    .map((claim) => ({
+      text: claim.text,
+      subject: claim.subject,
+      eventDate: claim.eventDate,
+      tags: claim.tags,
+      healthValues: extractHealthValues(claim.text),
+    }));
+}
+
+/**
+ * 纠正必须定位到上一条具体 claim，而不是仅凭症状标签删除“最近一条”。
+ * 同一症状可以在不同时间、不同事实中重复出现；血压还会生成 observation + measurement 两类事件，
+ * 因此这里分别撤销上一条 claim 产生的观察和对应数值，避免误删无关记录或留下半残留数值。
+ */
+export function removeCorrectedChatEvents(
+  events: HealthEvent[],
+  priorClaims: StructuredElderInput['claims'],
+): HealthEvent[] {
+  const targets = correctionTargets(priorClaims).filter((claim) => claim.subject === 'self');
+  if (targets.length === 0) return events;
+
+  let next = [...events];
+
+  for (const target of targets) {
+    const observationIndex = [...next]
+      .reverse()
+      .findIndex(
+        (event) =>
+          event.source === 'chat' &&
+          event.type === 'observation' &&
+          event.observation.date === target.eventDate &&
+          normalizedCorrectionText(event.observation.text) === normalizedCorrectionText(target.text) &&
+          sameSymptomTags(event.observation.tags, target.tags),
+      );
+
+    if (observationIndex !== -1) {
+      const actualIndex = next.length - 1 - observationIndex;
+      next = next.filter((_event, index) => index !== actualIndex);
+    }
+
+    for (const healthValue of target.healthValues) {
+      const measurementIndex = [...next]
+        .reverse()
+        .findIndex((event) => {
+          if (event.source !== 'chat' || event.type !== 'measurement') return false;
+          if (event.measurement.timestamp.slice(0, 10) !== target.eventDate) return false;
+          if (event.measurement.metric !== healthValue.metric) return false;
+          if (event.measurement.value !== healthValue.value || event.measurement.unit !== healthValue.unit) return false;
+          const sourceText = event.measurement.metadata?.sourceText;
+          return typeof sourceText === 'string' && normalizedCorrectionText(sourceText) === normalizedCorrectionText(healthValue.sourceText);
+        });
+      if (measurementIndex !== -1) {
+        const actualIndex = next.length - 1 - measurementIndex;
+        next = next.filter((_event, index) => index !== actualIndex);
+      }
+    }
+  }
+
+  return next;
+}
+
+export function removeCorrectedFamilyEvents(
   events: FamilyHealthEvent[],
-  priorTags: string[],
-  priorFamilySubjects: FamilySubject[],
+  priorClaims: StructuredElderInput['claims'],
 ): FamilyHealthEvent[] {
-  if (priorTags.length === 0 || priorFamilySubjects.length === 0) return events;
-  const familySubjects = new Set(priorFamilySubjects);
-  const index = [...events]
-    .reverse()
-    .findIndex((event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)));
-  if (index === -1) return events;
-  const actualIndex = events.length - 1 - index;
-  return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
+  const targets = correctionTargets(priorClaims).filter((claim) => isFamilySubject(claim.subject));
+  if (targets.length === 0) return events;
+
+  let next = [...events];
+  for (const target of targets) {
+    const index = [...next]
+      .reverse()
+      .findIndex(
+        (event) =>
+          event.source === 'chat' &&
+          event.subject === target.subject &&
+          event.timestamp.slice(0, 10) === target.eventDate &&
+          normalizedCorrectionText(event.text) === normalizedCorrectionText(target.text) &&
+          sameSymptomTags(event.tags, target.tags),
+      );
+    if (index === -1) continue;
+    const actualIndex = next.length - 1 - index;
+    next = next.filter((_event, eventIndex) => eventIndex !== actualIndex);
+  }
+
+  return next;
 }
 
 function isCurrentReassurance(text: string): boolean {
@@ -227,12 +318,11 @@ export function useElderChat({
     if (understanding.correction) {
       const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
       const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
-      const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects = previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
-      if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
-      if (tagsToCorrect.length > 0) {
-        setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
-      }
+      const priorClaims = previousInput?.claims ?? [];
+      const priorSelfTargets = priorClaims.filter((claim) => claim.subject === 'self');
+      const priorFamilyTargets = priorClaims.filter((claim) => isFamilySubject(claim.subject));
+      if (priorSelfTargets.length > 0) setEvents((current) => removeCorrectedChatEvents(current, priorSelfTargets));
+      if (priorFamilyTargets.length > 0) setFamilyEvents((current) => removeCorrectedFamilyEvents(current, priorFamilyTargets));
     }
 
     const receivedAt = localIsoTimestamp();
