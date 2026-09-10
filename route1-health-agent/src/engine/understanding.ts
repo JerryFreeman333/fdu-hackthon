@@ -8,6 +8,7 @@ import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
+import { splitNaturalLanguageTexts } from './naturalLanguage';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
@@ -33,14 +34,6 @@ export interface StructuredElderInput {
 
 function subtractDays(today: string, days: number): string {
   return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
-}
-
-/** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
-function splitClauses(text: string): string[] {
-  return text
-    .split(/[。！？!?；;，,\n]+/)
-    .map((clause) => clause.trim())
-    .filter(Boolean);
 }
 
 function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
@@ -148,7 +141,7 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .reverse()
     .filter((message) => message.role === 'elder')
     .slice(0, 4)
-    .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
+    .flatMap((message) => splitNaturalLanguageTexts(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
 export function understandElderInput(
@@ -173,7 +166,7 @@ export function understandElderInput(
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
 
-  for (const clause of splitClauses(trimmed)) {
+  for (const clause of splitNaturalLanguageTexts(trimmed)) {
     const parsed = parseElderInput(clause);
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
@@ -255,7 +248,7 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
-  const privacyIntents = splitClauses(trimmed)
+  const privacyIntents = splitNaturalLanguageTexts(trimmed)
     .map((clause) => parsePrivacyIntent(clause))
     .filter((intent) => intent !== 'none');
   const uniquePrivacyIntents = [...new Set(privacyIntents)];
