@@ -1,5 +1,5 @@
 import { appendHealthEvents, observationToEvent } from '../src/pipeline/events';
-import { understandElderInput } from '../src/engine/understanding';
+import { understandElderInput, acceptedSelfClaims } from '../src/engine/understanding';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -37,12 +37,19 @@ runCase('negative symptom is not accepted as an occurred self fact', () => {
   assert(input.claims.length === 1, 'negative statement should remain inspectable');
   assert(input.claims[0]?.status === 'negated', 'negative chest-pain statement must be negated');
   assert(input.claims[0]?.tags.includes('chestPain'), 'negative statement should retain its semantic subject');
+  assert(acceptedSelfClaims(input).length === 0, 'negated self fact must not enter the health timeline');
 });
 
 runCase('contrast sentence preserves the real symptom after a negation', () => {
   const input = understandElderInput('我没胸痛，但是现在喘', TODAY);
-  assert(input.claims.some((claim) => claim.tags.includes('chestPain') && claim.status === 'negated'), 'chest pain must stay negated');
-  assert(input.claims.some((claim) => claim.tags.includes('dyspnea') && claim.status === 'occurred'), 'dyspnea must remain an occurred fact');
+  assert(
+    input.claims.some((claim) => claim.tags.includes('chestPain') && claim.status === 'negated'),
+    'chest pain must stay negated',
+  );
+  assert(
+    input.claims.some((claim) => claim.tags.includes('dyspnea') && claim.status === 'occurred'),
+    'dyspnea must remain an occurred fact',
+  );
 });
 
 runCase('near-miss fall is not treated as an actual fall', () => {
@@ -56,6 +63,43 @@ runCase('hypothetical fall is not treated as an actual fall', () => {
   const input = understandElderInput('如果我摔倒了怎么办', TODAY);
   assert(input.claims.length === 1, 'hypothetical fall should remain inspectable');
   assert(input.claims[0]?.status === 'hypothetical', 'hypothetical fall must not be classified as occurred');
+});
+
+runCase('one utterance can switch from a family member to the elder', () => {
+  const input = understandElderInput('我爸刚才摔了一跤，我也喘', TODAY);
+  assert(input.claims.some((claim) => claim.subject === 'father' && claim.tags.includes('fall')), 'father fall must stay with father');
+  assert(input.claims.some((claim) => claim.subject === 'self' && claim.tags.includes('dyspnea')), 'second clause must switch to self');
+  assert(acceptedSelfClaims(input).length === 1, 'only the elder symptom should enter the self timeline');
+});
+
+runCase('explicit family-to-self switch overrides the previous subject', () => {
+  const input = understandElderInput('我爸昨天喘，今天我也喘了', TODAY);
+  const fatherClaim = input.claims.find((claim) => claim.subject === 'father' && claim.tags.includes('dyspnea'));
+  const selfClaim = input.claims.find((claim) => claim.subject === 'self' && claim.tags.includes('dyspnea'));
+  assert(fatherClaim?.eventDate === '2026-09-07', 'father event should stay on yesterday');
+  assert(selfClaim?.eventDate === TODAY, 'explicit self switch should stay on today');
+});
+
+runCase('omitted subject follows the most recent explicit family subject', () => {
+  const input = understandElderInput('我爸今天喘，后来更喘了', TODAY);
+  const familyClaims = input.claims.filter((claim) => claim.subject === 'father' && claim.tags.includes('dyspnea'));
+  assert(familyClaims.length >= 2, 'omitted second clause should preserve the father subject');
+  assert(!acceptedSelfClaims(input).some((claim) => claim.tags.includes('dyspnea')), 'omitted family symptom must not become a self fact');
+});
+
+runCase('a historical family statement does not become a current self event', () => {
+  const input = understandElderInput('我爸以前摔过，今天我头晕', TODAY);
+  const fatherFall = input.claims.find((claim) => claim.subject === 'father' && claim.tags.includes('fall'));
+  const selfDizziness = input.claims.find((claim) => claim.subject === 'self' && claim.tags.includes('dizziness'));
+  assert(fatherFall?.timeScope === 'historical', 'historical family fall must stay historical');
+  assert(fatherFall?.eventDate === null, 'historical event must not receive a fake current date');
+  assert(selfDizziness?.eventDate === TODAY, 'later explicit self symptom must stay current');
+});
+
+runCase('an unqualified pronoun without context stays unknown', () => {
+  const input = understandElderInput('他今天胸闷', TODAY);
+  assert(input.claims[0]?.subject === 'unknown', 'standalone 他 must not be guessed as a family person');
+  assert(acceptedSelfClaims(input).length === 0, 'unknown pronoun must never enter the self timeline');
 });
 
 runCase('repeating the same chat health fact does not duplicate the health timeline', () => {
