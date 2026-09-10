@@ -32,6 +32,32 @@ runCase('pure reassurance is not written as a new symptom', () => {
   assert(input.claims.length === 0, 'reassurance should not create a health claim');
 });
 
+runCase('negative symptom is not accepted as an occurred self fact', () => {
+  const input = understandElderInput('我没有胸痛', TODAY);
+  assert(input.claims.length === 1, 'negative statement should remain inspectable');
+  assert(input.claims[0]?.status === 'negated', 'negative chest-pain statement must be negated');
+  assert(input.claims[0]?.tags.includes('chestPain'), 'negative statement should retain its semantic subject');
+});
+
+runCase('contrast sentence preserves the real symptom after a negation', () => {
+  const input = understandElderInput('我没胸痛，但是现在喘', TODAY);
+  assert(input.claims.some((claim) => claim.tags.includes('chestPain') && claim.status === 'negated'), 'chest pain must stay negated');
+  assert(input.claims.some((claim) => claim.tags.includes('dyspnea') && claim.status === 'occurred'), 'dyspnea must remain an occurred fact');
+});
+
+runCase('near-miss fall is not treated as an actual fall', () => {
+  const input = understandElderInput('我刚才差点摔倒', TODAY);
+  assert(input.claims.length === 1, 'near-miss fall should remain inspectable');
+  assert(input.claims[0]?.tags.includes('fall'), 'near-miss should retain fall semantics');
+  assert(input.claims[0]?.status === 'uncertain', 'near-miss fall must not be classified as occurred');
+});
+
+runCase('hypothetical fall is not treated as an actual fall', () => {
+  const input = understandElderInput('如果我摔倒了怎么办', TODAY);
+  assert(input.claims.length === 1, 'hypothetical fall should remain inspectable');
+  assert(input.claims[0]?.status === 'hypothetical', 'hypothetical fall must not be classified as occurred');
+});
+
 runCase('repeating the same chat health fact does not duplicate the health timeline', () => {
   const first = observationToEvent({
     id: 'obs-live-1',
