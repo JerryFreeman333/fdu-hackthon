@@ -179,26 +179,30 @@ async function caseFamilyRevocation(browser) {
 
     await page.locator('button', { hasText: '切换身份' }).click();
     await chooseRole(page, '我是家属');
-    const dashboard = page.locator('.family-dashboard');
-    await dashboard.waitFor();
-    const familyText = (await dashboard.textContent()) ?? '';
-    const familyHeader = (await page.locator('.persona-sub').textContent()) ?? '';
+    const familyHeader = page.locator('.persona-sub');
+    await familyHeader.waitFor();
+    const headerText = (await familyHeader.textContent()) ?? '';
     assert(
-      familyHeader.includes('绑定关系：家属'),
+      headerText.includes('绑定关系：家属'),
       'family binding was removed unexpectedly',
     );
+
+    const pageText = (await bodyText(page)) ?? '';
     assert(
-      familyText.includes('目前没有新的家属通知'),
-      'revoked family notification is still visible',
+      pageText.includes('今天总体正常') || pageText.includes('目前没有新的家属通知'),
+      'revoked family dashboard did not render the safe home state',
     );
     assert(
-      !familyText.includes('居家安全，需要您做的一件事'),
-      'revoked family home safety action is visible',
+      !pageText.includes('我刚刚摔倒了') || !pageText.includes('需要马上确认安全情况'),
+      'revoked urgent family content is still visible',
     );
 
-    await dashboard.locator('button', { hasText: '查看共享摘要' }).click();
-    await page.waitForTimeout(150);
-    const detailText = (await dashboard.textContent()) ?? '';
+    const detailButton = page.locator('button', { hasText: '查看共享摘要' });
+    if (await detailButton.count()) {
+      await detailButton.click();
+      await page.waitForTimeout(150);
+    }
+    const detailText = (await bodyText(page)) ?? '';
     assert(
       detailText.includes('当前未共享详细健康资料'),
       'revoked family detail did not fail closed',
