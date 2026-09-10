@@ -18,17 +18,17 @@ function bpValues(text: string): { systolic?: number; diastolic?: number } {
   };
 }
 
-function measurement(metric: HealthMeasurement['metric'], value: number): HealthMeasurement {
+function measurement(metric: HealthMeasurement['metric'], value: number, time = '12:00:00'): HealthMeasurement {
   return {
-    id: `bp-${metric}-${value}`,
-    timestamp: `${TODAY}T12:00:00`,
+    id: `bp-${metric}-${value}-${time}`,
+    timestamp: `${TODAY}T${time}`,
     metric,
     value,
     unit: 'mmHg',
     source: 'chat',
     confidence: 0.9,
     visibility: 'family_ok',
-    metadata: { sourceText: `blood-pressure-${metric}-${value}`, extraction: 'rule', eventDate: TODAY },
+    metadata: { sourceText: `blood-pressure-${metric}-${value}-${time}`, extraction: 'rule', eventDate: TODAY },
   };
 }
 
@@ -107,7 +107,10 @@ async function main() {
 
   const unrelatedCommaStructured = understandElderInput('我今天头晕，也想告诉你血压150,90', TODAY);
   const unrelatedClaims = acceptedSelfClaims(unrelatedCommaStructured);
-  assert(unrelatedClaims.some((claim) => claim.tags.includes('dizziness')), 'ordinary comma symptom clause must remain parseable');
+  assert(
+    unrelatedClaims.some((claim) => claim.tags.includes('dizziness')),
+    'ordinary comma symptom clause must remain parseable',
+  );
   assert(unrelatedClaims.some((claim) => claim.hasHealthValue), 'ordinary comma must not swallow a later BP fact');
 
   const events: HealthEvent[] = [
@@ -119,6 +122,17 @@ async function main() {
   assert(safety, '210/125 must enter the safety rule');
   assert(safety.severity === 'alert', '210/125 without red-flag symptoms should be alert');
   assert(safety.familyEligible === true, 'objective severe BP should remain family eligible');
+
+  const repeatMeasurementEvents: HealthEvent[] = [
+    measurementToEvent(measurement('systolic', 210, '09:00:00')),
+    measurementToEvent(measurement('diastolic', 125, '09:00:00')),
+    measurementToEvent(measurement('systolic', 170, '09:10:00')),
+    measurementToEvent(measurement('diastolic', 90, '09:10:00')),
+  ];
+  const repeatFindings = runDetection(repeatMeasurementEvents, TODAY);
+  const repeatSafety = repeatFindings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
+  assert(repeatSafety, 'a dangerous earlier BP reading must not disappear after a normal recheck');
+  assert(repeatSafety.evidence.some((item) => item.includes('210')), 'safety evidence must retain the earlier dangerous reading');
 
   const dangerousWithSymptom = runDetection(
     [
@@ -140,7 +154,7 @@ async function main() {
   const shouldNotCrash = await generateAgentReply('高压一百五低压九十', ['bpHigh'], [], false);
   assert(shouldNotCrash.length > 0, 'oral Chinese BP forms must produce a response');
 
-  console.log('PASS: adversarial blood pressure extraction, semantic routing, detection, clause splitting, and chat safety');
+  console.log('PASS: adversarial blood pressure extraction, semantic routing, detection, repeat readings, clause splitting, and chat safety');
 }
 
 void main().catch((error) => {
