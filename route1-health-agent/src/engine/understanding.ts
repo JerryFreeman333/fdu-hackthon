@@ -190,20 +190,13 @@ export function understandElderInput(
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
     const subject = subjectFromText(clause, subjectsSeen);
-    const isOmittedComparison =
-      explicitTags.length === 0 &&
-      /(今天|现在|目前)/.test(clause) &&
-      /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
-      lastTags.length > 0;
     const isOmittedParallelAction =
       explicitTags.length === 0 &&
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
-    const tags =
-      explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
+    const tags = explicitTags.length > 0 ? explicitTags : isOmittedParallelAction ? lastTags : explicitTags;
     const hasHealthValue: boolean =
-      hasExplicitHealthValue ||
-      (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
+      hasExplicitHealthValue || (tags.length > 0 && lastHealthValue && isOmittedParallelAction);
     const time = timeFromText(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
