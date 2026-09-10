@@ -91,7 +91,7 @@ jobs:
         working-directory: route1-health-agent
       - name: Install black-box dependencies
         run: npm install --no-package-lock
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Check system Chrome
+        run: google-chrome --version
       - name: Run browser black-box suite
         run: npm run blackbox
