@@ -98,7 +98,10 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
+  if (/(去年|上个月|上周|前几天|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
+  if (/(大前天)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
+  if (/(前天|两天前)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 2) };
+  if (/(三天前)/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
 
   const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
