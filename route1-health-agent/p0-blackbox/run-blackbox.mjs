@@ -176,10 +176,7 @@ async function caseFamilyRevocation(browser) {
     await page.locator('.family-dashboard button', { hasText: '查看共享摘要' }).click();
     await page.waitForTimeout(150);
     const detailAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
-    assert(
-      detailAfterRevoke.includes('当前未共享详细健康资料'),
-      'revoked family detail view did not fail closed',
-    );
+    assert(detailAfterRevoke.includes('当前未共享详细健康资料'), 'revoked family detail view did not fail closed');
 
     return 'PASS family revocation';
   } finally {
