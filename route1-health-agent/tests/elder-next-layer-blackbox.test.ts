@@ -96,6 +96,29 @@ runCase('a historical family statement does not become a current self event', ()
   assert(selfDizziness?.eventDate === TODAY, 'later explicit self symptom must stay current');
 });
 
+runCase('improvement-only follow-up is not copied into a new current symptom', () => {
+  const input = understandElderInput('我昨天胸闷，今天好多了', TODAY);
+  const accepted = acceptedSelfClaims(input);
+  assert(
+    accepted.length === 1 && accepted[0]?.eventDate === '2026-09-07' && accepted[0]?.tags.includes('chestPain'),
+    'only the actual yesterday chest-pain event should be accepted',
+  );
+  assert(
+    !accepted.some((claim) => claim.eventDate === TODAY),
+    '“今天好多了” must not inherit yesterday chest-pain as a current symptom',
+  );
+});
+
+runCase('family improvement-only follow-up does not leak a self symptom', () => {
+  const input = understandElderInput('我爸昨天喘，今天好多了', TODAY);
+  const accepted = acceptedSelfClaims(input);
+  assert(accepted.length === 0, 'family improvement must never become a self health fact');
+  assert(
+    input.claims.some((claim) => claim.subject === 'father' && claim.eventDate === '2026-09-07' && claim.tags.includes('dyspnea')),
+    'the actual family symptom should remain attributable to the father',
+  );
+});
+
 runCase('an unqualified pronoun without context stays unknown', () => {
   const input = understandElderInput('他今天胸闷', TODAY);
   assert(input.claims[0]?.subject === 'unknown', 'standalone 他 must not be guessed as a family person');
