@@ -12,9 +12,10 @@ function assert(condition: unknown, message: string): asserts condition {
 const TODAY = '2026-09-10';
 
 function bpValues(text: string): { systolic?: number; diastolic?: number } {
-  return Object.fromEntries(
-    extractBloodPressureValues(text).map((value) => [value.metric, value.value]),
-  ) as { systolic?: number; diastolic?: number };
+  return Object.fromEntries(extractBloodPressureValues(text).map((value) => [value.metric, value.value])) as {
+    systolic?: number;
+    diastolic?: number;
+  };
 }
 
 function measurement(metric: HealthMeasurement['metric'], value: number): HealthMeasurement {
@@ -55,7 +56,10 @@ async function main() {
     const values = bpValues(text);
     assert(values.systolic === systolic, `${text}: systolic extraction failed`);
     assert(values.diastolic === diastolic, `${text}: diastolic extraction failed`);
-    assert(extractHealthValues(text).filter((value) => value.unit === 'mmHg').length === 2, `${text}: two BP values required`);
+    assert(
+      extractHealthValues(text).filter((value) => value.unit === 'mmHg').length === 2,
+      `${text}: two BP values required`,
+    );
     assert(parseElderInput(text).tags.includes('bpHigh'), `${text}: chat parser must see the same BP fact`);
   }
 
@@ -67,7 +71,10 @@ async function main() {
     const values = bpValues(text);
     assert(values.systolic === systolic, `${text}: single-value systolic extraction failed`);
     assert(values.diastolic === diastolic, `${text}: partial reading must not invent diastolic`);
-    assert(extractHealthValues(text).some((value) => value.metric === 'systolic'), `${text}: value must not be dropped`);
+    assert(
+      extractHealthValues(text).some((value) => value.metric === 'systolic'),
+      `${text}: value must not be dropped`,
+    );
     assert(parseElderInput(text).tags.includes('bpHigh'), `${text}: partial BP must reach chat safety layer`);
   }
 
