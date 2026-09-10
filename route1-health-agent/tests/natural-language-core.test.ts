@@ -15,6 +15,12 @@ test('core keeps multiple natural-language facts as separate units', () => {
   assert.equal(units[1]?.connector, 'later');
 });
 
+test('core splits a discourse shift even when the elder omits punctuation', () => {
+  const units = splitNaturalLanguageUnits('我爸今天喘后来我也喘了');
+  assert.deepEqual(units.map((unit) => unit.text), ['我爸今天喘', '后来我也喘了']);
+  assert.equal(units[1]?.connector, 'later');
+});
+
 test('core preserves a family fact followed by an omitted-subject follow-up', () => {
   const claims = claimsOf('我妈昨天胸闷，今天好多了');
   assert.equal(claims.length, 2);
