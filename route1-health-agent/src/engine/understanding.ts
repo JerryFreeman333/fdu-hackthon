@@ -106,8 +106,9 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
-  if (lastKnownSubject) return lastKnownSubject;
+  const latestPriorSubject = [...priorSubjects].reverse()[0];
+  if (latestPriorSubject === 'unknown') return 'unknown';
+  if (latestPriorSubject) return latestPriorSubject;
 
   return 'self';
 }
