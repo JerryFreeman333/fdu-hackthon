@@ -68,7 +68,7 @@ jobs:
     name: Route 1 browser black-box
     needs: build-route1
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: route1-health-agent/p0-blackbox
@@ -89,7 +89,7 @@ jobs:
         working-directory: route1-health-agent
       - name: Install black-box dependencies
         run: npm install --no-package-lock
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Check system Chrome
+        run: command -v google-chrome
       - name: Run browser black-box suite
         run: npm run blackbox
