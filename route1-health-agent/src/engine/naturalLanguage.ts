@@ -20,20 +20,15 @@ const CONNECTOR_PATTERNS: Array<{ connector: NonNullable<NaturalLanguageUnit['co
   { connector: 'otherwise', pattern: /^(?:反而|否则)[，,]?/ },
 ];
 
-function stripLeadingConnector(text: string): { text: string; connector?: NaturalLanguageUnit['connector'] } {
-  for (const candidate of CONNECTOR_PATTERNS) {
-    if (!candidate.pattern.test(text)) continue;
-    const stripped = text.replace(candidate.pattern, '').trim();
-    return { text: stripped || text, connector: candidate.connector };
-  }
-  return { text };
+function detectLeadingConnector(text: string): NaturalLanguageUnit['connector'] | undefined {
+  return CONNECTOR_PATTERNS.find((candidate) => candidate.pattern.test(text))?.connector;
 }
 
 /**
  * 把老人自然语言拆成“最小事实候选单元”：
  * - 句号/问号/感叹号/分号/逗号/换行均可作为边界；
- * - 不删除原始文字，只去掉首尾空白；
- * - 保留“后来/然后/不过”等连接关系，供后续时间、状态层使用；
+ * - 保留原始分句文字，只去掉首尾空白；
+ * - 识别但不删除“后来/然后/不过”等连接关系，供后续时间、状态层使用；
  * - 不做人物、时间、否定或症状推断。
  */
 export function splitNaturalLanguageUnits(input: string): NaturalLanguageUnit[] {
@@ -43,14 +38,11 @@ export function splitNaturalLanguageUnits(input: string): NaturalLanguageUnit[] 
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return rawUnits.map((raw, index) => {
-    const normalized = stripLeadingConnector(raw);
-    return {
-      text: normalized.text,
-      index,
-      ...(normalized.connector ? { connector: normalized.connector } : {}),
-    };
-  });
+  return rawUnits.map((text, index) => ({
+    text,
+    index,
+    ...(detectLeadingConnector(text) ? { connector: detectLeadingConnector(text) } : {}),
+  }));
 }
 
 /** 仅供旧调用点过渡；不会创建第二套解析逻辑。 */
