@@ -32,9 +32,15 @@ async function expectRoleGate(page) {
   assert(!body.includes('Internal Server Error'), 'startup rendered an Internal Server Error');
 }
 
+async function newTestPage(context) {
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  return page;
+}
+
 async function caseStartup(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     return 'PASS startup';
@@ -45,7 +51,7 @@ async function caseStartup(browser) {
 
 async function caseElderSmoke(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -64,7 +70,7 @@ async function caseElderSmoke(browser) {
 
 async function caseFamilySmoke(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是家属' }).click();
@@ -80,7 +86,7 @@ async function caseFamilySmoke(browser) {
 
 async function caseFamilyBinding(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -108,7 +114,7 @@ async function caseFamilyBinding(browser) {
 
 async function caseFamilyRevocation(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -170,7 +176,10 @@ async function caseFamilyRevocation(browser) {
     await page.locator('.family-dashboard button', { hasText: '查看共享摘要' }).click();
     await page.waitForTimeout(150);
     const detailAfterRevoke = (await page.locator('.family-dashboard').textContent()) ?? '';
-    assert(detailAfterRevoke.includes('当前未共享详细健康资料'), 'revoked family detail view did not fail closed');
+    assert(
+      detailAfterRevoke.includes('当前未共享详细健康资料'),
+      'revoked family detail view did not fail closed',
+    );
 
     return 'PASS family revocation';
   } finally {
@@ -180,7 +189,7 @@ async function caseFamilyRevocation(browser) {
 
 async function caseFamilySessionReset(browser) {
   const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await newTestPage(context);
   try {
     await expectRoleGate(page);
     await page.locator('button.role-option', { hasText: '我是老人' }).click();
@@ -238,6 +247,7 @@ try {
   ];
   const results = [];
   for (const test of cases) {
+    console.log(`START ${test.name}`);
     try {
       const result = await test(browser);
       results.push({ result });
