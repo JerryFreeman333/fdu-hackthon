@@ -3,6 +3,7 @@ name: route1-health-agent-ci
 # Final verification pass: this workflow owns the Route 1 build, security, and browser gates.
 # The final verification commit intentionally triggers this workflow from main.
 # Final clean verification after the browser black-box formatter pass.
+# CI trigger: current-head verification after permission refresh.
 
 on:
   push:
