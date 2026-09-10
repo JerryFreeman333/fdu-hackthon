@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
+const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
 const CASE_TIMEOUT_MS = 20_000;
 
 function assert(condition, message) {
@@ -11,6 +12,14 @@ function assert(condition, message) {
 
 function bodyText(page) {
   return page.locator('body').textContent();
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} exceeded ${timeoutMs / 1000}s`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function waitForServer(timeout = 20000) {
@@ -225,12 +234,7 @@ async function caseFamilySessionReset(browser) {
 }
 
 async function runCase(test, browser) {
-  const timeout = new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new Error(`${test.name} exceeded ${CASE_TIMEOUT_MS / 1000}s`));
-    }, CASE_TIMEOUT_MS);
-  });
-  return Promise.race([test(browser), timeout]);
+  return withTimeout(test(browser), CASE_TIMEOUT_MS, test.name);
 }
 
 const cases = [
@@ -251,10 +255,16 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite-err] ${chunk}`));
 
 try {
   await waitForServer();
-  const browser = await chromium.launch({
-    headless: true,
-    channel: 'chrome',
-  });
+  console.log('START browser');
+  const browser = await withTimeout(
+    chromium.launch({
+      headless: true,
+      channel: 'chrome',
+      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    }),
+    BROWSER_LAUNCH_TIMEOUT_MS,
+    'browser launch',
+  );
   const results = [];
   for (const test of cases) {
     console.log(`START ${test.name}`);
