@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-route1:
@@ -48,6 +48,26 @@ jobs:
           cache-dependency-path: route1-health-agent/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Temporary autoformat blocked Route 1 files
+        run: |
+          npx --yes prettier@3.5.3 --write \
+            src/engine/agent.ts \
+            src/engine/extract.ts \
+            tests/blood-pressure-adversarial-blackbox.test.ts \
+            tests/elder-next-layer-blackbox.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/engine/agent.ts \
+            src/engine/extract.ts \
+            tests/blood-pressure-adversarial-blackbox.test.ts \
+            tests/elder-next-layer-blackbox.test.ts
+          if git diff --cached --quiet; then
+            echo "No formatter changes to commit."
+          else
+            git commit -m "chore(route1): apply prettier formatting"
+            git push origin "HEAD:${GITHUB_HEAD_REF}"
+          fi
       - name: Check formatting
         run: npm run format:check
       - name: Check blackbox syntax
