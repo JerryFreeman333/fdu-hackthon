@@ -4,6 +4,7 @@ import type { AgentContext } from './context';
 import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
 import { parsePrivacyIntent } from './privacy';
+import { extractBloodPressureValues } from './extract';
 
 interface IntentRule {
   tag: SymptomTag;
@@ -98,7 +99,35 @@ export function parseElderInput(text: string): ParsedInput {
       }
     }
   }
+
+  // 血压数值与聊天意图必须使用同一个事实来源，避免“对话层说听懂了、检测层却没收到”。
+  const bloodPressure = extractBloodPressureValues(text);
+  if (bloodPressure.length > 0 && !tags.includes('bpHigh')) {
+    tags.push('bpHigh');
+    matchedTexts.push(bloodPressure.map((item) => item.sourceText)[0]);
+  }
+
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
+}
+
+function buildBloodPressureReply(text: string): string | null {
+  const values = extractBloodPressureValues(text);
+  if (values.length === 0) return null;
+
+  const systolic = values.find((value) => value.metric === 'systolic')?.value;
+  const diastolic = values.find((value) => value.metric === 'diastolic')?.value;
+  const severe = (systolic !== undefined && systolic > 180) || (diastolic !== undefined && diastolic > 120);
+
+  if (severe) {
+    const reading = `${systolic ?? '—'}/${diastolic ?? '—'} mmHg`;
+    return `我记下了您刚才的血压：${reading}。这个读数很高，请先坐下来安静休息，按设备说明尽快复测；如果复测仍然很高，尽快联系医疗人员。如果同时出现胸痛、明显呼吸困难、说话异常或一侧肢体无力，请立即寻求急救。`;
+  }
+
+  if (systolic !== undefined && diastolic === undefined) {
+    return `我记下了您刚才的高压：${systolic} mmHg。低压如果也测到了，请再告诉我，我可以把这次血压完整记下来。`;
+  }
+
+  return `我记下了您刚才的血压：${systolic ?? '—'}/${diastolic ?? '—'} mmHg。一次读数先不用自己下结论，之后可以按设备说明复测。`;
 }
 
 function buildRuleBasedReply(
@@ -106,7 +135,10 @@ function buildRuleBasedReply(
   findings: Finding[],
   isNewFall: boolean,
   context?: AgentContext,
+  userText?: string,
 ): string {
+  const bloodPressureReply = userText ? buildBloodPressureReply(userText) : null;
+  if (bloodPressureReply) return bloodPressureReply;
   if (newTags.includes('chestPain'))
     return (
       INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
@@ -148,10 +180,11 @@ export interface LlmAdapter {
     context?: AgentContext,
   ): Promise<{ text: string; tags: SymptomTag[] }>;
 }
+
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
-    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context), tags: parsed.tags };
+    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context, userText), tags: parsed.tags };
   },
 };
 
@@ -256,6 +289,10 @@ export async function generateAgentReply(
   context?: AgentContext,
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
+  // 血压属于不可由外部 LLM 覆盖的安全输入；先由同一解析器判断，再决定是否允许通用对话层接管。
+  const bloodPressureReply = buildBloodPressureReply(elderText);
+  if (bloodPressureReply) return bloodPressureReply;
+
   const safetyFinding = context?.priorityFindings.find(
     (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
   );
@@ -266,11 +303,12 @@ export async function generateAgentReply(
   try {
     const completion = await adapter.complete(systemPrompt, elderText, context);
     if (isSafeAgentReply(completion.text)) return completion.text.trim();
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    return buildRuleBasedReply(newTags, findings, isNewFall, context, elderText);
   } catch {
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    return buildRuleBasedReply(newTags, findings, isNewFall, context, elderText);
   }
 }
+
 export const QUICK_INPUTS = [
   '最近腿有点没劲',
   '最近走路有点喘',
