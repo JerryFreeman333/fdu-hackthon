@@ -42,6 +42,11 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     return updatedAt;
   }
 
+  function promptFamilyShare() {
+    if (familySharing !== 'denied') return;
+    updateFamilySharing('ask');
+  }
+
   function requestFamilyShare() {
     const updatedAt = updateFamilySharing('granted');
     showToast(`已同意在必要时与家属共享。授权记录时间：${updatedAt.slice(0, 10)}`);
@@ -147,6 +152,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     sharedFamilyEventIds,
     claimedOneTimeFindingIds,
     claimedOneTimeFamilyEventIds,
+    promptFamilyShare,
     requestFamilyShare,
     keepFamilyPrivate,
     revokeFamilyShare,
