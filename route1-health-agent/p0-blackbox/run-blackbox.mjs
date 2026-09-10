@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
+const CASE_TIMEOUT_MS = 20_000;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -223,6 +224,15 @@ async function caseFamilySessionReset(browser) {
   }
 }
 
+async function runCase(test, browser) {
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`${test.name} exceeded ${CASE_TIMEOUT_MS / 1000}s`));
+    }, CASE_TIMEOUT_MS);
+  });
+  return Promise.race([test(browser), timeout]);
+}
+
 const cases = [
   caseStartup,
   caseElderSmoke,
@@ -249,7 +259,7 @@ try {
   for (const test of cases) {
     console.log(`START ${test.name}`);
     try {
-      const result = await test(browser);
+      const result = await runCase(test, browser);
       results.push(result);
       console.log(result);
     } catch (error) {
