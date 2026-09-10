@@ -88,21 +88,7 @@ jobs:
         working-directory: route1-health-agent
       - name: Install black-box dependencies
         run: npm install --no-package-lock
-      - name: Locate system browser
-        id: browser
-        shell: bash
-        run: |
-          if command -v google-chrome >/dev/null 2>&1; then
-            echo "executable=$(command -v google-chrome)" >> "$GITHUB_OUTPUT"
-          elif command -v chromium >/dev/null 2>&1; then
-            echo "executable=$(command -v chromium)" >> "$GITHUB_OUTPUT"
-          else
-            echo "executable=" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Install Chromium fallback
-        if: steps.browser.outputs.executable == ''
+      - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser black-box suite
-        env:
-          PLAYWRIGHT_EXECUTABLE_PATH: ${{ steps.browser.outputs.executable }}
         run: npm run blackbox
