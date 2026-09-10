@@ -23,7 +23,7 @@ function assert(condition, message) {
 }
 
 async function expectRoleGate(page) {
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 15000 });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 10000 });
   const elder = page.locator('button.role-option', { hasText: '我是老人' });
   const family = page.locator('button.role-option', { hasText: '我是家属' });
   await elder.waitFor({ state: 'visible', timeout: 5000 });
@@ -204,7 +204,7 @@ async function caseFamilySessionReset(browser) {
       'family session did not bind',
     );
 
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
     const elderGate = page.locator('button.role-option', { hasText: '我是老人' });
     const familyGate = page.locator('button.role-option', { hasText: '我是家属' });
     await elderGate.waitFor({ state: 'visible', timeout: 5000 });
