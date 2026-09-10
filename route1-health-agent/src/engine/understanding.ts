@@ -35,13 +35,6 @@ function subtractDays(today: string, days: number): string {
   return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
 }
 
-/**
- * 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。
- * 但逗号也可能只是血压的分隔符，例如“血压150,90”或“高压150，低压90”。
- * 因此先保护血压内部连接符，再按自然语言分句，避免上层理解重新破坏已解析的事实。
- * 逗号默认视为潜在的新 claim 边界，从而支持“我爸摔了，我也喘”这类同句多人物表达。
- * 同时把“但是/不过/可是”这类转折从同一 claim 中拆开，避免否定前半句时把后半句的真实症状一起否掉。
- */
 function splitClauses(text: string): string[] {
   const protectedText = text
     .replace(
@@ -78,13 +71,35 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   return null;
 }
 
+function explicitSubjectsFromText(clause: string): ElderSubject[] {
+  const subjects: ElderSubject[] = [];
+  const patterns: Array<[RegExp, ElderSubject]> = [
+    [/(我老公|我丈夫|老公|丈夫|爱人)/, 'spouse'],
+    [/(我爸|我父亲|爸爸|父亲)/, 'father'],
+    [/(我妈|我母亲|妈妈|母亲)/, 'mother'],
+    [/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/, 'family_other'],
+  ];
+
+  for (const [pattern, subject] of patterns) {
+    if (pattern.test(clause)) subjects.push(subject);
+  }
+
+  return [...new Set(subjects)];
+}
+
+function coordinatedSubjectsFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject[] {
+  const subjects = explicitSubjectsFromText(clause);
+  const hasCoordination = /(?:和|跟|与|以及|还有|、|都|各自|分别)/.test(clause);
+
+  if (subjects.length >= 2 && hasCoordination) return subjects;
+  return [subjectFromText(clause, priorSubjects)];
+}
+
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
-  if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
-  if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
-  if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
+  const explicitSubjects = explicitSubjectsFromText(clause);
+  if (explicitSubjects.length > 0) return explicitSubjects[0];
 
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
@@ -237,7 +252,8 @@ export function understandElderInput(
     const parsed = parseElderInput(clause);
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
-    const subject = subjectFromText(clause, subjectsSeen);
+    const coordinatedSubjects = coordinatedSubjectsFromText(clause, subjectsSeen);
+    const subject = coordinatedSubjects[0] ?? 'self';
     const isOmittedParallelAction =
       explicitTags.length === 0 &&
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
@@ -252,60 +268,60 @@ export function understandElderInput(
         : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
+    const claimSubjects = coordinatedSubjects.length > 1 ? coordinatedSubjects : [subject];
 
-    if (deathReported) {
+    for (const claimSubject of claimSubjects) {
+      if (deathReported) {
+        claims.push({
+          text: clause,
+          subject: claimSubject,
+          status: 'uncertain',
+          timeScope: time.scope,
+          eventDate: time.eventDate,
+          tags,
+          hasHealthValue,
+          outcome: 'death_reported',
+        });
+        continue;
+      }
+
+      if (tags.length === 0 && !hasHealthValue && claimSubject !== 'self' && claimSubject !== 'unknown') {
+        claims.push({
+          text: clause,
+          subject: claimSubject,
+          status,
+          timeScope: time.scope,
+          eventDate: time.eventDate,
+          tags,
+          hasHealthValue,
+        });
+        continue;
+      }
+
+      if (tags.length === 0 && !hasHealthValue && claimSubject !== 'unknown') {
+        continue;
+      }
+
       claims.push({
         text: clause,
-        subject,
-        status: 'uncertain',
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-        outcome: 'death_reported',
-      });
-      subjectsSeen.push(subject);
-      lastTags = tags;
-      lastHealthValue = hasHealthValue;
-      previousSubject = subject;
-      previousTime = time;
-      continue;
-    }
-
-    if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
-      claims.push({
-        text: clause,
-        subject,
+        subject: claimSubject,
         status,
         timeScope: time.scope,
         eventDate: time.eventDate,
         tags,
         hasHealthValue,
       });
-      subjectsSeen.push(subject);
+    }
+
+    if (coordinatedSubjects.length > 1) {
+      subjectsSeen = ['unknown'];
       lastTags = tags;
       lastHealthValue = hasHealthValue;
-      previousSubject = subject;
+      previousSubject = null;
       previousTime = time;
       continue;
     }
 
-    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') {
-      subjectsSeen.push(subject);
-      lastTags = tags;
-      lastHealthValue = hasHealthValue;
-      continue;
-    }
-
-    claims.push({
-      text: clause,
-      subject,
-      status,
-      timeScope: time.scope,
-      eventDate: time.eventDate,
-      tags,
-      hasHealthValue,
-    });
     subjectsSeen.push(subject);
     lastTags = tags;
     lastHealthValue = hasHealthValue;
