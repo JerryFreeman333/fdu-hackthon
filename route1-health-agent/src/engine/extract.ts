@@ -113,26 +113,51 @@ const RULES: Rule[] = [
   },
 ];
 
+function isPlausibleBloodPressure(systolic: number, diastolic: number): boolean {
+  return systolic >= 70 && systolic <= 260 && diastolic >= 40 && diastolic <= 160 && systolic > diastolic;
+}
+
+function buildBloodPressure(systolicRaw: string, diastolicRaw: string, sourceText: string): ExtractedValue[] {
+  const systolic = parseChineseNumber(systolicRaw.replace(/\s/g, ''));
+  const diastolic = parseChineseNumber(diastolicRaw.replace(/\s/g, ''));
+  if (systolic === null || diastolic === null || !isPlausibleBloodPressure(systolic, diastolic)) return [];
+  return [
+    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText },
+    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText },
+  ];
+}
+
 function extractBloodPressure(text: string): ExtractedValue[] {
+  const systolicDiastolicLabels = text.match(
+    new RegExp(String.raw`收缩压\s*(${NUMBER}).{0,4}?舒张压\s*(${NUMBER})`),
+  );
+  const diastolicSystolicLabels = text.match(
+    new RegExp(String.raw`舒张压\s*(${NUMBER}).{0,4}?收缩压\s*(${NUMBER})`),
+  );
   const highLow = text.match(new RegExp(String.raw`高压\s*(${NUMBER}).{0,4}?低压\s*(${NUMBER})`));
   const lowHigh = text.match(new RegExp(String.raw`低压\s*(${NUMBER}).{0,4}?高压\s*(${NUMBER})`));
   const pair = text.match(new RegExp(String.raw`(?:血压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`));
-  const selected = highLow
-    ? { systolic: highLow[1], diastolic: highLow[2], sourceText: highLow[0] }
-    : lowHigh
-      ? { systolic: lowHigh[2], diastolic: lowHigh[1], sourceText: lowHigh[0] }
-      : pair
-        ? { systolic: pair[1], diastolic: pair[2], sourceText: pair[0] }
-        : null;
-  if (!selected) return [];
+  const fallbackPair = text.match(new RegExp(String.raw`(${NUMBER})\s*[/／,，、比]\s*(${NUMBER})`));
 
-  const systolic = parseChineseNumber(selected.systolic.replace(/\s/g, ''));
-  const diastolic = parseChineseNumber(selected.diastolic.replace(/\s/g, ''));
-  if (systolic === null || diastolic === null) return [];
-  return [
-    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: selected.sourceText },
-    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: selected.sourceText },
-  ];
+  if (systolicDiastolicLabels) {
+    return buildBloodPressure(systolicDiastolicLabels[1], systolicDiastolicLabels[2], systolicDiastolicLabels[0]);
+  }
+  if (diastolicSystolicLabels) {
+    return buildBloodPressure(diastolicSystolicLabels[2], diastolicSystolicLabels[1], diastolicSystolicLabels[0]);
+  }
+  if (highLow) {
+    return buildBloodPressure(highLow[1], highLow[2], highLow[0]);
+  }
+  if (lowHigh) {
+    return buildBloodPressure(lowHigh[2], lowHigh[1], lowHigh[0]);
+  }
+  if (pair) {
+    return buildBloodPressure(pair[1], pair[2], pair[0]);
+  }
+  if (fallbackPair) {
+    return buildBloodPressure(fallbackPair[1], fallbackPair[2], fallbackPair[0]);
+  }
+  return [];
 }
 
 export function extractHealthValues(text: string): ExtractedValue[] {
