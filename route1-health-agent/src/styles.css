@@ -314,6 +314,40 @@ button {
 .family-item p {
   margin: 8px 0;
 }
+.care-path {
+  background: #fdf4e0;
+  border: 1px solid #ecd9ae;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 15px;
+  margin: 8px 0;
+}
+.notif-delivery {
+  font-size: 13px;
+  margin: 6px 0;
+}
+.notif-ack {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--brand-dark);
+  font-weight: 700;
+  font-size: 15px;
+}
+.notif-ack-btn {
+  margin-top: 8px;
+}
+.family-item-ack {
+  opacity: 0.72;
+}
+.push-line {
+  margin-top: 10px;
+}
+.push-line .muted {
+  margin-top: 4px;
+}
+.push-line button {
+  padding: 8px 16px;
+}
 .family-task {
   display: flex;
   justify-content: space-between;

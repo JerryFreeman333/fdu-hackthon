@@ -14,7 +14,7 @@ import {
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import { collectFamilyNotifications } from './engine/escalate';
+import type { FamilyNotification } from './engine/escalate';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -26,7 +26,19 @@ import {
 } from './engine/agent';
 import { extractHealthValues } from './engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from './engine/privacy';
+import {
+  acknowledgeNotification,
+  dispatchFamilyNotifications,
+  type DeliveryOutcome,
+  type FamilyNotificationRecord,
+} from './engine/notify';
 import { buildInitialTasks, createTaskFromFinding, updateTaskStatus } from './engine/tasks';
+import {
+  pushPermission,
+  requestPushPermission,
+  sendBrowserPush,
+  type PushPermission,
+} from './adapters/BrowserNotificationChannel';
 import { healthRecordStore } from './store/LocalHealthRecordStore';
 import ElderHome from './components/ElderHome';
 import FamilyDashboard from './components/FamilyDashboard';
@@ -37,6 +49,7 @@ const ROLE_KEY = 'ankang-route1-role-v3';
 const TASK_KEY = 'ankang-route1-tasks-v2';
 const CONSENT_KEY = 'ankang-route1-consent-v1';
 const FAMILY_LINK_KEY = 'ankang-route1-family-link-v1';
+const NOTIF_KEY = 'ankang-route1-notif-records-v1';
 const INVITE_PREFIX = 'ankang-route1-invite:';
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -94,6 +107,17 @@ function loadFamilyLink(): FamilyLink | null {
   }
 }
 
+function loadNotificationRecords(): FamilyNotificationRecord[] {
+  try {
+    const raw = window.localStorage.getItem(NOTIF_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as FamilyNotificationRecord[];
+    return Array.isArray(parsed) ? parsed.filter((record) => record && typeof record.findingId === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 function createInviteCode(): string {
   const random =
     typeof crypto !== 'undefined' && 'getRandomValues' in crypto
@@ -115,6 +139,8 @@ export default function App() {
   const [familyView, setFamilyView] = useState<FamilyView>('home');
   const [toast, setToast] = useState<string | null>(null);
   const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks());
+  const [notifRecords, setNotifRecords] = useState<FamilyNotificationRecord[]>(() => loadNotificationRecords());
+  const [pushPermissionState, setPushPermissionState] = useState<PushPermission>(() => pushPermission());
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations } = healthData;
@@ -123,7 +149,6 @@ export default function App() {
     () => buildAgentContext(activeProfile, events, TODAY, findings),
     [activeProfile, events, findings],
   );
-  const familyNotifs = useMemo(() => collectFamilyNotifications(findings, familySharing), [findings, familySharing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,9 +166,10 @@ export default function App() {
     healthRecordStore.save({ events, chat: chat.filter((item) => item.persisted !== false) });
     window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
     window.localStorage.setItem(CONSENT_KEY, familySharing);
+    window.localStorage.setItem(NOTIF_KEY, JSON.stringify(notifRecords));
     if (familyLink) window.localStorage.setItem(FAMILY_LINK_KEY, JSON.stringify(familyLink));
     else window.localStorage.removeItem(FAMILY_LINK_KEY);
-  }, [events, chat, tasks, familySharing, familyLink]);
+  }, [events, chat, tasks, familySharing, familyLink, notifRecords]);
 
   useEffect(() => {
     const actionable = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
@@ -157,6 +183,29 @@ export default function App() {
       return next;
     });
   }, [findings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const elderLabel = `${activeProfile.name}的健康提醒`;
+    const deliver = (notification: FamilyNotification): DeliveryOutcome[] => [
+      sendBrowserPush(notification.finding.id, elderLabel, notification.message),
+    ];
+    dispatchFamilyNotifications(
+      findings,
+      familySharing,
+      familyLink?.status === 'active',
+      notifRecords,
+      new Date().toISOString(),
+      deliver,
+    ).then((result) => {
+      if (cancelled || result.dispatchedCount === 0) return;
+      setNotifRecords(result.records);
+      showToast(`已向家属端派发 ${result.dispatchedCount} 条通知，送达情况见家属端通知中心。`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [findings, familySharing, familyLink, notifRecords, activeProfile.name]);
 
   function showToast(text: string) {
     setToast(text);
@@ -288,6 +337,21 @@ export default function App() {
     showToast(`演示联系：${activeProfile.familyContact}`);
   }
 
+  function acknowledgeNotificationById(findingId: string) {
+    setNotifRecords((current) => acknowledgeNotification(current, findingId, new Date().toISOString()));
+    showToast('已确认。对应的处理事项在下方“帮老人把事情做完”。');
+  }
+
+  async function enableSystemPush() {
+    const next = await requestPushPermission();
+    setPushPermissionState(next);
+    showToast(
+      next === 'granted'
+        ? '系统通知已开启，之后的家属通知会同时推送到系统通知栏。'
+        : '系统通知未开启，家属通知会保留在家属端通知中心，不会丢失。',
+    );
+  }
+
   function generateInvite() {
     const code = createInviteCode();
     const link: FamilyLink = {
@@ -393,16 +457,19 @@ export default function App() {
         <FamilyDashboard
           profile={activeProfile}
           familyLink={familyLink}
-          notifications={familyNotifs}
+          notificationRecords={notifRecords}
           findings={findings}
           tasks={tasks}
           records={records}
           observations={observations}
           today={TODAY}
+          pushPermission={pushPermissionState}
           onTaskStatus={handleTaskStatus}
           onContactElder={contactElder}
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
+          onAcknowledgeNotification={acknowledgeNotificationById}
+          onEnablePush={enableSystemPush}
           onViewChange={setFamilyView}
           view={familyView}
         />
