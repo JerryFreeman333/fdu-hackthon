@@ -4,7 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
-// Final CI verification marker: clean-head final gate, pass 2.
+// Final CI verification marker: clean-head final gate, pass 3.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
