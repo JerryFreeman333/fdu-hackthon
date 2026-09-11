@@ -64,6 +64,9 @@ async function main() {
     assert(parseElderInput(text).tags.includes('bpHigh'), `${text}: chat parser must see the same BP fact`);
   }
 
+  const canonicalMetrics = extractBloodPressureValues('血压210/125').map((value) => value.metric).join('|');
+  assert(canonicalMetrics === 'systolic|diastolic', 'BP extractor must use domain MetricKey names');
+
   for (const [text, systolic, diastolic] of [
     ['我血压150', 150, undefined],
     ['高压150', 150, undefined],
