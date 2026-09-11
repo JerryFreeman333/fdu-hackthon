@@ -14,36 +14,12 @@ interface IntentRule {
 const BP_NUMBER = '(?:\\d{2,3}|[零〇一二两三四五六七八九十百千万]+)';
 
 const INTENT_RULES: IntentRule[] = [
-  {
-    tag: 'fatigue',
-    patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/],
-    replies: ['先歇一歇，别硬撑。您如果愿意，可以告诉我这种累是从什么时候开始的。'],
-  },
-  {
-    tag: 'dyspnea',
-    patterns: [/喘/, /气(短|不够|促)/, /憋气/, /上(楼|台阶)(费劲|吃力|喘)/],
-    replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'],
-  },
-  {
-    tag: 'poorSleep',
-    patterns: [/睡不(好|着|踏实)/, /没睡好/, /失眠/, /夜醒/, /起夜/, /半夜(醒|起来)/],
-    replies: ['睡不好确实难受，我记下了。我想再确认一个情况。'],
-  },
-  {
-    tag: 'edema',
-    patterns: [/(脚|腿|脚踝|小腿).{0,4}肿/, /肿了/, /鞋(紧|挤脚)/, /袜子(印|勒)/],
-    replies: ['我记下了。脚踝或腿部的肿胀如果持续或越来越明显，建议尽快和医生沟通。'],
-  },
-  {
-    tag: 'dizziness',
-    patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/],
-    replies: ['先坐稳，别硬站着。我想确认一下，这样更容易判断当下行动是否安全。'],
-  },
-  {
-    tag: 'medicationMissed',
-    patterns: [/(忘|没|漏)(了)?(吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/],
-    replies: ['先别自行加量补吃，按原来的医生方案处理。'],
-  },
+  { tag: 'fatigue', patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/], replies: ['先歇一歇，别硬撑。您如果愿意，可以告诉我这种累是从什么时候开始的。'] },
+  { tag: 'dyspnea', patterns: [/喘/, /气(短|不够|促)/, /憋气/, /上(楼|台阶)(费劲|吃力|喘)/], replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'] },
+  { tag: 'poorSleep', patterns: [/睡不(好|着|踏实)/, /没睡好/, /失眠/, /夜醒/, /起夜/, /半夜(醒|起来)/], replies: ['睡不好确实难受，我记下了。我想再确认一个情况。'] },
+  { tag: 'edema', patterns: [/(脚|腿|脚踝|小腿).{0,4}肿/, /肿了/, /鞋(紧|挤脚)/, /袜子(印|勒)/], replies: ['我记下了。脚踝或腿部的肿胀如果持续或越来越明显，建议尽快和医生沟通。'] },
+  { tag: 'dizziness', patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/], replies: ['先坐稳，别硬站着。我想确认一下，这样更容易判断当下行动是否安全。'] },
+  { tag: 'medicationMissed', patterns: [/(忘|没|漏)(了)?(吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/], replies: ['先别自行加量补吃，按原来的医生方案处理。'] },
   {
     tag: 'bpHigh',
     patterns: [
@@ -57,43 +33,14 @@ const INTENT_RULES: IntentRule[] = [
     ],
     replies: ['先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。'],
   },
-  {
-    tag: 'chestPain',
-    patterns: [/胸(口)?痛/, /胸疼/, /胸闷/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/],
-    replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'],
-  },
-  {
-    tag: 'neuroChange',
-    patterns: [
-      /说话(不清楚|含糊|不利索)/,
-      /(嘴角|嘴).{0,3}(歪|偏)/,
-      /(一侧|半边|一边).{0,4}(无力|没劲|发麻|麻木)/,
-      /(手脚|胳膊|腿).{0,4}(突然)?(无力|没劲|发麻|麻木)/,
-      /突然看不清/,
-    ],
-    replies: ['先别走动，立即联系家里人并寻求急救。这类突然出现的情况不适合在家继续观察。'],
-  },
-  {
-    tag: 'pain',
-    patterns: [/(疼|痛)/, /不舒服/],
-    replies: ['哪里不舒服可以慢慢告诉我：位置、持续多久，以及什么时候最明显。'],
-  },
-  {
-    tag: 'moodLow',
-    patterns: [/(心|心情)(烦|闷|不好)/, /没意思/, /孤独/, /想(孩子|家里人)/],
-    replies: ['我在这儿，您慢慢说。'],
-  },
-  {
-    tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|摔过|过了|了)/, /摔倒/],
-    replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
-  },
+  { tag: 'chestPain', patterns: [/胸(口)?痛/, /胸疼/, /胸闷/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/], replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'] },
+  { tag: 'neuroChange', patterns: [/说话(不清楚|含糊|不利索)/, /(嘴角|嘴).{0,3}(歪|偏)/, /(一侧|半边|一边).{0,4}(无力|没劲|发麻|麻木)/, /(手脚|胳膊|腿).{0,4}(突然)?(无力|没劲|发麻|麻木)/, /突然看不清/], replies: ['先别走动，立即联系家里人并寻求急救。这类突然出现的情况不适合在家继续观察。'] },
+  { tag: 'pain', patterns: [/(疼|痛)/, /不舒服/], replies: ['哪里不舒服可以慢慢告诉我：位置、持续多久，以及什么时候最明显。'] },
+  { tag: 'moodLow', patterns: [/(心|心情)(烦|闷|不好)/, /没意思/, /孤独/, /想(孩子|家里人)/], replies: ['我在这儿，您慢慢说。'] },
+  { tag: 'fall', patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|摔过|过了|了)/, /摔倒/], replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'] },
 ];
 
-export interface ParsedInput {
-  tags: SymptomTag[];
-  matchedTexts: string[];
-}
+export interface ParsedInput { tags: SymptomTag[]; matchedTexts: string[] }
 
 export function parseElderInput(text: string): ParsedInput {
   const tags: SymptomTag[] = [];
@@ -111,16 +58,8 @@ export function parseElderInput(text: string): ParsedInput {
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
 }
 
-function buildRuleBasedReply(
-  newTags: SymptomTag[],
-  findings: Finding[],
-  isNewFall: boolean,
-  context?: AgentContext,
-): string {
-  const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
-    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
-
+function buildRuleBasedReply(newTags: SymptomTag[], findings: Finding[], isNewFall: boolean, context?: AgentContext): string {
+  const replyFor = (tag: SymptomTag): string => INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
   if (newTags.includes('fall')) {
@@ -130,9 +69,7 @@ function buildRuleBasedReply(
   if (newTags.includes('bpHigh')) return replyFor('bpHigh');
   if (newTags.length === 0) {
     const unresolved = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
-    return unresolved
-      ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。`
-      : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
+    return unresolved ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。` : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
   const parts = newTags.slice(0, 2).map(replyFor);
   if (context) {
@@ -141,4 +78,90 @@ function buildRuleBasedReply(
   }
   if (findings.some((finding) => finding.severity === 'urgent') && isNewFall) parts.push('请先确认自己现在是否安全。');
   return parts.join('\n');
+}
+
+export interface LlmAdapter {
+  complete(systemPrompt: string, userText: string, context?: AgentContext): Promise<{ text: string; tags: SymptomTag[] }>;
+}
+
+export const ruleBasedAdapter: LlmAdapter = {
+  async complete(_systemPrompt, userText, context) {
+    const parsed = parseElderInput(userText);
+    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context), tags: parsed.tags };
+  },
+};
+
+interface ExternalAgentContext {
+  today: string;
+  windowDays: number;
+  safetyLevel: Finding['severity'];
+  personTwin: AgentContext['personTwin'];
+  metrics: AgentContext['metrics'];
+  observations: AgentContext['observations'];
+  labs: AgentContext['labs'];
+  priorityFindings: AgentContext['priorityFindings'];
+  suggestedAction?: string;
+}
+
+function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
+  const publicFindings = context.priorityFindings.filter((finding) => finding.familyEligible !== false);
+  const safetyRank: Record<Finding['severity'], number> = { urgent: 0, alert: 1, watch: 2, info: 3 };
+  const publicSafety = publicFindings.reduce<Finding['severity']>((highest, finding) => (safetyRank[finding.severity] < safetyRank[highest] ? finding.severity : highest), 'info');
+  return {
+    today: context.today,
+    windowDays: context.windowDays,
+    safetyLevel: publicSafety,
+    personTwin: { ...context.personTwin, safetyRelevantChanges: [], activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4) },
+    metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
+    observations: context.observations.filter((observation) => observation.visibility !== 'private'),
+    labs: context.labs.filter((lab) => lab.visibility !== 'private'),
+    priorityFindings: publicFindings,
+    suggestedAction: undefined,
+  };
+}
+
+const MAX_AGENT_INPUT_LENGTH = 1000;
+const MAX_AGENT_REPLY_LENGTH = 500;
+const SYSTEM_PROMPT = '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；不要补写用户没有说过的症状、诱因、趋势或人物。';
+const UNSAFE_REPLY_PATTERNS = [/(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/, /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/, /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/];
+
+export function isSafeAgentReply(text: string): boolean {
+  const normalized = text.trim();
+  return normalized.length > 0 && normalized.length <= MAX_AGENT_REPLY_LENGTH && !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export async function generateAgentReply(elderText: string, newTags: SymptomTag[], findings: Finding[], isNewFall: boolean, context?: AgentContext, adapter: LlmAdapter = ruleBasedAdapter): Promise<string> {
+  const publicFinding = context?.priorityFindings.find((finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false);
+  const systemPrompt = `${SYSTEM_PROMPT}\n当前最高风险等级：${publicFinding?.severity ?? 'info'}；已识别标签：${newTags.join(', ') || '无'}。`;
+  try {
+    const safeContext = context ? sanitizeExternalContext(context) : undefined;
+    const completion = await adapter.complete(systemPrompt, elderText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), safeContext as AgentContext | undefined);
+    return isSafeAgentReply(completion.text) ? completion.text.trim() : buildRuleBasedReply(newTags, findings, isNewFall, context);
+  } catch {
+    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+  }
+}
+
+export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
+  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost')) throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
+  return {
+    async complete(systemPrompt, userText, context) {
+      const privacyIntent = parsePrivacyIntent(userText);
+      if (privacyIntent === 'private' || privacyIntent === 'no_record') throw new Error('Private and no-record inputs must stay on the local safety adapter.');
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt, userText: userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), context: context ? sanitizeExternalContext(context) : undefined }) });
+      if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
+      const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
+      return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+    },
+  };
+}
+
+export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+
+export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
+  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 10)}`, role, text, time, persisted };
+}
+
+export function tagLabel(tag: SymptomTag): string {
+  return SYMPTOM_LABELS[tag];
 }
