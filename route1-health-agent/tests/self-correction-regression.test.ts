@@ -129,3 +129,5 @@ test('missing provenance fails closed and deletes nothing', () => {
   assert.equal(next.length, 1);
   assert.equal(next[0]?.id, 'observation:legacy-observation');
 });
+
+// Final verification marker: correction provenance regression suite.
