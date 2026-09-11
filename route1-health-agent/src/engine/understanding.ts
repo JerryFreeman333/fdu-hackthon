@@ -231,6 +231,13 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
+/** 单独出现的问候语：是社交表达，不是没听清，也不是健康事实。 */
+const GREETING_PATTERN =
+  /^(?:您好|你好|早上好|上午好|中午好|下午好|晚上好|早安|晚安|哈喽|哈罗|嗨|在吗|喂|新年好|节日好)[呀啊嘛呢吧啦哇咯哦哈!！?？。~～\s]*$/i;
+
+/** 单独出现的道谢：同样不该被当成没听清。 */
+const THANKS_PATTERN = /^(?:谢谢|谢谢您|多谢|多谢您|辛苦了|辛苦您|麻烦你了|麻烦您了)[啦呀哪!！。~～\s]*$/;
+
 export function understandElderInput(
   text: string,
   today: string,
@@ -242,9 +249,14 @@ export function understandElderInput(
   const correctionTargetMessageId = correction
     ? [...recentMessages].reverse().find((message) => message.role === 'elder')?.id
     : undefined;
-  let clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
-    ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
-    : undefined;
+  let clarificationQuestion: string | undefined;
+  if (/凶闷/.test(trimmed)) {
+    // 语音输入的错字：确认之前不能当症状记录。
+    clarificationQuestion = '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。';
+  } else if (/胸闷[?？]$/.test(trimmed)) {
+    // 带问号的“胸闷？”更可能是在提问，而不是陈述症状；问清楚再记录。
+    clarificationQuestion = '您是想问胸闷是怎么回事，还是想说您现在有胸闷的感觉？';
+  }
 
   if (recallRequested || clarificationQuestion) {
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
@@ -402,14 +414,22 @@ export function understandElderInput(
   // 不取决于是否含有安全规则/有值。
   const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown');
 
-  // 输入中仅含人名、事件、时间词等语义素但不含任何可识别的健康信息：提示清请求明以避免黑盒。
+  // 输入不含任何可识别的健康信息时，给一句温和的引导，而不是宣称"没听清"。
   const hasAnyHealthSignal =
-    /(血压|血氧|spo2|SPO2|SpO2|心跳|心率|血糖|跳|踩|痛|晕|发烧|睡|饮|仔子|心衰|肺|脑|不舒服|肚子|不舒)/.test(trimmed);
+    /(血压|血氧|spo2|心跳|心率|脉搏|血糖|痛|疼|晕|发烧|发热|睡|起夜|累|喘|肿|麻|摔|跌|药|胸口|心口|闷|咳|肚子|不舒服|乏力|没劲|心衰|中风|肺|脑)/i.test(
+      trimmed,
+    );
   const isGibberish =
     !hasAnyHealthSignal && !/(他|她|他们|她们)/.test(trimmed) && !/(中文数字|阿拉伯数字)/.test(trimmed);
-  if (claims.length === 0 && !clarificationQuestion && !recallRequested && trimmed.length > 0 && isGibberish) {
-    clarificationQuestion =
-      '我没有听清您说的是什么。您是该该心跳、血压、血糖、血氧，还是某个具体的不舒服？请用常见的话说出来。';
+  if (claims.length === 0 && !clarificationQuestion && !recallRequested && trimmed.length > 0) {
+    if (GREETING_PATTERN.test(trimmed)) {
+      clarificationQuestion = '您好，我在呢。今天身体怎么样，有没有哪里不舒服？';
+    } else if (THANKS_PATTERN.test(trimmed)) {
+      clarificationQuestion = '不客气，我一直都在。有事情随时叫我。';
+    } else if (isGibberish) {
+      clarificationQuestion =
+        '我在听。您可以说说身体的情况——比如血压、血糖、睡得怎么样，或者哪里不舒服；其他想说的事也可以慢慢讲。';
+    }
   }
   return {
     claims,
