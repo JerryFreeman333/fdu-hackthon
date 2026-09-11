@@ -32,12 +32,19 @@ export interface StructuredElderInput {
   correction: boolean;
 }
 
-const SELF_PATTERNS = [/(?:我自己|我本人|本人|我的|我)(?:的)?/];
+const FAMILY_TOKEN_PATTERN =
+  /(?:我爸|我妈|我父亲|我母亲|我老公|我丈夫|我爱人|我老伴|我儿子|我女儿|我哥哥|我弟弟|我姐姐|我妹妹|我爷爷|我奶奶|我外公|我外婆|我家人|我家里人)/;
+const SELF_PATTERNS = [
+  /(?:我自己|我本人|本人)/,
+  /我的(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
+  /(?:^|[，。；、,;\s])我(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
+];
 const SPOUSE_PATTERNS = [/(?:我老公|我丈夫|老公|丈夫|爱人|老伴)/];
 const FATHER_PATTERNS = [/(?:我爸|我父亲|爸爸|父亲)/];
 const MOTHER_PATTERNS = [/(?:我妈|我母亲|妈妈|母亲)/];
 const OTHER_FAMILY_PATTERNS = [/(?:儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|家人)/];
 const THIRD_PERSON_PRONOUN = /(?:他|她|他们|她们)/;
+const PERCEPTION_FRAME = /(?:觉得|看到|看见|发现|听见|听到|说他|说她|说他们|说她们)/;
 
 function matchesAny(clause: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(clause));
@@ -52,11 +59,19 @@ function explicitFamilySubjects(clause: string): ElderSubject[] {
   return [...new Set(subjects)];
 }
 
+function hasExplicitSelf(clause: string): boolean {
+  if (FAMILY_TOKEN_PATTERN.test(clause)) {
+    const withoutFamilyTokens = clause.replace(new RegExp(FAMILY_TOKEN_PATTERN.source, 'g'), '');
+    return matchesAny(withoutFamilyTokens, SELF_PATTERNS);
+  }
+  return matchesAny(clause, SELF_PATTERNS);
+}
+
 function explicitSubject(clause: string): ElderSubject | null {
   const family = explicitFamilySubjects(clause);
   if (family.length === 1) return family[0];
   if (family.length > 1) return 'unknown';
-  if (matchesAny(clause, SELF_PATTERNS)) return 'self';
+  if (hasExplicitSelf(clause)) return 'self';
   return null;
 }
 
@@ -69,11 +84,13 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 
   const familyContext = uniqueFamilyContext(priorSubjects);
   if (familyContext.length === 1) return familyContext[0];
+  if (familyContext.length > 1) return 'unknown';
+
+  if (hasExplicitSelf(clause) && PERCEPTION_FRAME.test(clause)) return 'family_other';
   return 'unknown';
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
-  // “告诉孩子我……”中的孩子是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
   const family = explicitFamilySubjects(clause);
@@ -83,14 +100,20 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 在老人聊天界面里，无主语陈述默认是说话者本人；但第三人称代词没有唯一 antecedent 时不得猜 self。
-  if (matchesAny(clause, SELF_PATTERNS) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
+  const uniqueFamily = uniqueFamilyContext(priorSubjects);
+  const omittedFamilyFollowUp =
+    uniqueFamily.length === 1 &&
+    !hasExplicitSelf(clause) &&
+    /(?:今天|现在|目前|后来|然后|也|还|同样|好多了|好一点|好些了|没那么|减轻|缓解)/.test(clause);
+  if (omittedFamilyFollowUp) return uniqueFamily[0];
+
+  if (hasExplicitSelf(clause) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
   return 'unknown';
 }
 
 function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[]): ElderSubject[] {
   const family = explicitFamilySubjects(clause);
-  const hasSelf = matchesAny(clause, SELF_PATTERNS);
+  const hasSelf = hasExplicitSelf(clause);
   const coordination = /(?:和|跟|以及|都|分别|各自|也)/.test(clause);
 
   if (family.length > 0 && hasSelf && coordination) return ['self', ...family];
@@ -103,10 +126,8 @@ function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
   const hasHealthClaim = tags.length > 0 || hasHealthValue;
 
-  // “差点/险些/差一点/几乎”描述的是未实际发生的近失事件，必须与 occurred 分开。
   if (hasHealthClaim && /(?:差点|差一点|险些|险些就|几乎要|差点就)/.test(clause)) return 'near_miss';
 
-  // 反事实/条件/假设性表述，不描述已经发生的健康事件。
   if (
     hasHealthClaim &&
     /(?:如果|假如|假设|万一|要是|倘若|会不会|是不是因为|有没有可能|万一以后|怎么预防|怎么办才不会)/.test(clause)
@@ -114,20 +135,17 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     return 'hypothetical';
   }
 
-  // 否定表达的词可以出现在症状前后，避免只依赖固定的“没+症状”短距离模式。
   const negation =
     /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|不再|不怎么|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到|否认)/.test(
       clause,
     );
   if (hasHealthClaim && negation) {
-    // “不再喘”“今天没那么喘”是对当前状态的实际描述，不能误判成否定事实。
     const improvement =
-      /(?:不再|不怎么|没那么|没有那么|没有以前那么|比之前)/.test(clause) &&
+      /(?:不再|不怎么|没那么|没有那么|没有像|没有以前那么|比之前)/.test(clause) &&
       /(?:喘|胸闷|疼|痛|头晕|肿|失眠|起夜|心慌|漏服|血压|心率|体重|睡)/.test(clause);
     if (!improvement) return 'negated';
   }
 
-  // 不确定的自我感受/听说/猜测不应变成确定的 occurred。
   if (hasHealthClaim && /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/.test(clause))
     return 'uncertain';
 
@@ -178,8 +196,8 @@ export function understandElderInput(
 
     const isOmittedComparison =
       explicitTags.length === 0 &&
-      /(今天|现在|目前)/.test(clause) &&
-      /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
+      /(?:今天|现在|目前)/.test(clause) &&
+      /(?:好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
       lastTags.length > 0;
     const isOmittedParallelAction =
       explicitTags.length === 0 &&
@@ -246,6 +264,17 @@ export function understandElderInput(
     }
 
     if (tags.length === 0 && !hasHealthValue && primarySubject !== 'unknown') {
+      if (status !== 'occurred') {
+        claims.push({
+          text: clause,
+          subject: primarySubject,
+          status,
+          timeScope: time.scope,
+          eventDate: time.eventDate,
+          tags,
+          hasHealthValue,
+        });
+      }
       subjectsSeen.push(primarySubject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -266,7 +295,31 @@ export function understandElderInput(
     lastHealthValue = hasHealthValue;
   }
 
-  const hasUnclearFamilyReference = claims.some(
+  const mergedClaims: StructuredClaim[] = [];
+  for (const claim of claims) {
+    const previous = mergedClaims[mergedClaims.length - 1];
+    if (
+      previous &&
+      previous.subject === claim.subject &&
+      previous.status === claim.status &&
+      previous.timeScope === claim.timeScope &&
+      previous.eventDate === claim.eventDate &&
+      previous.outcome === undefined &&
+      claim.outcome === undefined &&
+      /(?:没|没有|未|也|还|同样|并且|而且)/.test(claim.text)
+    ) {
+      mergedClaims[mergedClaims.length - 1] = {
+        ...previous,
+        text: `${previous.text}，${claim.text}`,
+        tags: [...new Set([...previous.tags, ...claim.tags])],
+        hasHealthValue: previous.hasHealthValue || claim.hasHealthValue,
+      };
+    } else {
+      mergedClaims.push(claim);
+    }
+  }
+
+  const hasUnclearFamilyReference = mergedClaims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
   const privacyIntents = splitNaturalLanguageTexts(trimmed)
@@ -285,7 +338,7 @@ export function understandElderInput(
   }
 
   return {
-    claims,
+    claims: mergedClaims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
       ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
