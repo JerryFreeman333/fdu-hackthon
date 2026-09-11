@@ -113,7 +113,8 @@ function buildRuleBasedReply(
   context?: AgentContext,
 ): string {
   const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
+    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
 
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
@@ -175,7 +176,11 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
     today: context.today,
     windowDays: context.windowDays,
     safetyLevel: publicSafety,
-    personTwin: { ...context.personTwin, safetyRelevantChanges: [], activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4) },
+    personTwin: {
+      ...context.personTwin,
+      safetyRelevantChanges: [],
+      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
+    },
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
     labs: context.labs.filter((lab) => lab.visibility !== 'private'),

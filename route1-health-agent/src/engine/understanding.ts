@@ -104,9 +104,7 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 
   const uniqueFamily = uniqueFamilyContext(priorSubjects);
   const omittedFamilyFollowUp =
-    uniqueFamily.length === 1 &&
-    !hasExplicitSelf(clause) &&
-    FAMILY_FOLLOWUP_PREFIXES.test(clause) ||
+    (uniqueFamily.length === 1 && !hasExplicitSelf(clause) && FAMILY_FOLLOWUP_PREFIXES.test(clause)) ||
     (uniqueFamily.length === 1 &&
       !hasExplicitSelf(clause) &&
       /(?:也|还|同样|好多了|好一点|好些了|没那么|减轻|缓解)/.test(clause));
