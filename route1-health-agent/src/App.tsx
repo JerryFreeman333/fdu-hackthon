@@ -14,7 +14,19 @@ import {
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import { collectFamilyNotifications } from './engine/escalate';
+import type { FamilyNotification } from './engine/escalate';
+import {
+  acknowledgeNotification,
+  dispatchFamilyNotifications,
+  type DeliveryOutcome,
+  type FamilyNotificationRecord,
+} from './engine/notify';
+import {
+  pushPermission,
+  requestPushPermission,
+  sendBrowserPush,
+  type PushPermission,
+} from './adapters/BrowserNotificationChannel';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { healthRecordStore } from './store/LocalHealthRecordStore';
 import ElderHome from './components/ElderHome';
@@ -69,6 +81,9 @@ export default function App() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
+  // 送达台账只存在于会话内存：通知里含健康内容，与绑定/授权一致不落 localStorage。
+  const [notificationRecords, setNotificationRecords] = useState<FamilyNotificationRecord[]>([]);
+  const [pushPermissionState, setPushPermissionState] = useState<PushPermission>(() => pushPermission());
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
@@ -102,10 +117,6 @@ export default function App() {
   const agentContext = useMemo(
     () => buildAgentContext(activeProfile, events, TODAY, findings),
     [activeProfile, events, findings],
-  );
-  const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
-    [findings, familySharing, sharedFindingIds],
   );
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
   const { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs, photoParserMode } = useElderChat({
@@ -152,6 +163,31 @@ export default function App() {
     promptFamilyShare();
   }, [familySharing, findings, promptFamilyShare]);
 
+  useEffect(() => {
+    if (familyLink?.status !== 'active') return;
+    let cancelled = false;
+    const elderLabel = `${activeProfile.name}的健康提醒`;
+    const deliver = (notification: FamilyNotification): DeliveryOutcome[] => [
+      sendBrowserPush(notification.finding.id, elderLabel, notification.message),
+    ];
+    void dispatchFamilyNotifications(
+      findings,
+      familySharing,
+      true,
+      notificationRecords,
+      new Date().toISOString(),
+      deliver,
+      sharedFindingIds,
+    ).then((result) => {
+      if (cancelled || result.dispatchedCount === 0) return;
+      setNotificationRecords(result.records);
+      showToast(`已向家属端派发 ${result.dispatchedCount} 条通知，送达情况见家属端通知中心。`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [findings, familySharing, familyLink, notificationRecords, sharedFindingIds, activeProfile.name, showToast]);
+
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
   }
@@ -185,6 +221,21 @@ export default function App() {
     }
     showToast(`正在拨打社区医生：${phone}`);
     window.location.href = `tel:${phone}`;
+  }
+
+  function acknowledgeNotificationById(findingId: string) {
+    setNotificationRecords((current) => acknowledgeNotification(current, findingId, new Date().toISOString()));
+    showToast('已确认。对应的处理事项在下方“帮老人把事情做完”。');
+  }
+
+  async function enableSystemPush() {
+    const next = await requestPushPermission();
+    setPushPermissionState(next);
+    showToast(
+      next === 'granted'
+        ? '系统通知已开启，之后的家属通知会同时推送到系统通知栏。'
+        : '系统通知未开启，家属通知会保留在家属端通知中心，不会丢失。',
+    );
   }
 
   if (!role) return <RoleGate onSelect={selectRole} />;
@@ -261,7 +312,8 @@ export default function App() {
         <FamilyDashboard
           profile={activeProfile}
           familyLink={familyLink}
-          notifications={familyNotifs}
+          notificationRecords={notificationRecords}
+          pushPermission={pushPermissionState}
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
@@ -269,6 +321,8 @@ export default function App() {
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
+          onAcknowledgeNotification={acknowledgeNotificationById}
+          onEnablePush={() => void enableSystemPush()}
           onContactElder={contactElder}
           onContactDoctor={contactDoctor}
           onRevokeSharing={revokeFamilyShare}

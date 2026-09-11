@@ -69,8 +69,10 @@ export async function dispatchFamilyNotifications(
   existing: FamilyNotificationRecord[],
   now: string,
   deliver: DeliverFn,
+  /** 老人一次性共享且尚未消费的 findingId：同样属于 collectFamilyNotifications 的门控结果。 */
+  oneTimeSharedFindingIds: string[] = [],
 ): Promise<DispatchResult> {
-  const eligible = familyBound ? collectFamilyNotifications(findings, familySharing) : [];
+  const eligible = familyBound ? collectFamilyNotifications(findings, familySharing, oneTimeSharedFindingIds) : [];
   const knownIds = new Set(existing.map((record) => record.findingId));
   const fresh = eligible.filter((notification) => !knownIds.has(notification.finding.id));
 

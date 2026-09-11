@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
-import type { FamilyNotification } from '../engine/escalate';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
+import type { PushPermission } from '../adapters/BrowserNotificationChannel';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
+import { countUnacknowledged, describeDeliveries, type FamilyNotificationRecord } from '../engine/notify';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 
 interface FamilyDashboardProps {
   profile: ElderProfile;
   familyLink: FamilyLink | null;
-  notifications: FamilyNotification[];
+  notificationRecords: FamilyNotificationRecord[];
+  pushPermission: PushPermission;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
@@ -18,6 +20,8 @@ interface FamilyDashboardProps {
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
+  onAcknowledgeNotification: (findingId: string) => void;
+  onEnablePush: () => void;
   onContactElder: () => void;
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
@@ -26,15 +30,23 @@ interface FamilyDashboardProps {
   view: 'home' | 'detail' | 'report';
 }
 
-function overallMessage(notifications: FamilyNotification[]) {
-  if (notifications.some((n) => n.finding.severity === 'urgent')) {
+function overallMessage(records: FamilyNotificationRecord[], sharing: ElderProfile['familySharing']) {
+  // 送达台账保留已送达的历史（不假装撤回），但横幅只反映当前授权下仍有待行动的信号。
+  if (sharing !== 'granted') {
+    return {
+      title: '今天总体正常',
+      detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。',
+      tone: 'ok',
+    };
+  }
+  if (records.some((record) => record.severity === 'urgent' && record.lifecycle === 'new')) {
     return {
       title: '今天需要立即介入',
       detail: '出现需要马上确认安全情况的信号。请先联系老人并按提示的安全路径处理。',
       tone: 'danger',
     };
   }
-  if (notifications.some((n) => n.finding.severity === 'alert')) {
+  if (records.some((record) => record.severity === 'alert' && record.lifecycle === 'new')) {
     return {
       title: '今天有一件事值得关注',
       detail: '系统把多项近期变化放在一起看后，建议今天主动联系老人确认状态。',
@@ -48,10 +60,43 @@ function overallMessage(notifications: FamilyNotification[]) {
   };
 }
 
+function formatClock(iso: string, today: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const hhmm = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  const day = date.toISOString().slice(0, 10);
+  return day === today ? hhmm : `${day.slice(5)} ${hhmm}`;
+}
+
+function PushPermissionLine(props: Pick<FamilyDashboardProps, 'pushPermission' | 'onEnablePush'>) {
+  switch (props.pushPermission) {
+    case 'granted':
+      return <p className="muted push-line">系统通知：已开启 ✓ 新通知会同时推送到系统通知栏。</p>;
+    case 'denied':
+      return (
+        <p className="muted push-line">
+          系统通知权限已被拒绝：新通知只会保留在本页通知中心，不会推送到系统通知栏。如需推送，请在浏览器/系统设置中允许本站通知。
+        </p>
+      );
+    case 'unsupported':
+      return <p className="muted push-line">当前浏览器不支持系统通知：新通知会保留在本页通知中心。</p>;
+    default:
+      return (
+        <div className="push-line">
+          <button className="btn-secondary" onClick={props.onEnablePush}>
+            开启系统通知
+          </button>
+          <p className="muted">开启后，即使您停留在其他页面，紧急通知也会推送到系统通知栏。</p>
+        </div>
+      );
+  }
+}
+
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
-  const state = overallMessage(props.notifications);
+  const state = overallMessage(props.notificationRecords, props.profile.familySharing);
+  const pendingAck = countUnacknowledged(props.notificationRecords);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
@@ -248,7 +293,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
       <section className={`family-status card status-${state.tone}`}>
         <div className="eyebrow">{props.profile.name} · 家属端</div>
         <h2>{state.title}</h2>
-        <p>{state.detail}</p>
+        <p>
+          {state.detail}
+          {pendingAck > 0 ? ` 当前有 ${pendingAck} 条通知等待您确认。` : ''}
+        </p>
         <div className="family-actions">
           <button className="btn-primary" onClick={props.onContactElder}>
             📞 联系老人
@@ -305,37 +353,50 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             <span className="muted">不是监控所有指标，只看是否需要您介入。</span>
           </div>
         </div>
-        {props.notifications.length === 0 ? (
+        <PushPermissionLine pushPermission={props.pushPermission} onEnablePush={props.onEnablePush} />
+        {props.notificationRecords.length === 0 ? (
           <p className="family-empty">目前没有新的家属通知。系统会在真正需要时提醒您。</p>
         ) : (
           <div className="family-feed">
-            {props.notifications.slice(0, 3).map((notification) => {
-              const badge = severityBadge(notification.finding.severity);
+            {props.notificationRecords.slice(0, 5).map((record) => {
+              const badge = severityBadge(record.severity);
               return (
                 <div
-                  key={notification.finding.id}
-                  className={`family-item family-item-${notification.finding.severity}`}
+                  key={record.findingId}
+                  className={`family-item family-item-${record.severity} ${
+                    record.lifecycle === 'acknowledged' ? 'family-item-ack' : ''
+                  }`}
                 >
                   <div className="finding-head">
                     <span className={`badge ${badge.className}`}>{badge.text}</span>
-                    <b>{notification.finding.title}</b>
-                    <span className="muted right">{notification.finding.date}</span>
+                    <b>{record.title}</b>
+                    <span className="muted right">{formatClock(record.createdAt, props.today)}</span>
                   </div>
-                  <p>{notification.message}</p>
-                  <span className="muted">为什么现在告诉您：{notification.reason}</span>
-                  {notification.actionPath && (
+                  <p>{record.message}</p>
+                  <span className="muted">送达情况：{describeDeliveries(record)}</span>
+                  {record.actionPath && (
                     <div className="care-path">
                       <b>建议行动：</b>
-                      {notification.actionPath}
+                      {record.actionPath}
                     </div>
                   )}
-                  {notification.finding.severity === 'urgent' && (
-                    <div className="notif-actions">
+                  <div className="notif-actions">
+                    {record.lifecycle === 'new' ? (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => props.onAcknowledgeNotification(record.findingId)}
+                      >
+                        确认已知悉
+                      </button>
+                    ) : (
+                      <span className="muted">已确认知悉 ✓</span>
+                    )}
+                    {record.severity === 'urgent' && (
                       <button className="btn-primary" onClick={props.onContactDoctor}>
                         📞 联系社区医生
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}
