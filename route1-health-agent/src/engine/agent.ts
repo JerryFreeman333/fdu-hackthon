@@ -120,6 +120,7 @@ function buildRuleBasedReply(
   const replyFor = (tag: SymptomTag): string =>
     INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
     `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
   if (newTags.includes('fall')) {
@@ -242,6 +243,7 @@ export async function generateAgentReply(
 export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
+
   return {
     async complete(systemPrompt, userText, context) {
       const privacyIntent = parsePrivacyIntent(userText);
@@ -273,7 +275,7 @@ export const QUICK_INPUTS = [
 ];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
-  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 10)}`, role, text, time, persisted };
+  return { id: `${role}-${time}-${Math.random().toString(36).slice(0, 8)}`, role, text, time, persisted };
 }
 
 export function tagLabel(tag: SymptomTag): string {
