@@ -1,17 +1,18 @@
 /**
  * 用户输入的保守结构化理解层。
  *
- * 目的不是替代大模型，而是在“原话 -> 健康事实”之间增加一道确定性的事实接纳边界：
- * 人物、肯否、事件状态和时间不明确时，不允许关键词直接进入本人健康事件流。
+ * 事实接纳边界：只有人物、状态、时间和数值足够明确的内容，才能进入本人健康事实流。
+ * 本轮重点是人物归属：无法唯一确认“他/她/老伴”指向谁时，一律 unknown，不猜 self。
  */
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
+import { splitNaturalLanguageTexts } from './naturalLanguage';
+import { resolveTime, type TimeScope } from './time';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
-export type TimeScope = 'today' | 'yesterday' | 'lastNight' | 'historical' | 'unknown';
 
 export interface StructuredClaim {
   text: string;
@@ -31,91 +32,81 @@ export interface StructuredElderInput {
   correction: boolean;
 }
 
-function subtractDays(today: string, days: number): string {
-  return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
+const SELF_PATTERNS = [/(?:我自己|我本人|本人|我的|我)(?:的)?/];
+const SPOUSE_PATTERNS = [/(?:我老公|我丈夫|老公|丈夫|爱人|老伴)/];
+const FATHER_PATTERNS = [/(?:我爸|我父亲|爸爸|父亲)/];
+const MOTHER_PATTERNS = [/(?:我妈|我母亲|妈妈|母亲)/];
+const OTHER_FAMILY_PATTERNS = [/(?:儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|家人)/];
+const THIRD_PERSON_PRONOUN = /(?:他|她|他们|她们)/;
+
+function matchesAny(clause: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(clause));
 }
 
-/** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
-function splitClauses(text: string): string[] {
-  return text
-    .split(/[。！？!?；;，,\n]+/)
-    .map((clause) => clause.trim())
-    .filter(Boolean);
+function explicitFamilySubjects(clause: string): ElderSubject[] {
+  const subjects: ElderSubject[] = [];
+  if (matchesAny(clause, SPOUSE_PATTERNS)) subjects.push('spouse');
+  if (matchesAny(clause, FATHER_PATTERNS)) subjects.push('father');
+  if (matchesAny(clause, MOTHER_PATTERNS)) subjects.push('mother');
+  if (matchesAny(clause, OTHER_FAMILY_PATTERNS)) subjects.push('family_other');
+  return [...new Set(subjects)];
 }
 
-function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
-  if (!/(他|她|他们|她们)/.test(clause)) return null;
-
-  // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
-  // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
-  if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
-    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    if (unique.length === 1) return unique[0];
-    return 'family_other';
-  }
-
-  if (/^(?:他|她|他们|她们)/.test(clause)) {
-    const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
-    if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'family_other';
-  }
-
+function explicitSubject(clause: string): ElderSubject | null {
+  const family = explicitFamilySubjects(clause);
+  if (family.length === 1) return family[0];
+  if (family.length > 1) return 'unknown';
+  if (matchesAny(clause, SELF_PATTERNS)) return 'self';
   return null;
 }
 
+function uniqueFamilyContext(subjects: ElderSubject[]): ElderSubject[] {
+  return [...new Set(subjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
+}
+
+function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
+  if (!THIRD_PERSON_PRONOUN.test(clause)) return null;
+
+  const familyContext = uniqueFamilyContext(priorSubjects);
+  if (familyContext.length === 1) return familyContext[0];
+  return 'unknown';
+}
+
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
-  // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
+  // “告诉孩子我……”中的孩子是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
-  if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
-  if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
-  if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
+  const family = explicitFamilySubjects(clause);
+  if (family.length > 1) return 'unknown';
+  if (family.length === 1) return family[0];
 
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
-  if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
-
-  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
-  if (lastKnownSubject) return lastKnownSubject;
-
-  return 'self';
+  // 在老人聊天界面里，“昨晚没睡好”“今天头晕”这类无主语陈述默认是说话者本人。
+  // 只有出现第三人称代词且没有唯一 antecedent 时，才进入 unknown。
+  if (matchesAny(clause, SELF_PATTERNS) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
+  return 'unknown';
 }
 
-function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
-  if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
+function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[]): ElderSubject[] {
+  const family = explicitFamilySubjects(clause);
+  const hasSelf = matchesAny(clause, SELF_PATTERNS);
+  const coordination = /(?:和|跟|以及|都|分别|各自|也)/.test(clause);
 
-  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
-  const hasYesterday = /(昨天|昨日)/.test(clause);
-  const currentComparison =
-    hasToday &&
-    hasYesterday &&
-    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
+  if (family.length > 0 && hasSelf && coordination) return ['self', ...family];
+  if (family.length > 1 && coordination) return family;
 
-  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
-  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-
-  return { scope: 'today', eventDate: today };
+  const subject = subjectFromText(clause, priorSubjects);
+  return [subject];
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
-    return 'hypothetical';
-  }
+  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'hypothetical';
 
-  // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏，
-  // 虽然表面有否定词，但业务事件本身是“漏服药物”而不是“没有漏服”。
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
-    return 'occurred';
-  }
-
-  // “没睡好”含有口语否定词，但它表达的是已经发生的睡眠问题。
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) return 'occurred';
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
-  // 比较/缓解结构不是“完全没有症状”。
   const comparativeImprovement =
     /(今天|现在|目前)/.test(clause) &&
     /(没|没有|不再|不那么)/.test(clause) &&
@@ -130,25 +121,22 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     return 'occurred';
   }
 
-  if (
-    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
-      clause,
-    )
-  ) {
+  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) {
     return 'negated';
   }
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
-    return 'uncertain';
-  }
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'uncertain';
   return 'occurred';
 }
 
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
-  return [...messages]
-    .reverse()
-    .filter((message) => message.role === 'elder')
-    .slice(0, 4)
-    .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
+  const subjects: ElderSubject[] = [];
+  for (const message of [...messages].reverse().filter((item) => item.role === 'elder').slice(0, 4)) {
+    for (const clause of splitNaturalLanguageTexts(message.text)) {
+      const explicit = explicitSubject(clause);
+      if (explicit && explicit !== 'unknown' && explicit !== 'self') subjects.push(explicit);
+    }
+  }
+  return subjects;
 }
 
 export function understandElderInput(
@@ -163,9 +151,7 @@ export function understandElderInput(
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
-  if (recallRequested || clarificationQuestion) {
-    return { claims: [], recallRequested, clarificationQuestion, correction };
-  }
+  if (recallRequested || clarificationQuestion) return { claims: [], recallRequested, clarificationQuestion, correction };
 
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
@@ -173,11 +159,13 @@ export function understandElderInput(
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
 
-  for (const clause of splitClauses(trimmed)) {
+  for (const clause of splitNaturalLanguageTexts(trimmed)) {
     const parsed = parseElderInput(clause);
     const explicitTags = parsed.tags;
     const hasExplicitHealthValue = extractHealthValues(clause).length > 0;
-    const subject = subjectFromText(clause, subjectsSeen);
+    const subjects = subjectCandidatesForClause(clause, subjectsSeen);
+    const primarySubject = subjects.length === 1 ? subjects[0] : 'unknown';
+
     const isOmittedComparison =
       explicitTags.length === 0 &&
       /(今天|现在|目前)/.test(clause) &&
@@ -187,19 +175,18 @@ export function understandElderInput(
       explicitTags.length === 0 &&
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
-    const tags =
-      explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
-    const hasHealthValue: boolean =
+    const tags = explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : [];
+    const hasHealthValue =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
-    const time = timeFromText(clause, today);
+    const time = resolveTime(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
       claims.push({
         text: clause,
-        subject,
+        subject: primarySubject,
         status: 'uncertain',
         timeScope: time.scope,
         eventDate: time.eventDate,
@@ -207,47 +194,39 @@ export function understandElderInput(
         hasHealthValue,
         outcome: 'death_reported',
       });
-      subjectsSeen.push(subject);
+      subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown' && subject !== 'self'));
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
-    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
-    if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
-      claims.push({
-        text: clause,
-        subject,
-        status,
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-      });
-      subjectsSeen.push(subject);
+    if (subjects.length > 1 && subjects.every((subject) => subject !== 'unknown')) {
+      for (const subject of subjects) {
+        claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+      }
+      subjectsSeen.push(...subjects.filter((subject) => subject !== 'self'));
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') {
-      subjectsSeen.push(subject);
+    if (tags.length === 0 && !hasHealthValue && primarySubject !== 'self' && primarySubject !== 'unknown') {
+      claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+      subjectsSeen.push(primarySubject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    claims.push({
-      text: clause,
-      subject,
-      status,
-      timeScope: time.scope,
-      eventDate: time.eventDate,
-      tags,
-      hasHealthValue,
-    });
-    subjectsSeen.push(subject);
+    if (tags.length === 0 && !hasHealthValue && primarySubject !== 'unknown') {
+      subjectsSeen.push(primarySubject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
+      continue;
+    }
+
+    claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+    subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown' && subject !== 'self'));
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
@@ -255,13 +234,12 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
-  const privacyIntents = splitClauses(trimmed)
+  const privacyIntents = splitNaturalLanguageTexts(trimmed)
     .map((clause) => parsePrivacyIntent(clause))
     .filter((intent) => intent !== 'none');
   const uniquePrivacyIntents = [...new Set(privacyIntents)];
-  const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
 
-  if (hasMixedPrivacyIntent) {
+  if (uniquePrivacyIntents.length > 1) {
     return {
       claims: [],
       recallRequested,
