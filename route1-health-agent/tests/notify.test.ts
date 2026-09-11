@@ -16,6 +16,8 @@ function finding(overrides: Partial<Finding> & Pick<Finding, 'id' | 'severity'>)
     title: '测试发现',
     detail: '测试详情',
     evidence: ['证据一'],
+    // main 的家属门控是 fail-closed：familyEligible 必须显式为 true 才会派发。
+    familyEligible: true,
     ...overrides,
   };
 }
