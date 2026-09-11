@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import './style.css';
 import type { HazardData, HazardItem, ItemInfo, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
-import { validateHomeTwin } from './hometwin/model';
+import { validateHomeTwin, type HomeTwinSnapshot, type RouteStatus } from './hometwin/model';
+import { planBedToToilet, type RoutePlanResult } from './hometwin/routePlanner';
 import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
 import { submitRescanBatch, waitForRescanJob, type RescanSubmitResponse } from './hometwin/rescanClient';
@@ -70,14 +71,18 @@ async function main() {
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
 
+  let homeTwin: HomeTwinSnapshot | null = null;
+  let routePlan: RoutePlanResult | null = null;
+
   const badge = document.getElementById('scene-badge')!;
   badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
   badge.className = 'badge ' + (mode === 'real' ? 'badge-real' : 'badge-demo');
 
   if (mode === 'demo') {
-    const snapshot = buildDemoHomeTwin(data);
-    const errors = validateHomeTwin(snapshot);
+    homeTwin = buildDemoHomeTwin(data);
+    const errors = validateHomeTwin(homeTwin);
     if (errors.length) throw new Error(`Home Twin 数据校验失败: ${errors.join('; ')}`);
+    routePlan = planBedToToilet(homeTwin);
   }
 
   const app = new SceneManager(mode);
@@ -149,13 +154,26 @@ async function main() {
     const zones = highlightDangerZones(p, posMap, mode);
     if (zones) { dangerZones = zones; app.scene.add(zones); }
     const names = p.hazardIds.map((id: string) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
-    setHint(`${p.title} — 影响风险: ${names || '暂无已标注风险'}`);
+    setHint(`${p.title} — 影响风险: ${names || '暂无已标注风险'}` + routeStatusSuffix());
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
 
   let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void; };
   let currentRole = readStoredRole();
   const journeyMount = document.getElementById('journey');
+
+  const ROUTE_STATUS_TEXT: Record<RouteStatus, string> = {
+    verified: '路线已确认',
+    candidate: '候选路线（系统推导，非安全保证）',
+    needs_confirmation: '路线待确认（缺少门/连接关系）',
+    unavailable: '暂无可用 3D 路线'
+  };
+  function routeStatusSuffix(): string {
+    if (!routePlan) return '';
+    const text = ROUTE_STATUS_TEXT[routePlan.status];
+    const fallbackNote = routePlan.fallback?.locationText ? `；参考位置：${routePlan.fallback.locationText}` : '';
+    return ` — ${text}${fallbackNote}`;
+  }
 
   function refreshJourney(): void {
     if (!journeyMount) return;
@@ -172,14 +190,15 @@ async function main() {
   refreshJourney();
 
   const roleMount = document.getElementById('role-switcher');
+  let roleSwitcherEl: HTMLElement | null = null;
   const roleSwitcher = roleMount ? createRoleSwitcher(currentRole, (nextRole) => {
     currentRole = nextRole;
-    updateRoleSwitcher(roleSwitcher, nextRole);
+    if (roleSwitcherEl) updateRoleSwitcher(roleSwitcherEl, nextRole);
     panelController.setRole(nextRole);
     refreshJourney();
     setHint(nextRole === 'resident' ? '居住者视角：完成日常任务即可。' : '家属/照护者视角：查看变化、风险和处理任务。');
   }) : null;
-  if (roleMount && roleSwitcher) roleMount.replaceChildren(roleSwitcher);
+  if (roleMount && roleSwitcher) { roleSwitcherEl = roleSwitcher; roleMount.replaceChildren(roleSwitcher); }
 
   async function handleRescanFiles(files: File[]): Promise<void> {
     const input = prepareRescanFiles(files);
@@ -225,7 +244,11 @@ async function main() {
     onSelectPath: selectPath,
     onSelectItem(item: ItemInfo) {
       const pos = mode === 'demo' ? item.demoPos : item.realPos;
-      if (!pos) { setHint(`「${item.title}」尚未完成真实空间标定，当前不会伪造位置。`); return; }
+      if (!pos) {
+        // 3D 位置不可用时，仍然给老人文字帮助，而不是空白或报错。
+        setHint(`「${item.title}」: ${item.location} — ${item.say} 位置未做 3D 标定，以上文字仅供参考；如不确定，可让系统请家人确认。`);
+        return;
+      }
       const p = new THREE.Vector3(pos[0], pos[1], pos[2]);
       rings.pulseAt(p, 0x53d8ff);
       app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);

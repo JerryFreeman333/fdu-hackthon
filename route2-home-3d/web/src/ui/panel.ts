@@ -181,15 +181,14 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
     familyPaths.body.append(btn);
   });
 
-  const findIntro = el<HTMLDivElement>('div', 'muted small', mode === 'demo' ? '演示模式使用预置物品位置；真实模式只显示已完成空间标定的物品。' : '只使用已经完成空间标定的物品位置。');
+  const findIntro = el<HTMLDivElement>('div', 'muted small', mode === 'demo' ? '演示模式使用预置物品位置；找东西不依赖 3D 路线，没有路线也能查到位置。' : '优先使用已标定位置；未标定时仍会给出文字位置记录，不需要您做任何 3D 标定。');
   residentFind.body.append(findIntro);
   data.items.forEach(item => {
     const calibrated = mode === 'demo' || Boolean(item.realPos);
-    const btn = el<HTMLButtonElement>('button', 'item-row' + (calibrated ? '' : ' disabled'), `
+    const btn = el<HTMLButtonElement>('button', 'item-row', `
       <span class="path-ico">🔍</span>
-      <div class="hazard-text"><b>${item.title}</b><span class="muted small">${calibrated ? item.location : '尚未完成真实空间标定'}</span></div>
+      <div class="hazard-text"><b>${item.title}</b><span class="muted small">${calibrated ? item.location : `${item.location}（文字记录，位置待确认）`}</span></div>
     `);
-    btn.disabled = !calibrated;
     btn.onclick = () => cb.onSelectItem(item);
     residentFind.body.append(btn);
   });
