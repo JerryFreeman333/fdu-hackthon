@@ -477,15 +477,11 @@ export function understandElderInput(
       claims.length > 0 &&
       claims[claims.length - 1]?.subject === subject &&
       (explicitTags.length > 0 || hasExplicitHealthValue);
-    const time: { scope: TimeScope; eventDate: string | null } =
-      inheritsPreviousTime && lastTime ? lastTime : rawTime;
+    const time: { scope: TimeScope; eventDate: string | null } = inheritsPreviousTime && lastTime ? lastTime : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
-    if (
-      !isPureCorrectionMarker(clause) &&
-      (explicitTags.length > 0 || hasExplicitHealthValue)
-    ) {
+    if (!isPureCorrectionMarker(clause) && (explicitTags.length > 0 || hasExplicitHealthValue)) {
       lastTime = time;
     }
 
