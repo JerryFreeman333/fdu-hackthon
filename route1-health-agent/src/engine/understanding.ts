@@ -72,14 +72,8 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (!THIRD_PERSON_PRONOUN.test(clause)) return null;
 
   const familyContext = uniqueFamilyContext(priorSubjects);
-  const hasSpeakerFrame = /我(?:觉得|看|担心|发现|注意到|看到|听说|感觉|说|告诉)/.test(clause);
-
   if (familyContext.length === 1) return familyContext[0];
-  if (familyContext.length > 1) return 'unknown';
-
-  // 没有唯一 antecedent 时，不能把“他/她”降级成 self。
-  // 这是人物安全边界：宁可追问，也不把家人的情况写进老人档案。
-  return hasSpeakerFrame ? 'unknown' : 'unknown';
+  return 'unknown';
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
@@ -93,20 +87,22 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  if (matchesAny(clause, SELF_PATTERNS)) return 'self';
-
-  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
-  if (lastKnownSubject) return lastKnownSubject;
-
-  // 没有任何明确主语时，本轮不允许把健康词默认为“我”。
+  // 在老人聊天界面里，“昨晚没睡好”“今天头晕”这类无主语陈述默认是说话者本人。
+  // 只有出现第三人称代词且没有唯一 antecedent 时，才进入 unknown。
+  if (matchesAny(clause, SELF_PATTERNS) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
   return 'unknown';
 }
 
 function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[]): ElderSubject[] {
-  const explicit = explicitFamilySubjects(clause);
-  if (explicit.length > 1 && /(?:和|跟|以及|都|分别|各自|也)/.test(clause)) return explicit;
+  const family = explicitFamilySubjects(clause);
+  const hasSelf = matchesAny(clause, SELF_PATTERNS);
+  const coordination = /(?:和|跟|以及|都|分别|各自|也)/.test(clause);
+
+  if (family.length > 0 && hasSelf && coordination) return ['self', ...family];
+  if (family.length > 1 && coordination) return family;
+
   const subject = subjectFromText(clause, priorSubjects);
-  return subject === 'unknown' ? ['unknown'] : [subject];
+  return [subject];
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
@@ -158,7 +154,7 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
   for (const message of [...messages].reverse().filter((item) => item.role === 'elder').slice(0, 4)) {
     for (const clause of splitNaturalLanguageTexts(message.text)) {
       const explicit = explicitSubject(clause);
-      if (explicit && explicit !== 'unknown') subjects.push(explicit);
+      if (explicit && explicit !== 'unknown' && explicit !== 'self') subjects.push(explicit);
     }
   }
   return subjects;
@@ -209,25 +205,32 @@ export function understandElderInput(
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
-      claims.push({ text: clause, subject: primarySubject, status: 'uncertain', timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue, outcome: 'death_reported' });
-      subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown'));
+      claims.push({
+        text: clause,
+        subject: primarySubject,
+        status: 'uncertain',
+        timeScope: time.scope,
+        eventDate: time.eventDate,
+        tags,
+        hasHealthValue,
+        outcome: 'death_reported',
+      });
+      subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown' && subject !== 'self'));
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    // 多人物并列表达：同一语言单元有两个明确家属时拆成两个 claim，避免一个人物吞掉另一个。
     if (subjects.length > 1 && subjects.every((subject) => subject !== 'unknown')) {
       for (const subject of subjects) {
         claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
       }
-      subjectsSeen.push(...subjects);
+      subjectsSeen.push(...subjects.filter((subject) => subject !== 'self'));
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
-    // 无健康标签但明确指向家属的分句可以作为后续省略主语的上下文，但不会进入本人健康档案。
     if (tags.length === 0 && !hasHealthValue && primarySubject !== 'self' && primarySubject !== 'unknown') {
       claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
       subjectsSeen.push(primarySubject);
@@ -244,7 +247,7 @@ export function understandElderInput(
     }
 
     claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
-    subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown'));
+    subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown' && subject !== 'self'));
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
