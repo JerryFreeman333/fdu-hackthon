@@ -3,8 +3,16 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
 import { formatLocalDate, TODAY } from '../data/demo';
-import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
-import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
+import {
+  appendHealthEvents,
+  labResultToEvent,
+  measurementToEvent,
+  observationToEvent,
+  type HealthEvent,
+} from '../pipeline/events';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
+import type { PendingPhotoImport } from '../adapters/ImageHealthParser';
+import { selectImageParser } from '../adapters/parserSelector';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -36,6 +44,13 @@ const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
+// Vite 只在浏览器构建里内联 import.meta.env；端点在调用侧读出后经 endpointOverride
+// 注入 parserSelector，测试构建（CommonJS）因此不需要碰 import.meta。
+const imageParserSelection = selectImageParser({
+  endpointOverride: import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim() || undefined,
+});
+const imageParser = imageParserSelection.parser;
+const photoParserMode = imageParserSelection.mode;
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
@@ -411,23 +426,48 @@ export function useElderChat({
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
   }
 
-  async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+  async function handlePhotoImport(file: Blob, kind: DemoImageKind): Promise<PendingPhotoImport | null> {
     try {
       const capturedAt = localIsoTimestamp();
-      const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
-      const measurements = parsed.measurements.map((item) => measurementToEvent({ ...item, visibility }));
-      if (measurements.length === 0) {
+      const parsed = await imageParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      if (parsed.measurements.length === 0 && parsed.labResults.length === 0) {
         showToast('这张图片没有识别到可记录的健康数值。');
-        return;
+        return null;
       }
-      setEvents((current) => appendHealthEvents(current, measurements));
-      showToast(`已记录 ${measurements.length} 项图片中的健康数值。`);
+      // 只解析、不入库：ImageHealthParser 的契约是识别结果经用户确认后才进入事件流。
+      return {
+        draftId: `photo-draft-${Date.now()}`,
+        detectedKind: parsed.parseMeta?.detectedKind ?? kind,
+        capturedAt,
+        measurements: parsed.measurements,
+        labResults: parsed.labResults,
+        tags: parsed.tags,
+        rawText: parsed.rawText,
+        provider: parsed.parseMeta?.provider ?? 'demo',
+        overallConfidence: parsed.parseMeta?.overallConfidence ?? 0.6,
+        warnings: parsed.parseMeta?.warnings ?? [],
+        image: file,
+      };
     } catch (error) {
       console.error(error);
       showToast('图片解析失败，请稍后重试。');
+      return null;
     }
   }
 
-  return { handleElderSend, handlePhotoImport, quickInputs: QUICK_INPUTS };
+  function confirmPhotoRecord(pending: PendingPhotoImport) {
+    const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
+    const incoming = [
+      ...pending.measurements.map((item) => measurementToEvent({ ...item, visibility })),
+      ...pending.labResults.map((lab) => labResultToEvent({ ...lab, visibility })),
+    ];
+    if (incoming.length === 0) {
+      showToast('这次识别没有可记录的数值。');
+      return;
+    }
+    setEvents((current) => appendHealthEvents(current, incoming));
+    showToast(`已记录 ${incoming.length} 项照片中的数值（${visibility === 'family_ok' ? '家属可见' : '仅本人'}）。`);
+  }
+
+  return { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs: QUICK_INPUTS, photoParserMode };
 }

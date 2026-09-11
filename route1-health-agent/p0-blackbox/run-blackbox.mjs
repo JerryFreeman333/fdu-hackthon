@@ -246,6 +246,38 @@ async function caseOneTimeSharePersistence(browser) {
   }
 }
 
+async function casePhotoDemoImport(browser) {
+  const context = await browser.newContext();
+  try {
+    const page = await newPage(context);
+    await chooseRole(page, '我是老人');
+    const fileInput = page.locator('.photo-card input[type=file]');
+    await fileInput.setInputFiles({
+      name: 'bp.png',
+      mimeType: 'image/png',
+      // 1x1 PNG；Demo parser 不读像素，只走"选择 → 确认"的完整链路。
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await page.locator('button', { hasText: '确认记录' }).waitFor();
+    assert(
+      (await bodyText(page)).includes('确认识别结果'),
+      'parsed photo confirmation card is missing',
+    );
+    await page.locator('button', { hasText: '确认记录' }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await bodyText(page)).includes('已记录 2 项'),
+      'confirmed photo import did not record the parsed values',
+    );
+    return 'PASS photo demo import';
+  } finally {
+    await context.close();
+  }
+}
+
 async function caseFamilySessionReset(browser) {
   const context = await browser.newContext();
   try {
@@ -285,6 +317,7 @@ const cases = [
   caseFamilyBinding,
   caseFamilyRevocation,
   caseOneTimeSharePersistence,
+  casePhotoDemoImport,
   caseFamilySessionReset,
 ];
 

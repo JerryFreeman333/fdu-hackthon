@@ -9,7 +9,13 @@
  *   - 血压只识别到收缩压 → 抛 ImageParserError('invalid_blood_pressure')
  *   - 体重出现明显异常值 → 抛 ImageParserError('invalid_weight')
  */
-import { ALLOWED_METRIC_KEYS, ImageParserError, type HealthVisionResult, type ImageParseContext, type ParsedHealthData } from './ImageHealthParser';
+import {
+  ALLOWED_METRIC_KEYS,
+  ImageParserError,
+  type HealthVisionResult,
+  type ImageParseContext,
+  type ParsedHealthData,
+} from './ImageHealthParser';
 import type { HealthMeasurement, LabResult, MetricKey, SymptomTag } from '../types';
 
 const METRIC_TO_UNIT_HINT: Record<MetricKey, string[]> = {
@@ -100,6 +106,25 @@ function buildMeasurements(
           providerMetric: m.metric,
           providerUnit: m.unit,
           rawValue: m.value,
+        },
+      });
+      continue;
+    }
+    if (metric === 'bloodGlucose' && /mg\s*\/\s*dl/i.test(m.unit)) {
+      // Provider 可能按 mg/dL 返回血糖；入库统一 mmol/L，否则 18 倍偏差会触发高血糖假警报。
+      measurements.push({
+        id: `photo-${metric}-${capturedAt}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: capturedAt,
+        metric,
+        value: +(m.value / 18).toFixed(1),
+        unit: 'mmol/L',
+        source: 'photo',
+        confidence: m.confidence,
+        metadata: {
+          providerMetric: m.metric,
+          providerUnit: m.unit,
+          rawValue: m.value,
+          unitConverted: 'mg/dL→mmol/L',
         },
       });
       continue;

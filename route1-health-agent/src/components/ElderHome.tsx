@@ -1,14 +1,18 @@
 import { useRef, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, Finding } from '../types';
+import { METRICS } from '../types';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
+import type { PendingPhotoImport } from '../adapters/ImageHealthParser';
 import ChatView from './ChatView';
 
 interface ElderHomeProps {
   profile: ElderProfile;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
-  onPhotoImport: (file: Blob, kind: DemoImageKind) => void | Promise<void>;
+  onPhotoImport: (file: Blob, kind: DemoImageKind) => Promise<PendingPhotoImport | null>;
+  onConfirmPhotoRecord: (pending: PendingPhotoImport) => void;
+  photoParserMode: 'demo' | 'real-http';
   quickInputs: string[];
   tasks: CareTask[];
   findings: Finding[];
@@ -25,6 +29,8 @@ export default function ElderHome({
   chat,
   onSend,
   onPhotoImport,
+  onConfirmPhotoRecord,
+  photoParserMode,
   quickInputs,
   tasks,
   findings,
@@ -40,6 +46,7 @@ export default function ElderHome({
     profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoKind, setPhotoKind] = useState<DemoImageKind>('bloodPressure');
+  const [pendingPhoto, setPendingPhoto] = useState<PendingPhotoImport | null>(null);
 
   function choosePhoto() {
     fileInputRef.current?.click();
@@ -52,7 +59,8 @@ export default function ElderHome({
 
   async function handlePhotoChange(file: File | undefined) {
     if (!file) return;
-    await onPhotoImport(file, photoKind);
+    const pending = await onPhotoImport(file, photoKind);
+    if (pending) setPendingPhoto(pending);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -137,7 +145,11 @@ export default function ElderHome({
         <div className="section-head">
           <div>
             <h3>记录一下血压、体重或报告</h3>
-            <span className="muted">这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。</span>
+            <span className="muted">
+              {photoParserMode === 'real-http'
+                ? '照片将发送到已配置的视觉服务解析；识别结果需经您确认后才会记录。'
+                : '这是 Demo，照片不会被真的读出内容；在下方确认后才会写入明确标注的示例数据。'}
+            </span>
           </div>
         </div>
         <div className="chat-input-row">
@@ -162,6 +174,47 @@ export default function ElderHome({
           />
         </div>
       </section>
+
+      {pendingPhoto && (
+        <section className="card photo-card">
+          <div className="section-head">
+            <div>
+              <h3>确认识别结果</h3>
+              <span className="muted">
+                {pendingPhoto.provider === 'demo' ? '示例数据（Demo parser）' : `识别服务：${pendingPhoto.provider}`}
+                {' · '}置信度 {Math.round(pendingPhoto.overallConfidence * 100)}%
+              </span>
+            </div>
+          </div>
+          <ul className="pending-photo-list">
+            {pendingPhoto.measurements.map((item) => (
+              <li key={item.id}>
+                {METRICS[item.metric]?.label ?? item.metric}：{item.value} {item.unit}
+              </li>
+            ))}
+            {pendingPhoto.labResults.map((lab) => (
+              <li key={lab.id}>
+                {lab.name}：{lab.value} {lab.unit}
+              </li>
+            ))}
+          </ul>
+          {pendingPhoto.warnings.length > 0 && <p className="muted">识别提示：{pendingPhoto.warnings.join('；')}</p>}
+          <div className="chat-input-row">
+            <button
+              className="btn-primary"
+              onClick={() => {
+                onConfirmPhotoRecord(pendingPhoto);
+                setPendingPhoto(null);
+              }}
+            >
+              确认记录
+            </button>
+            <button className="btn-secondary" onClick={() => setPendingPhoto(null)}>
+              不要了
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="card privacy-card">
         <div className="section-head">
