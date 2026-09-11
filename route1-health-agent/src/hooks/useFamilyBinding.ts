@@ -1,11 +1,18 @@
 import { useCallback, useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
-import { TODAY } from '../data/demo';
+import { formatLocalDate, TODAY } from '../data/demo';
 
 const MAX_PENDING_ONE_TIME_IDS = 50;
 
 function localIsoTimestamp(): string {
-  return new Date().toISOString();
+  // 本地墙上时间（无时区后缀）：slice(0, 10) 恒等于本地日期；
+  // toISOString 会在 UTC+ 时区把 0-8 点的授权时间算成前一天。
+  const now = new Date();
+  const pad = (value: number, width = 2): string => `${value}`.padStart(width, '0');
+  return `${formatLocalDate(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(
+    now.getMilliseconds(),
+    3,
+  )}`;
 }
 
 function createInviteCode(): string {

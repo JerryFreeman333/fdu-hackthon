@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
-import { TODAY } from '../data/demo';
+import { formatLocalDate, TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
 import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
 import {
@@ -54,7 +54,15 @@ interface UseElderChatOptions {
 }
 
 function localIsoTimestamp(): string {
-  return new Date().toISOString();
+  // 本地墙上时间（无时区后缀），与 Demo 数据 `${date}T12:00:00` 约定一致：
+  // slice(0, 10) 恒等于本地日期。toISOString 会在 UTC+8 的 0-8 点把日期算成前一天，
+  // 导致拍照录入落在"今天"之外、被全部检测窗口排除。
+  const now = new Date();
+  const pad = (value: number, width = 2): string => `${value}`.padStart(width, '0');
+  return `${formatLocalDate(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(
+    now.getMilliseconds(),
+    3,
+  )}`;
 }
 
 function recallSummary(chat: ChatMessage[]): string {
