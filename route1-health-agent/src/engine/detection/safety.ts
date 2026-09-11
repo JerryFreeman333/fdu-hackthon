@@ -20,15 +20,30 @@ function hasPrivateTodayMeasurement(context: DetectionContext, metric: 'systolic
   );
 }
 
+function peakTodayBloodPressure(context: DetectionContext): { systolic?: number; diastolic?: number } {
+  const systolicValues = context.measurements
+    .filter((measurement) => measurement.metric === 'systolic' && measurement.timestamp.slice(0, 10) === context.today)
+    .map((measurement) => measurement.value);
+  const diastolicValues = context.measurements
+    .filter((measurement) => measurement.metric === 'diastolic' && measurement.timestamp.slice(0, 10) === context.today)
+    .map((measurement) => measurement.value);
+
+  return {
+    systolic: systolicValues.length > 0 ? Math.max(...systolicValues) : undefined,
+    diastolic: diastolicValues.length > 0 ? Math.max(...diastolicValues) : undefined,
+  };
+}
+
 export const bloodPressureSafetyRule: DetectionRule = {
   id: 'safety.blood_pressure.severe_reading',
   evaluate(context) {
+    const peak = peakTodayBloodPressure(context);
+    const severe = (peak.systolic !== undefined && peak.systolic > 180) || (peak.diastolic !== undefined && peak.diastolic > 120);
+    if (!severe) return null;
+
     const today = context.records.find((r) => r.date === context.today);
     const systolic = today?.metrics.systolic;
     const diastolic = today?.metrics.diastolic;
-    const severe = (systolic !== undefined && systolic > 180) || (diastolic !== undefined && diastolic > 120);
-    if (!severe) return null;
-
     const dyspnea = hadTag(context.observations, 'dyspnea', context.today, 1);
     const chestPain = hadTag(context.observations, 'chestPain', context.today, 1);
     const neuroChange = hadTag(context.observations, 'neuroChange', context.today, 1);
@@ -47,7 +62,7 @@ export const bloodPressureSafetyRule: DetectionRule = {
         ? '先停止活动、坐下休息，不要自行加倍服药。立即再次测量；如果复测仍很高，或胸痛、呼吸困难、突发神经系统异常等症状持续，应立即寻求急救。'
         : '单次高读数不能直接下结论。先安静坐下，至少一分钟后按规范重新测量；如果复测仍很高，应尽快联系医疗专业人员。',
       evidence: [
-        `今日血压 ${systolic ?? '—'}/${diastolic ?? '—'} mmHg`,
+        `今日峰值血压 ${peak.systolic ?? systolic ?? '—'}/${peak.diastolic ?? diastolic ?? '—'} mmHg`,
         ...(dyspnea && shareableSymptoms ? [`今日呼吸不适：${tagText(dyspnea)}`] : []),
         ...(chestPain && shareableSymptoms ? [`今日胸痛：${tagText(chestPain)}`] : []),
         ...(neuroChange && shareableSymptoms ? [`今日突发神经系统异常：${tagText(neuroChange)}`] : []),
@@ -55,7 +70,7 @@ export const bloodPressureSafetyRule: DetectionRule = {
       familyMessage: shareable
         ? urgent
           ? `【紧急】${context.today}：老人今日血压读数超过 180/120 mmHg，并伴危险症状，请立即联系老人；复测仍高或症状明显时立即寻求急救。`
-          : `【请立即关注】${context.today}：老人血压读数超过 180/120 mmHg，请帮助其安静休息并复测；若仍高，请尽快联系医疗人员。`
+          : `【请立即关注】${context.today}：老人今日血压读数超过 180/120 mmHg，请帮助其安静休息并复测；若仍高，请尽快联系医疗人员。`
         : undefined,
       carePath: urgent
         ? '立即联系老人；复测仍高且出现胸痛、呼吸困难、意识/语言/肢体异常等危险症状时，立即拨打当地急救电话。'
@@ -65,9 +80,7 @@ export const bloodPressureSafetyRule: DetectionRule = {
       signalKeys: [
         'systolic',
         'diastolic',
-        ...(danger
-          ? danger.tags.filter((tag) => tag === 'dyspnea' || tag === 'chestPain' || tag === 'neuroChange')
-          : []),
+        ...(danger ? danger.tags.filter((tag) => tag === 'dyspnea' || tag === 'chestPain' || tag === 'neuroChange') : []),
       ],
       familyEligible: shareable,
     });
