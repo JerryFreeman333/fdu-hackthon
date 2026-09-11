@@ -1,0 +1,36 @@
+name: route2-blackbox-audit
+
+on:
+  push:
+    branches:
+      - 'route2/blackbox-audit-20260911'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: route2-home-3d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route2-home-3d/web/package-lock.json
+      - name: Install web dependencies
+        working-directory: route2-home-3d/web
+        run: npm ci
+      - name: Install black-box harness
+        working-directory: route2-home-3d/p0-blackbox
+        run: npm install --no-package-lock
+      - name: Show Chrome
+        run: google-chrome --version
+      - name: Run isolated Route 2 browser black-box
+        working-directory: route2-home-3d/p0-blackbox
+        run: npm run blackbox
