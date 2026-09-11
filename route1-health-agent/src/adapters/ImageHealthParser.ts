@@ -112,7 +112,10 @@ export type ImageParseError =
   | 'aborted';
 
 export class ImageParserError extends Error {
-  constructor(public readonly code: ImageParseError, message?: string) {
+  constructor(
+    public readonly code: ImageParseError,
+    message?: string,
+  ) {
     super(message ?? code);
     this.name = 'ImageParserError';
   }
