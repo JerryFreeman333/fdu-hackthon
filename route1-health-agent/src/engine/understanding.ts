@@ -482,7 +482,10 @@ export function understandElderInput(
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
-    if (!isPureCorrectionMarker(clause) && (explicitTags.length > 0 || hasExplicitHealthValue)) {
+    if (
+      !isPureCorrectionMarker(clause) &&
+      (explicitTags.length > 0 || hasExplicitHealthValue)
+    ) {
       lastTime = time;
     }
 
