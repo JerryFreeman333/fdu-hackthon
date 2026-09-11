@@ -9,10 +9,10 @@ import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
 import { splitNaturalLanguageTexts } from './naturalLanguage';
+import { resolveTime, type TimeScope } from './time';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
-export type TimeScope = 'today' | 'yesterday' | 'lastNight' | 'historical' | 'unknown';
 
 export interface StructuredClaim {
   text: string;
@@ -30,10 +30,6 @@ export interface StructuredElderInput {
   recallRequested: boolean;
   clarificationQuestion?: string;
   correction: boolean;
-}
-
-function subtractDays(today: string, days: number): string {
-  return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
 }
 
 const SELF_PATTERNS = [/(?:我自己|我本人|本人|我的|我)(?:的)?/];
@@ -103,23 +99,6 @@ function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[
 
   const subject = subjectFromText(clause, priorSubjects);
   return [subject];
-}
-
-function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
-  if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
-
-  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
-  const hasYesterday = /(昨天|昨日)/.test(clause);
-  const currentComparison =
-    hasToday &&
-    hasYesterday &&
-    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
-
-  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
-  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-
-  return { scope: 'today', eventDate: today };
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
@@ -200,7 +179,7 @@ export function understandElderInput(
     const hasHealthValue =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
-    const time = timeFromText(clause, today);
+    const time = resolveTime(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
