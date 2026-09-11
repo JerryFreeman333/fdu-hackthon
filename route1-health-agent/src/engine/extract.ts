@@ -1,7 +1,9 @@
-import type { HealthMetric, SymptomTag } from '../types';
+import type { MetricKey, SymptomTag } from '../types';
+
+export type ExtractedMetric = MetricKey | 'temperature';
 
 export interface ExtractedValue {
-  metric: HealthMetric;
+  metric: ExtractedMetric;
   value: number;
   unit: string;
   sourceText: string;
@@ -73,14 +75,14 @@ function parseChineseNumber(raw: string): number | null {
 }
 
 interface MetricPattern {
-  metric: HealthMetric;
+  metric: ExtractedMetric;
   unit: string;
   patterns: RegExp[];
 }
 
 const METRIC_PATTERNS: MetricPattern[] = [
   {
-    metric: 'systolicBp',
+    metric: 'systolic',
     unit: 'mmHg',
     patterns: [
       new RegExp(String.raw`(?:收缩压|高压|上压)\s*(${RANGE})`),
@@ -88,7 +90,7 @@ const METRIC_PATTERNS: MetricPattern[] = [
     ],
   },
   {
-    metric: 'diastolicBp',
+    metric: 'diastolic',
     unit: 'mmHg',
     patterns: [new RegExp(String.raw`(?:舒张压|低压|下压)\s*(${RANGE})`)],
   },
@@ -103,7 +105,7 @@ const METRIC_PATTERNS: MetricPattern[] = [
     patterns: [new RegExp(String.raw`(?:体温|温度)\s*(${RANGE})\s*(?:°\s*C|℃|度)?`)],
   },
   {
-    metric: 'glucose',
+    metric: 'bloodGlucose',
     unit: 'mmol/L',
     patterns: [new RegExp(String.raw`(?:血糖|血糖值)\s*(${RANGE})\s*(?:mmol/L)?`)],
   },
@@ -137,7 +139,6 @@ function parseBloodPressureNumber(raw: string): number | null {
 }
 
 function parseBloodPressure(text: string): BloodPressureParts | null {
-  // 完整双值：血压 150/90、150，90、150比90、150-90，以及“高压150低压90”。
   const bloodPressurePairPatterns: Array<{ pattern: RegExp; lowFirst?: boolean }> = [
     {
       pattern: new RegExp(String.raw`(?:血压)\s*(${NUMBER})\s*(?:[/／,，、:：比和及\-~])\s*(${NUMBER})`),
@@ -170,7 +171,6 @@ function parseBloodPressure(text: string): BloodPressureParts | null {
       : { systolic: { value: first, sourceText }, diastolic: { value: second, sourceText } };
   }
 
-  // 单值也必须保留下来：血压计常先报高压，丢掉它会绕过 >180 的安全红线。
   const systolicOnlyPatterns = [
     new RegExp(String.raw`(?:高压|收缩压|上压)\s*(${NUMBER})`),
     new RegExp(String.raw`(?:血压)\s*(${NUMBER})`),
@@ -192,7 +192,7 @@ export function extractBloodPressureValues(text: string): ExtractedValue[] {
   const values: ExtractedValue[] = [];
   if (parts.systolic) {
     values.push({
-      metric: 'systolicBp',
+      metric: 'systolic',
       value: parts.systolic.value,
       unit: 'mmHg',
       sourceText: parts.systolic.sourceText,
@@ -200,7 +200,7 @@ export function extractBloodPressureValues(text: string): ExtractedValue[] {
   }
   if (parts.diastolic) {
     values.push({
-      metric: 'diastolicBp',
+      metric: 'diastolic',
       value: parts.diastolic.value,
       unit: 'mmHg',
       sourceText: parts.diastolic.sourceText,
@@ -214,7 +214,7 @@ export function extractHealthValues(text: string): ExtractedValue[] {
   const values = [...bloodPressureValues];
 
   for (const { metric, unit, patterns } of METRIC_PATTERNS) {
-    if (metric === 'systolicBp' || metric === 'diastolicBp') continue;
+    if (metric === 'systolic' || metric === 'diastolic') continue;
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (!match) continue;
@@ -235,7 +235,6 @@ export function extractSymptomTags(text: string): SymptomTag[] {
     ['dizziness', /头晕|眩晕|晕乎乎/],
     ['fall', /摔倒|摔了一跤|跌倒|跌了一跤|滑倒/],
     ['edema', /水肿|浮肿|脚肿|腿肿|眼皮肿/],
-    ['nocturia', /夜尿|起夜|晚上尿多/],
     ['poorSleep', /睡不好|睡不着|失眠|睡眠差/],
     ['medicationMissed', /没吃药|漏服|忘记吃药|忘了吃药|没按时吃药/],
   ];
