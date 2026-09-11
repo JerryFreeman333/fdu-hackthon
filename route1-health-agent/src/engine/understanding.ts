@@ -144,11 +144,28 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   return { scope: 'today', eventDate: today };
 }
 
+/** “谁说我摔了”“哪有我胸痛”这类句式是在反驳前述事实，不是在报告事实。 */
+function isRhetoricalNegation(clause: string): boolean {
+  const healthEventLanguage = /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
+  return (
+    healthEventLanguage.test(clause) &&
+    /(?:谁说|谁讲|哪有|哪里有|哪能有|才没有|根本没有|我(?:根本)?没有|我没(?:有)?|并没有)/.test(clause)
+  );
+}
+
+/** “我摔倒了，没有啊”“我摔倒了吗？没有”这种口语会被逗号/问号拆开；后一句需要回溯取消前一句。 */
+function isStandaloneNegation(clause: string): boolean {
+  const trimmed = clause.trim().replace(/[。！!，,？?]+$/, '');
+  return /^(?:(?:我|我自己|本人)\s*)?(?:没有|没|未|不是|才没有|才不是)(?:啊|呀|呢|的)?$/.test(trimmed);
+}
+
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
   const semanticSymptomLanguage =
     /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
       clause,
     );
+
+  if (isRhetoricalNegation(clause)) return 'negated';
 
   // 用户在话里自带"模棱两可"的语气词（可能 / 好像 / 似乎 / 不太确定 / 不清楚），
   // 表明他/她并不在断言事实。这类表达一律当作 uncertain，
@@ -428,6 +445,17 @@ export function understandElderInput(
     lastHealthValue = hasHealthValue;
   }
 
+  // 处理被逗号/问号拆开的“后置否认”：
+  //   “我摔倒了，没有啊” / “我摔倒了吗？没有”
+  // 后一句不是新健康事实，而是在撤销紧挨着的前一句事实。
+  for (const clause of splitClauses(trimmed)) {
+    if (!isStandaloneNegation(clause)) continue;
+    const previous = [...claims]
+      .reverse()
+      .find((claim) => claim.subject === 'self' && claim.status === 'occurred' && (claim.tags.length > 0 || claim.hasHealthValue));
+    if (previous) previous.status = 'negated';
+  }
+
   // 任何代词主体不明确都需要人工清请求明；
   // 不取决于是否含有安全规则/有值。
   const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown');
@@ -445,8 +473,8 @@ export function understandElderInput(
     claims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
-      ? '\u60a8\u8bf4\u7684\u201c\u4ed6/\u5979\u201d\u53ef\u80fd\u662f\u5728\u8bf4\u60a8\u81ea\u5df1\uff0c\u4e5f\u53ef\u80fd\u662f\u5728\u8bf4\u5bb6\u4eba\u3002\u6211\u5148\u786e\u8ba4\u6e05\u695a\u662f\u6307\u8c01\uff0c\u518d\u51b3\u5b9a\u8981\u4e0d\u8981\u8bb0\u5f55\uff0c\u8fd9\u6837\u4e0d\u4f1a\u628a\u522b\u4eba\u7684\u60c5\u51b5\u8bb0\u5230\u60a8\u8fd9\u91cc\u3002'
-      : (clarificationQuestion ?? undefined),
+      ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
+      : clarificationQuestion ?? undefined,
     correction,
     correctionTargetMessageId,
     correctionTargetTags,
