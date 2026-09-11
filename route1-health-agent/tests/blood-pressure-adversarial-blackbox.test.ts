@@ -115,7 +115,10 @@ async function main() {
     unrelatedClaims.some((claim) => claim.tags.includes('dizziness')),
     'ordinary comma symptom clause must remain parseable',
   );
-  assert(unrelatedClaims.some((claim) => claim.hasHealthValue), 'ordinary comma must not swallow a later BP fact');
+  assert(
+    unrelatedClaims.some((claim) => claim.hasHealthValue),
+    'ordinary comma must not swallow a later BP fact',
+  );
 
   const events: HealthEvent[] = [
     measurementToEvent(measurement('systolic', 210)),
@@ -136,13 +139,13 @@ async function main() {
   const repeatFindings = runDetection(repeatMeasurementEvents, TODAY);
   const repeatSafety = repeatFindings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
   assert(repeatSafety, 'a dangerous earlier BP reading must not disappear after a normal recheck');
-  assert(repeatSafety.evidence.some((item) => item.includes('210')), 'safety evidence must retain the earlier dangerous reading');
+  assert(
+    repeatSafety.evidence.some((item) => item.includes('210')),
+    'safety evidence must retain the earlier dangerous reading',
+  );
 
   const dangerousWithSymptom = runDetection(
-    [
-      ...events,
-      observationToEvent(observation('我高压210，而且现在喘得厉害', ['dyspnea'])),
-    ],
+    [...events, observationToEvent(observation('我高压210，而且现在喘得厉害', ['dyspnea']))],
     TODAY,
   );
   const urgent = dangerousWithSymptom.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
@@ -158,7 +161,9 @@ async function main() {
   const shouldNotCrash = await generateAgentReply('高压一百五低压九十', ['bpHigh'], [], false);
   assert(shouldNotCrash.length > 0, 'oral Chinese BP forms must produce a response');
 
-  console.log('PASS: adversarial blood pressure extraction, semantic routing, detection, repeat readings, clause splitting, and chat safety');
+  console.log(
+    'PASS: adversarial blood pressure extraction, semantic routing, detection, repeat readings, clause splitting, and chat safety',
+  );
 }
 
 void main().catch((error) => {
