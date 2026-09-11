@@ -1,0 +1,116 @@
+name: route1-multifact-fix2-temp
+
+on:
+  push:
+    branches:
+      - route1-multifact
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Patch split and compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('route1-health-agent/src/engine/understanding.ts')
+          text = path.read_text()
+
+          old = """function splitClauses(text: string): string[] {
+            const protectedNumericComma = text
+              .replace(/([0-9零〇一二两三四五六七八九十百]+)\\s*[,，]\\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
+              .replace(
+                /((?:高压|低压|收缩压|舒张压)\\s*(?:[0-9零〇一二两三四五六七八九十百]+))\\s*[,，]\\s*(?=(?:高压|低压|收缩压|舒张压))/g,
+                '$1§NUM§',
+              );
+
+            const explicitSubjectStart =
+              '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
+            const implicitBoundary = protectedNumericComma
+              .replace(
+                new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\\s*(?=${explicitSubjectStart})`, 'g'),
+                '§CLAUSE§',
+              )
+              .replace(
+                new RegExp(`([^。！？!?；;,，\\n§])(?=${explicitSubjectStart})`, 'g'),
+                '$1§CLAUSE§',
+              );
+
+            return implicitBoundary
+              .split(/[。！？!?；;,，\\n]+|§CLAUSE§+/)
+              .map((clause) => clause.replace(/§NUM§/g, ',').trim())
+              .filter(Boolean);
+          }
+"""
+          new = """function splitClauses(text: string): string[] {
+            const protectedNumericComma = text
+              .replace(/([0-9零〇一二两三四五六七八九十百]+)\\s*[,，]\\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
+              .replace(
+                /((?:高压|低压|收缩压|舒张压)\\s*(?:[0-9零〇一二两三四五六七八九十百]+))\\s*[,，]\\s*(?=(?:高压|低压|收缩压|舒张压))/g,
+                '$1§NUM§',
+              )
+              .replace(/[,，](?=\\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/g, '§KEEP§');
+
+            const explicitSubjectStart =
+              '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
+            const implicitBoundary = protectedNumericComma.replace(
+              new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\\s*(?=${explicitSubjectStart})`, 'g'),
+              '§CLAUSE§',
+            );
+
+            return implicitBoundary
+              .split(/[。！？!?；;,，\\n]+|§CLAUSE§+/)
+              .map((clause) => clause.replace(/§NUM§/g, ',').replace(/§KEEP§/g, ',').trim())
+              .filter(Boolean);
+          }
+"""
+          if old not in text:
+              raise SystemExit('split function block not found')
+          text = text.replace(old, new, 1)
+
+          old_anchor = """  const priorSubjects = recentPriorSubjects(recentMessages);
+  const claims: StructuredClaim[] = [];
+"""
+          new_anchor = """  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
+  const hasExplicitFamilyRefusal =
+    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(trimmed) ||
+    /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(trimmed) ||
+    /不想让.{0,3}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见|知道这件事)/.test(trimmed);
+  if (hasExplicitFamilyShare && hasExplicitFamilyRefusal) {
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion:
+        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      correction,
+      correctionTargetMessageId,
+    };
+  }
+
+  const priorSubjects = recentPriorSubjects(recentMessages);
+  const claims: StructuredClaim[] = [];
+"""
+          if old_anchor not in text:
+              raise SystemExit('privacy insertion anchor not found')
+          text = text.replace(old_anchor, new_anchor, 1)
+          path.write_text(text)
+
+          test = Path('route1-health-agent/tests/multi-fact-regression.test.ts')
+          test_text = test.read_text()
+          test_text = test_text.replace("['self', 'occurred', ['chestPain']]", "['self', 'occurred', ['dyspnea']]")
+          test.write_text(test_text)
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent/src/engine/understanding.ts route1-health-agent/tests/multi-fact-regression.test.ts
+          git commit -m "fix(route1): preserve negation and privacy boundaries"
+          git push
