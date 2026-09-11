@@ -89,6 +89,35 @@ async function main() {
     assert(acceptedSelfClaims(input).length === 1, 'actual discomfort should still be accepted');
   });
 
+  await runCase('coordinated self and spouse facts are split instead of becoming unknown', () => {
+    const input = understandElderInput('我和老伴都没吃药', TODAY);
+    assert(input.claims.length === 2, 'coordinated statement should become two claims');
+    assert(
+      input.claims.every((claim) => claim.status === 'occurred' && claim.tags.includes('medicationMissed')),
+      'missed medication is an occurred event for both people',
+    );
+    assert(input.claims[0]?.subject === 'self', 'first coordinated subject should be self');
+    assert(input.claims[1]?.subject === 'spouse', 'second coordinated subject should be spouse');
+    assert(acceptedSelfClaims(input).length === 1, 'only the self claim enters the elder health stream');
+  });
+
+  await runCase('coordinated denial is copied to both explicit subjects', () => {
+    const input = understandElderInput('我和老伴都没有胸痛', TODAY);
+    assert(input.claims.length === 2, 'coordinated denial should become two claims');
+    assert(input.claims.every((claim) => claim.status === 'negated'), 'both subjects should be negated');
+    assert(input.claims[0]?.subject === 'self', 'self denial should stay self');
+    assert(input.claims[1]?.subject === 'spouse', 'spouse denial should stay spouse');
+    assert(acceptedSelfClaims(input).length === 0, 'negated self denial must not enter the health stream');
+  });
+
+  await runCase('coordinated occurred symptom is split without leaking spouse into self', () => {
+    const input = understandElderInput('我和老伴都喘', TODAY);
+    assert(input.claims.length === 2, 'coordinated symptom should become two claims');
+    assert(input.claims[0]?.subject === 'self' && input.claims[0]?.status === 'occurred', 'self dyspnea claim should occur');
+    assert(input.claims[1]?.subject === 'spouse' && input.claims[1]?.status === 'occurred', 'spouse dyspnea claim should occur');
+    assert(acceptedSelfClaims(input).length === 1, 'only one self claim should be accepted');
+  });
+
   await runCase('pure numeric measurement remains recordable', () => {
     const input = understandElderInput('我的血压 150/95', TODAY);
     const accepted = acceptedSelfClaims(input);
