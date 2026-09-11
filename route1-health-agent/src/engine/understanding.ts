@@ -68,7 +68,9 @@ function uniqueFamily(subjects: ElderSubject[]): ElderSubject[] {
 function inferPrimarySubject(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
-  const selfDirectedFamilyNotice = /(?:告诉|通知|跟|让).{0,8}(?:女儿|儿子|孩子|家人).{0,8}(?:我|我的|我自己|本人)/.test(text);
+  const selfDirectedFamilyNotice = /(?:告诉|通知|跟|让).{0,8}(?:女儿|儿子|孩子|家人).{0,8}(?:我|我的|我自己|本人)/.test(
+    text,
+  );
   if (selfDirectedFamilyNotice) return 'self';
   if (family.length > 1) return 'unknown';
   if (family.length === 1) return family[0];
@@ -97,7 +99,14 @@ function subjectCandidates(
 ): ElderSubject[] {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
-  if (lastSubject && lastSubject !== 'self' && lastSubject !== 'unknown' && family.length === 0 && !self && !THIRD_PERSON.test(text)) {
+  if (
+    lastSubject &&
+    lastSubject !== 'self' &&
+    lastSubject !== 'unknown' &&
+    family.length === 0 &&
+    !self &&
+    !THIRD_PERSON.test(text)
+  ) {
     return [lastSubject];
   }
   if (family.length > 0 && self && COORDINATION.test(text)) return ['self', ...family];
