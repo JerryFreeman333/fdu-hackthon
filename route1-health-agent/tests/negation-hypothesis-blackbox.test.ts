@@ -4,7 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
-// Final CI verification marker: clean formal gate.
+// Final CI verification marker: trigger semantic compatibility fixer.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
