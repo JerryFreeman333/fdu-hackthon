@@ -48,6 +48,11 @@ jobs:
           cache-dependency-path: route1-health-agent/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Debug Prettier diff
+        run: |
+          npx --yes prettier@3.5.3 --write src/engine/understanding.ts
+          git diff -- src/engine/understanding.ts
+          exit 1
       - name: Check formatting
         run: npm run format:check
       - name: Check blackbox syntax
