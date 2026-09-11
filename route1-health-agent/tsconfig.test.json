@@ -13,6 +13,12 @@
     "noEmitOnError": true
   },
   "include": ["tests/**/*.ts", "src/**/*.ts"],
-  "exclude": ["src/hooks/useElderChat.ts"],
+  "exclude": [
+    "src/App.tsx",
+    "src/hooks/useElderChat.ts",
+    "src/config/runtime.ts",
+    "src/adapters/parserSelector.ts",
+    "src/components/RuntimeModeBanner.tsx"
+  ],
   "types": ["node"]
 }

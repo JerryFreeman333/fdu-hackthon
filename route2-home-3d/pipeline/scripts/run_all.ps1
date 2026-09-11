@@ -12,6 +12,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $scripts = $PSScriptRoot
 
+if ([string]::IsNullOrWhiteSpace($Video) -eq [string]::IsNullOrWhiteSpace($Photos)) {
+    throw '必须且只能提供 -Video 或 -Photos 其中一个真实采集输入。'
+}
+if ($Video -and -not (Test-Path -LiteralPath $Video -PathType Leaf)) { throw "真实视频不存在: $Video" }
+if ($Photos -and -not (Test-Path -LiteralPath $Photos -PathType Container)) { throw "真实照片目录不存在: $Photos" }
+if ($Iterations -lt 1) { throw '-Iterations 必须大于 0。建议先用 1000 做 smoke test。' }
+
 Write-Host "########## 路线二 · Home Twin 全流程 ##########" -ForegroundColor Cyan
 & "$scripts\02_prepare_data.ps1" -Scene $Scene $(if ($Video) { "-Video"; $Video } else { "-Photos"; $Photos })
 & "$scripts\03_run_colmap.ps1" -Scene $Scene

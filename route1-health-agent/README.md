@@ -162,7 +162,7 @@ completed
 
 ## 硬件 / OCR 边界
 
-当前**不接真实硬件、不接真实 OCR/Vision、不接云端数据库**，这是当前阶段的主动范围控制，不是架构缺失。
+当前已实现用于现场 MVP 验收的 **HealthKit 真实硬件桥**：iPhone companion 读取 Apple 健康数据，上传到同一局域网的临时桥接服务，再由网页的 `HealthKitDeviceAdapter` 写入统一事件流。它不是生产级账号、云同步或后台常驻服务。
 
 硬件入口仍保留：
 
@@ -173,9 +173,9 @@ interface DeviceAdapter {
 }
 ```
 
-真实 HealthKit、Health Connect、蓝牙设备或厂商 SDK 后续只需要实现 Adapter；Detection、Person Twin、Agent 不应该依赖具体硬件。
+`VITE_DEVICE_MODE=demo|healthkit` 显式选择数据源。`healthkit` 模式不会载入 seed 健康数据，也不会在桥接失败时回退到 Demo。完整操作见 [HARDWARE_TEST_RUNBOOK.md](HARDWARE_TEST_RUNBOOK.md)。
 
-图像识别同样保留 `ImageHealthParser` 接口；当前不把预置样张冒充成真实 OCR。
+图像识别通过 `VITE_HEALTH_VISION_MODE=demo|real` 显式隔离；`real` 必须配置服务端 endpoint，失败时不返回 Mock 固定值。Agent 同理由 `VITE_AGENT_MODE=rule|llm` 控制。
 
 ## 医疗安全边界
 

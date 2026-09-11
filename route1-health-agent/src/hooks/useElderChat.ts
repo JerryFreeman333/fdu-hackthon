@@ -4,7 +4,9 @@ import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Findin
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
-import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
+import { imageHealthParser } from '../adapters/parserSelector';
+import { runtimeConfig } from '../config/runtime';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -31,8 +33,8 @@ import {
 } from '../engine/understanding';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
-const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
-  ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
+const llmAdapter = runtimeConfig.agentMode === 'llm'
+  ? createHttpLlmAdapter(runtimeConfig.agentEndpoint!)
   : ruleBasedAdapter;
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
@@ -399,17 +401,17 @@ export function useElderChat({
     try {
       const capturedAt = localIsoTimestamp();
       const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      const parsed = await imageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
       const measurements = parsed.measurements.map((item) => measurementToEvent({ ...item, visibility }));
       if (measurements.length === 0) {
         showToast('这张图片没有识别到可记录的健康数值。');
         return;
       }
       setEvents((current) => appendHealthEvents(current, measurements));
-      showToast(`已记录 ${measurements.length} 项图片中的健康数值。`);
+      showToast(`已记录 ${measurements.length} 项图片中的健康数值（${runtimeConfig.healthVisionMode === 'real' ? '真实 Vision' : 'Demo parser'}）。`);
     } catch (error) {
       console.error(error);
-      showToast('图片解析失败，请稍后重试。');
+      showToast(`图片解析失败${runtimeConfig.healthVisionMode === 'real' ? '；未返回任何 Demo 固定数值' : ''}。`);
     }
   }
 

@@ -15,13 +15,31 @@ import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 import { createRoleSwitcher, readStoredRole, updateRoleSwitcher, type Route2Role } from './ui/roleMode';
 import { buildJourney, type JourneyStep } from './ui/journey';
 
-const DEMO_SPLAT_URL = 'models/home.ply';
+const SPLAT_URL = 'models/home.ply';
+const SPLAT_MANIFEST_URL = 'models/home.manifest.json';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
 
+type HomeMode = 'demo' | 'real';
+interface ReconstructionManifest {
+  mode: 'real';
+  scene: string;
+  exportedAt: string;
+  source: 'gaussian-splatting';
+  sha256: string;
+  bytes: number;
+  iteration: number;
+}
+
+function requestedHomeMode(): HomeMode {
+  const value = import.meta.env.VITE_HOME_MODE ?? 'demo';
+  if (value !== 'demo' && value !== 'real') throw new Error(`VITE_HOME_MODE=${value} 无效，只允许 demo 或 real`);
+  return value;
+}
+
 async function hasRealModel(): Promise<boolean> {
   try {
-    const res = await fetch(DEMO_SPLAT_URL, { method: 'HEAD' });
+    const res = await fetch(SPLAT_URL, { method: 'HEAD', cache: 'no-store' });
     if (!res.ok) return false;
     const length = Number.parseInt(res.headers.get('content-length') ?? '0', 10);
     return Number.isFinite(length) && length > 1000;
@@ -66,7 +84,19 @@ async function main() {
   const dataResponse = await fetch('data/hazards.json');
   if (!dataResponse.ok) throw new Error(`无法读取场景数据: HTTP ${dataResponse.status}`);
   const data = (await dataResponse.json()) as HazardData;
-  const mode: SceneMode = (await hasRealModel()) ? 'real' : 'demo';
+  const requestedMode = requestedHomeMode();
+  const realModelExists = await hasRealModel();
+  if (requestedMode === 'real' && !realModelExists) {
+    throw new Error('真实 Home 模式已启用，但 models/home.ply 缺失或无效；已停止加载，不会回退到合成 Demo。');
+  }
+  const mode: SceneMode = requestedMode;
+  let reconstructionManifest: ReconstructionManifest | null = null;
+  if (mode === 'real') {
+    reconstructionManifest = await loadJson<ReconstructionManifest>(SPLAT_MANIFEST_URL);
+    if (!reconstructionManifest || reconstructionManifest.mode !== 'real' || reconstructionManifest.source !== 'gaussian-splatting' || !reconstructionManifest.sha256) {
+      throw new Error('真实 home.ply 缺少有效 home.manifest.json 来源证明；已停止加载，不会回退到 Demo。');
+    }
+  }
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
@@ -75,7 +105,9 @@ async function main() {
   let routePlan: RoutePlanResult | null = null;
 
   const badge = document.getElementById('scene-badge')!;
-  badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
+  badge.textContent = mode === 'real'
+    ? `真实重建 · ${reconstructionManifest?.scene ?? 'home'} · iteration ${reconstructionManifest?.iteration ?? '?'}`
+    : '合成演示场景 · 预置数据';
   badge.className = 'badge ' + (mode === 'real' ? 'badge-real' : 'badge-demo');
 
   if (mode === 'demo') {
@@ -92,7 +124,7 @@ async function main() {
     app.initDemo((on) => room.setNight(on));
   } else {
     setHint('正在加载真实高斯泼溅模型…');
-    await app.initReal(DEMO_SPLAT_URL);
+    await app.initReal(SPLAT_URL);
   }
 
   const markers = createHazardMarkers(data.hazards, mode, (cb) => app.onUpdate(cb));
@@ -267,5 +299,12 @@ async function main() {
 main().catch((err) => {
   console.error(err);
   const message = err instanceof Error ? err.message : String(err);
+  const realRequested = import.meta.env.VITE_HOME_MODE === 'real';
+  const badge = document.getElementById('scene-badge');
+  if (badge) {
+    badge.textContent = realRequested ? '真实链路失败 · 未回退 Demo' : 'Demo 初始化失败';
+    badge.className = 'badge badge-error';
+  }
+  document.body.classList.add('fatal-mode');
   setHint('初始化失败: ' + message);
 });

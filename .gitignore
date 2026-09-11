@@ -15,6 +15,7 @@ Thumbs.db
 # 本地环境
 .env
 .env.local
+route1-health-agent/.healthkit-data/
 
 # Route 2 本地采集/重建数据（绝不进入 Git）
 route2-home-3d/backend/.data/

@@ -1,6 +1,6 @@
 /** 路线一领域模型：老人、健康事件、家庭事件、发现与 Agent。 */
 
-export type DataSource = 'demo' | 'device' | 'photo' | 'manual' | 'import' | 'chat';
+export type DataSource = 'demo' | 'device' | 'healthkit' | 'photo' | 'manual' | 'import' | 'chat';
 export type UserRole = 'elder' | 'family';
 export type FamilySharing = 'granted' | 'ask' | 'denied';
 export type NightVisionStatus = 'normal' | 'reduced' | 'unknown';

@@ -54,9 +54,14 @@ npm run build
 npm run dev
 ```
 
-没有 `public/models/home.ply` 时，网页自动进入合成演示模式；此模式只用于验证交互，不用于证明真实空间识别准确率。
+Web 模式必须显式选择，默认保持 Demo：
 
-有真实 `home.ply` 时，进入真实重建模式。未完成真实空间定位的数据不会被 Web 端伪造成已知结果。
+```text
+VITE_HOME_MODE=demo
+VITE_HOME_MODE=real
+```
+
+真实模式同时要求 `public/models/home.ply` 和 `public/models/home.manifest.json`。导出脚本会记录场景、迭代数、文件大小和 SHA-256；任一文件缺失或模型无效时，网页会停止并显示“真实链路失败”，不会静默回退到合成 Demo。可复制 `web/.env.real.example` 为 `web/.env.local` 启用真实模式。未完成真实空间定位的数据仍不会被伪造成已知结果。
 
 ## 真实 3D + 语义定位管线
 
@@ -82,6 +87,8 @@ powershell -ExecutionPolicy Bypass -File 01_setup.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File run_all.ps1 -Video "C:\path\home.mp4" -Scene home
 ```
+
+现场建议先用 `-Iterations 1000` 做 smoke test，通过后再提高到 7000 或正式训练迭代数。`run_all.ps1` 现在要求且只允许提供一个真实视频或照片目录；输入不存在时会立即失败。
 
 也支持照片目录：
 

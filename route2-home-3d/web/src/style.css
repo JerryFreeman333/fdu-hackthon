@@ -59,6 +59,8 @@ button.feature-card { cursor: pointer; }
 .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 7px; font-size: 11px; }
 .badge-demo { background: rgba(175,120,55,.24); color: #f0c17d; }
 .badge-real { background: rgba(75,125,91,.24); color: #9fd4ad; }
+.badge-error { background: rgba(165,45,45,.82); color: #fff; }
+.fatal-mode #hint { opacity: 1; max-width: min(880px, calc(100vw - 32px)); background: rgba(112,24,24,.96); font-size: 15px; }
 .badge-action { background: rgba(165,125,55,.22); color: #e8bf78; }
 .badge-resolved { background: rgba(70,125,89,.22); color: #a5d9b0; }
 .action-summary { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
