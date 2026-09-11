@@ -39,14 +39,27 @@ function subtractDays(today: string, days: number): string {
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   const protectedNumericComma = text
-    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§')
+    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
     .replace(
       /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
-      '$1§',
+      '$1§NUM§',
     );
-  return protectedNumericComma
-    .split(/[。！？!?；;,，\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
-    .map((clause) => clause.replace(/§/g, ',').trim())
+
+  const explicitSubjectStart =
+    '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
+  const implicitBoundary = protectedNumericComma
+    .replace(
+      new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\s*(?=${explicitSubjectStart})`, 'g'),
+      '§CLAUSE§',
+    )
+    .replace(
+      new RegExp(`([^。！？!?；;,，\n§])(?=${explicitSubjectStart})`, 'g'),
+      '$1§CLAUSE§',
+    );
+
+  return implicitBoundary
+    .split(/[。！？!?；;,，\n]+|§CLAUSE§+/)
+    .map((clause) => clause.replace(/§NUM§/g, ',').trim())
     .filter(Boolean);
 }
 
@@ -71,6 +84,16 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
+  const explicitlyMentionedSubjects = new Set<ElderSubject>();
+  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
+  if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) explicitlyMentionedSubjects.add('father');
+  if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) explicitlyMentionedSubjects.add('mother');
+  if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause))
+    explicitlyMentionedSubjects.add('family_other');
+  if (/(我自己|本人)/.test(clause)) explicitlyMentionedSubjects.add('self');
+  if (explicitlyMentionedSubjects.size > 1) return 'unknown';
+
   // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
