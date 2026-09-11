@@ -71,7 +71,7 @@ test('current negation does not erase a separate historical occurrence', () => {
 });
 
 test('historical improvement comparison does not become today', () => {
-  const input = understandElderInput('我前天胸闷，昨天比前天好多了', TODAY);
+  const input = understandElderInput('我前天胸闷，昨天胸闷比前天好多了', TODAY);
   assert.equal(input.claims.length, 2);
   assert.equal(input.claims[0]?.eventDate, '2026-09-08');
   assert.equal(input.claims[1]?.timeScope, 'yesterday');
