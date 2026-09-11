@@ -306,9 +306,27 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
   };
 }
 
-/** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
-export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
-  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
+/** 同源路径或明确的 HTTPS / 本机开发地址；Agent 上下文不能被指向任意外部主机。 */
+export function isAllowedAgentEndpoint(endpoint: string): boolean {
+  if (endpoint.startsWith('/')) return true;
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol === 'https:') return true;
+    return (
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '[::1]' ||
+        url.hostname === '::1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端；慢响应超时后由规则引擎兜底。 */
+export function createHttpLlmAdapter(endpoint: string, timeoutMs = 15000): LlmAdapter {
+  if (!isAllowedAgentEndpoint(endpoint))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
   return {
     async complete(systemPrompt, userText, context) {
@@ -317,14 +335,22 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
         throw new Error('Private and no-record inputs must stay on the local safety adapter.');
       const safeContext = context ? sanitizeExternalContext(context) : undefined;
       const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
-      });
-      if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
-      const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
-      return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+      // 超时必须覆盖响应体读取，否则挂起的端点仍会让整个对话回合无限等待。
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
+        const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
+        return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
