@@ -110,16 +110,11 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (
     /(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) &&
     (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
-  ) {
+  )
     return 'hypothetical';
-  }
-
   if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
-
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause))
     return 'occurred';
-  }
-
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
   const comparativeImprovement =
@@ -132,23 +127,17 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     /(今天|现在|目前)/.test(clause) &&
     /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
     tags.length > 0
-  ) {
+  )
     return 'occurred';
-  }
 
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
       clause,
     )
-  ) {
+  )
     return 'negated';
-  }
-  if (
-    /(可能|好像|似乎|不太确定|不清楚)/.test(clause) &&
-    (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
-  ) {
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue || semanticSymptomLanguage))
     return 'uncertain';
-  }
   return 'occurred';
 }
 
