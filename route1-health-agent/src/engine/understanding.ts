@@ -203,7 +203,7 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     return 'occurred';
 
   if (
-    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
+    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡|不舒服|难受)/.test(
       clause,
     )
   )
@@ -217,6 +217,8 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
  * 与其它事件/假设/转折有关的连接线索，就不当作自安，
  * 否则情感反应、历史事实、比较式改善都会被一起吞掉。
  */
+// ISSUE2_NEGATED_DISCOMFORT_PATCH_DONE
+
 function isPureSelfReassurance(clause: string): boolean {
   const trimmed = clause.trim().replace(/[。！!，,]+$/, '');
   if (/(?:也|当时|后来|然后|刚才|不过|但是|而且|并且|如果|万一|假如|要是|又)/.test(trimmed)) return false;

@@ -72,6 +72,23 @@ async function main() {
     assert(Boolean(input.clarificationQuestion), 'ambiguous pronoun should trigger clarification');
   });
 
+  await runCase('negated discomfort is not accepted', () => {
+    const input = understandElderInput('我没有不舒服', TODAY);
+    assert(input.claims[0]?.tags.includes('pain'), 'discomfort should still be recognized as the pain tag');
+    assert(input.claims[0]?.status === 'negated', 'negated discomfort should be negated');
+    assert(acceptedSelfClaims(input).length === 0, 'negated discomfort must not be accepted');
+
+    const selfInput = understandElderInput('我自己没有不舒服', TODAY);
+    assert(selfInput.claims[0]?.status === 'negated', 'explicit self wording should also be negated');
+  });
+
+  await runCase('actual discomfort remains occurred', () => {
+    const input = understandElderInput('我今天有点不舒服', TODAY);
+    assert(input.claims[0]?.tags.includes('pain'), 'actual discomfort should keep pain tag');
+    assert(input.claims[0]?.status === 'occurred', 'actual discomfort must remain occurred');
+    assert(acceptedSelfClaims(input).length === 1, 'actual discomfort should still be accepted');
+  });
+
   await runCase('pure numeric measurement remains recordable', () => {
     const input = understandElderInput('我的血压 150/95', TODAY);
     const accepted = acceptedSelfClaims(input);
