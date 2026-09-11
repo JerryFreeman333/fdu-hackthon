@@ -61,9 +61,7 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
       ) {
         return current;
       }
-      const medList = medications.length
-        ? medications.map((m) => `• ${m}`).join('\n')
-        : '• （暂无录入的药物）';
+      const medList = medications.length ? medications.map((m) => `• ${m}`).join('\n') : '• （暂无录入的药物）';
       return [
         ...current,
         {

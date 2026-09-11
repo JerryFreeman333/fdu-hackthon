@@ -102,3 +102,55 @@ test('\u7a7a\u6587\u8fd8\u662f\u4e0d\u5b89\u5168', () => {
 test('\u8d85\u957f\u8fd8\u662f\u4e0d\u5b89\u5168', () => {
   assert.equal(isSafeAgentReply('x'.repeat(600)), false);
 });
+
+// === Issue ⑪ regression: 检查名"做一下/个/检查一下"等绕过修复 ===
+test('issue ⑪: “建议做一下冠脉造影” 被拒绝（被量词绕过的场景）', () => {
+  assert.equal(isSafeAgentReply('建议做一下冠脉造影'), false);
+  assert.equal(isSafeAgentReply('建议做个血常规'), false);
+  assert.equal(isSafeAgentReply('建议做一个心电图'), false);
+});
+
+test('issue ⑪: “去做一下/个” 被拒绝', () => {
+  assert.equal(isSafeAgentReply('建议去做一下头部CT'), false);
+  assert.equal(isSafeAgentReply('建议去做个肺部CT'), false);
+});
+
+test('issue ⑪: “查一下/检查一下” 被拒绝', () => {
+  assert.equal(isSafeAgentReply('建议查一下血常规'), false);
+  assert.equal(isSafeAgentReply('建议检查一下心肌酶'), false);
+});
+
+test('issue ⑪: “最好去做个/跑一趟” 被拒绝', () => {
+  assert.equal(isSafeAgentReply('最好去做个头部CT'), false);
+  assert.equal(isSafeAgentReply('最好跑一趟心电图'), false);
+});
+
+test('issue ⑪: “您应该做一下” 被拒绝（您前缀作为语义起点）', () => {
+  assert.equal(isSafeAgentReply('您应该做一下血常规'), false);
+  assert.equal(isSafeAgentReply('您需要查一下心电图'), false);
+  assert.equal(isSafeAgentReply('您最好检查一下心肌酶'), false);
+});
+
+test('issue ⑪: “肺部CT / 头部CT / 24小时心电图” 空格变异同样拒绝', () => {
+  assert.equal(isSafeAgentReply('建议做一下肺部 CT'), false);
+  assert.equal(isSafeAgentReply('建议做一下肺部CT'), false);
+  assert.equal(isSafeAgentReply('建议做一下头部 CT'), false);
+  assert.equal(isSafeAgentReply('建议做一下头部CT'), false);
+  assert.equal(isSafeAgentReply('建议做一下 24 小时心电图'), false);
+  assert.equal(isSafeAgentReply('建议做一下 24小时心电图'), false);
+});
+
+test('issue ⑪: 中性表达不被误拒', () => {
+  // 不包含具体检查名的建议语句仍是安全的。
+  assert.equal(isSafeAgentReply('建议多休息'), true);
+  assert.equal(isSafeAgentReply('建议您多喝水'), true);
+  assert.equal(isSafeAgentReply('建议看下医生'), true);
+  assert.equal(isSafeAgentReply('建议做个检查'), true);
+  assert.equal(isSafeAgentReply('我去做CT'), true);
+});
+
+test('issue ⑪: 原有拒绝还在拒（regression）', () => {
+  assert.equal(isSafeAgentReply('建议做冠脉造影'), false);
+  assert.equal(isSafeAgentReply('建议查一下血常规'), false);
+  assert.equal(isSafeAgentReply('建议跑一趟心电图'), false);
+});

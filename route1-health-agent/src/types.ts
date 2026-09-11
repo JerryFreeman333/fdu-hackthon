@@ -147,6 +147,12 @@ export interface Observation {
   source: DataSource;
   text: string;
   tags: SymptomTag[];
+  /**
+   * 用户原话对应的语义状态（与 understanding.ts 的 ClaimStatus 对齐）。
+   * 缺失时按 'occurred' 处理（兼容老数据 / 设备导入 / 拍照 OCR 等非聊天来源）。
+   * 聊天产生的 Observation 必须显式写入，否则走不了下游安全规则的过滤。
+   */
+  status?: ClaimStatus;
   visibility?: PrivacyScope;
   measurements?: HealthMeasurement[];
   labResults?: LabResult[];

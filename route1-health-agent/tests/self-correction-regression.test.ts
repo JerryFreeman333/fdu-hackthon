@@ -130,4 +130,63 @@ test('missing provenance fails closed and deletes nothing', () => {
   assert.equal(next[0]?.id, 'observation:legacy-observation');
 });
 
+// === Issue ⑤ regression: targetTags 让"撤销其中一项"只删对应症状 ===
+test('issue ⑤: correction with targetTags removes only the negated symptom, keeps other co-occurring facts', () => {
+  // 场景：上一句"我头晕，血压150/90"。用户说"刚才说错了，没有头晕"。
+  // 期望：删头晕 observation，保留 150/90 measurement（issue ⑤ 的核心场景）。
+  const events: HealthEvent[] = [
+    observationToEvent(observation('obs-dizzy', 'elder-001', '我头晕', ['dizziness'])),
+    measurementToEvent(measurement('bp-sys-1', 'elder-001', 'systolic', 150)),
+    measurementToEvent(measurement('bp-dia-1', 'elder-001', 'diastolic', 90)),
+    observationToEvent(observation('obs-other', 'elder-002', '我胸痛', ['chestPain'])),
+  ];
+
+  const next = removeCorrectedChatHealthEvents(events, 'elder-001', ['dizziness']);
+  const ids = next.map((event) => event.id);
+  // 头晕 observation 删；150/90 两条 measurement 留；elder-002 的胸痛留
+  assert.deepEqual(ids, ['measurement:bp-sys-1', 'measurement:bp-dia-1', 'observation:obs-other']);
+});
+
+test('issue ⑤: correction with targetTags=["bpHigh"] removes only blood pressure measurements', () => {
+  // 场景：用户说"刚才说错了，血压没那么高"。targetTags 包含 bpHigh，删血压，保留头晕。
+  const events: HealthEvent[] = [
+    observationToEvent(observation('obs-dizzy', 'elder-001', '我头晕', ['dizziness'])),
+    measurementToEvent(measurement('bp-sys-1', 'elder-001', 'systolic', 150)),
+    measurementToEvent(measurement('bp-dia-1', 'elder-001', 'diastolic', 90)),
+  ];
+
+  const next = removeCorrectedChatHealthEvents(events, 'elder-001', ['bpHigh']);
+  // 血压 measurement 删；头晕 observation 留
+  assert.equal(next.length, 1);
+  assert.equal(next[0]?.id, 'observation:obs-dizzy');
+});
+
+test('issue ⑤: correction with empty targetTags preserves old behavior (delete the whole message)', () => {
+  // 兜底：targetTags 空数组 = 旧行为，整条删除 sourceMessageId 匹配的所有事件。
+  const events: HealthEvent[] = [
+    observationToEvent(observation('obs-1', 'elder-001', '我头晕', ['dizziness'])),
+    measurementToEvent(measurement('bp-sys-1', 'elder-001', 'systolic', 150)),
+  ];
+
+  const next = removeCorrectedChatHealthEvents(events, 'elder-001', []);
+  assert.equal(next.length, 0);
+});
+
+test('issue ⑤: understandElderInput surfaces correctionTargetTags in the correction branch', () => {
+  const chat = [elderMessage('elder-001', '我今天头晕')];
+  const u = understandElderInput('刚才说错了，没有头晕', TODAY, chat);
+  assert.equal(u.correction, true);
+  assert.equal(u.correctionTargetMessageId, 'elder-001');
+  assert.deepEqual(u.correctionTargetTags, ['dizziness']);
+});
+
+test('issue ⑤: correctionTargetTags is empty when the correction text has no specific tags', () => {
+  // 用户只说"刚才说错了"，没说哪条——targetTags 应为空，走整条删除兜底。
+  const chat = [elderMessage('elder-001', '我今天头晕')];
+  const u = understandElderInput('刚才说错了', TODAY, chat);
+  assert.equal(u.correction, true);
+  assert.equal(u.correctionTargetMessageId, 'elder-001');
+  assert.deepEqual(u.correctionTargetTags ?? [], []);
+});
+
 // Final verification marker: correction provenance regression suite.

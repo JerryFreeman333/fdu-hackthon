@@ -57,6 +57,41 @@ test('family near miss is also excluded from the self fact stream', () => {
   assert.equal(claims[0]?.status, 'near_miss');
 });
 
+test('explicit hedge overrides near miss', () => {
+  const claims = claimsOf('我刚才差点摔倒，但不确定算不算');
+  assert.equal(claims.length, 1, 'splitClauses 必须把转折续句并入上一句');
+  assert.equal(claims[0]?.status, 'uncertain', '用户明确说"不确定"时，近失不得压制不确定');
+  assert.equal(accepted('我刚才差点摔倒，但不确定算不算').length, 0);
+});
+
+test('possible-without-fall stays uncertain instead of near miss', () => {
+  const claims = claimsOf('我好像差点摔了');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'uncertain');
+  assert.equal(accepted('我好像差点摔了').length, 0);
+});
+
+test('possible negation stays uncertain instead of occurred or negated', () => {
+  const claims = claimsOf('我好像没睡好');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'uncertain', '用户显式不确定时不得被记成 occurred/poorSleep');
+  assert.equal(accepted('我好像没睡好').length, 0);
+});
+
+test('maybe no chest pain stays uncertain instead of negated', () => {
+  const claims = claimsOf('我好像没胸痛');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'uncertain');
+  assert.equal(accepted('我好像没胸痛').length, 0);
+});
+
+test('not sure beats explicit occurrence in medication', () => {
+  const claims = claimsOf('我好像忘了吃药');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'uncertain', '"好像忘了吃药" 是 uncertain，不能记成 medicationMissed+occurred');
+  assert.equal(accepted('我好像忘了吃药').length, 0);
+});
+
 test('real occurrence remains occurred', () => {
   const claims = claimsOf('我今天真的摔倒了');
   assert.equal(claims.length, 1);

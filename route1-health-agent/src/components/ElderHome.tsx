@@ -192,8 +192,12 @@ export default function ElderHome({
             <div>
               <h3>📷 我看到了这些，对吗？</h3>
               <span className="muted">
-                {pendingPhotoKind === 'bloodPressure' ? '血压计照片' : pendingPhotoKind === 'weight' ? '体重秤照片' : '体检报告照片'}
-                { }— 确认后会写入健康记录。
+                {pendingPhotoKind === 'bloodPressure'
+                  ? '血压计照片'
+                  : pendingPhotoKind === 'weight'
+                    ? '体重秤照片'
+                    : '体检报告照片'}
+                {}— 确认后会写入健康记录。
               </span>
             </div>
           </div>
@@ -204,7 +208,10 @@ export default function ElderHome({
               return (
                 <li key={m.id}>
                   <b>{meta?.label ?? m.metric}</b>
-                  <span>: {m.value.toFixed(meta?.decimals ?? 1)} {meta?.unit ?? m.unit}{conf}</span>
+                  <span>
+                    : {m.value.toFixed(meta?.decimals ?? 1)} {meta?.unit ?? m.unit}
+                    {conf}
+                  </span>
                 </li>
               );
             })}
@@ -215,7 +222,10 @@ export default function ElderHome({
               return (
                 <li key={lab.id}>
                   <b>{lab.name}</b>
-                  <span>: {lab.value} {lab.unit}{range}</span>
+                  <span>
+                    : {lab.value} {lab.unit}
+                    {range}
+                  </span>
                 </li>
               );
             })}
