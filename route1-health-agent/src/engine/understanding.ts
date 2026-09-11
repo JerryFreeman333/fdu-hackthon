@@ -457,9 +457,7 @@ export function understandElderInput(
       .reverse()
       .find(
         (claim) =>
-          claim.subject === 'self' &&
-          claim.status === 'occurred' &&
-          (claim.tags.length > 0 || claim.hasHealthValue),
+          claim.subject === 'self' && claim.status === 'occurred' && (claim.tags.length > 0 || claim.hasHealthValue),
       );
     if (previous) previous.status = 'negated';
   }
