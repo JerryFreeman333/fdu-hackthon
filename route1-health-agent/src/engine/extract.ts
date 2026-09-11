@@ -128,12 +128,8 @@ function buildBloodPressure(systolicRaw: string, diastolicRaw: string, sourceTex
 }
 
 function extractBloodPressure(text: string): ExtractedValue[] {
-  const systolicDiastolicLabels = text.match(
-    new RegExp(String.raw`收缩压\s*(${NUMBER}).{0,4}?舒张压\s*(${NUMBER})`),
-  );
-  const diastolicSystolicLabels = text.match(
-    new RegExp(String.raw`舒张压\s*(${NUMBER}).{0,4}?收缩压\s*(${NUMBER})`),
-  );
+  const systolicDiastolicLabels = text.match(new RegExp(String.raw`收缩压\s*(${NUMBER}).{0,4}?舒张压\s*(${NUMBER})`));
+  const diastolicSystolicLabels = text.match(new RegExp(String.raw`舒张压\s*(${NUMBER}).{0,4}?收缩压\s*(${NUMBER})`));
   const highLow = text.match(new RegExp(String.raw`高压\s*(${NUMBER}).{0,4}?低压\s*(${NUMBER})`));
   const lowHigh = text.match(new RegExp(String.raw`低压\s*(${NUMBER}).{0,4}?高压\s*(${NUMBER})`));
   const pair = text.match(new RegExp(String.raw`(?:血压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`));

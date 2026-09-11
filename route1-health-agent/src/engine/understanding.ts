@@ -96,7 +96,14 @@ function subjectCandidates(
 ): ElderSubject[] {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
-  if (lastSubject && lastSubject !== 'self' && lastSubject !== 'unknown' && family.length === 0 && !self && !THIRD_PERSON.test(text)) {
+  if (
+    lastSubject &&
+    lastSubject !== 'self' &&
+    lastSubject !== 'unknown' &&
+    family.length === 0 &&
+    !self &&
+    !THIRD_PERSON.test(text)
+  ) {
     return [lastSubject];
   }
   if (family.length > 0 && self && COORDINATION.test(text)) return ['self', ...family];
