@@ -37,13 +37,9 @@ function subtractDays(today: string, days: number): string {
 
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
-  const protectedNumericComma = text.replace(
-    /([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g,
-    '$1§',
-  );
-  return protectedNumericComma
+  return text
     .split(/[。！？!?；;，,\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
-    .map((clause) => clause.replace(/§/g, ',').trim())
+    .map((clause) => clause.trim())
     .filter(Boolean);
 }
 
