@@ -72,3 +72,35 @@ jobs:
 
       - name: Verify generated bundle exists
         run: test -f dist/index.html
+
+  browser-blackbox:
+    needs: build-route2
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout revision under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route2-home-3d/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: route2-home-3d/web
+        run: npm ci
+
+      - name: Install isolated black-box harness
+        working-directory: route2-home-3d/p0-blackbox
+        run: npm install --no-package-lock
+
+      - name: Show system Chrome
+        run: google-chrome --version
+
+      - name: Run Route 2 browser black-box
+        working-directory: route2-home-3d/p0-blackbox
+        run: npm run blackbox
