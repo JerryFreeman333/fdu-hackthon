@@ -1,8 +1,37 @@
-import type { HomeObject, HomeRoute, HomeTwinSnapshot } from './model';
+import type { HomeObject, HomeRoute, HomeRoom, HomeTwinSnapshot, RouteStatus } from './model';
+
+/** 路线不可用时的降级信息：让老人仍然能得到"上次已知在哪里"的帮助 */
+export interface RouteFallback {
+  /** 目标对象的文字位置（如"卫生间入口旁"），可能来自上次确认 */
+  locationText?: string;
+  roomLabel?: string;
+  lastConfirmedAt?: string;
+  evidenceImageIds?: string[];
+  /** 给老人看的注意事项，例如夜间的风险提醒 */
+  notes: string[];
+}
 
 export interface RoutePlanResult {
+  status: RouteStatus;
   route: HomeRoute | null;
   reason?: string;
+  fallback?: RouteFallback;
+}
+
+function buildFallback(
+  target: HomeObject | undefined,
+  rooms: HomeRoom[],
+  notes: string[]
+): RouteFallback | undefined {
+  if (!target) return notes.length ? { notes } : undefined;
+  const room = rooms.find(r => r.id === target.roomId);
+  return {
+    locationText: target.locationText ?? (room ? `在${room.label}内` : undefined),
+    roomLabel: room?.label,
+    lastConfirmedAt: target.lastConfirmedAt ?? target.observedAt,
+    evidenceImageIds: target.evidence?.imageIds,
+    notes
+  };
 }
 
 function distance(a: HomeObject, b: HomeObject): number {
@@ -18,7 +47,17 @@ function distance(a: HomeObject, b: HomeObject): number {
 export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
   const bed = snapshot.objects.find(o => o.category === 'bed');
   const toilet = snapshot.objects.find(o => o.category === 'toilet');
-  if (!bed || !toilet) return { route: null, reason: '需要同时识别床和卫生间目标。' };
+  if (!bed || !toilet) {
+    return {
+      status: 'unavailable',
+      route: null,
+      reason: '需要同时识别床和卫生间目标。',
+      fallback: buildFallback(toilet ?? bed, snapshot.rooms, [
+        '目前无法生成 3D 路线，先参考上次已知位置。',
+        '如需帮助，可以让系统请家人确认。'
+      ])
+    };
+  }
 
   const objectById = new Map(snapshot.objects.map(o => [o.id, o]));
   const blocked = new Set(
@@ -40,7 +79,14 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
   }
 
   // The endpoints are valid nodes even if they have no explicit edge yet.
-  if (!graph.has(bed.id) || !graph.has(toilet.id)) return { route: null, reason: 'Home Twin 图结构不完整。' };
+  if (!graph.has(bed.id) || !graph.has(toilet.id)) {
+    return {
+      status: 'needs_confirmation',
+      route: null,
+      reason: 'Home Twin 图结构不完整。',
+      fallback: buildFallback(toilet, snapshot.rooms, ['请让家人补充空间信息后再使用路线。'])
+    };
+  }
 
   const dist = new Map<string, number>(snapshot.objects.map(o => [o.id, Infinity]));
   const prev = new Map<string, string>();
@@ -71,7 +117,18 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
     }
   }
 
-  if (!Number.isFinite(dist.get(toilet.id)!)) return { route: null, reason: '没有足够空间关系可形成床到卫生间的可解释路线。' };
+  if (!Number.isFinite(dist.get(toilet.id)!)) {
+    return {
+      status: 'needs_confirmation',
+      route: null,
+      reason: '没有足够空间关系可形成床到卫生间的可解释路线。',
+      fallback: buildFallback(toilet, snapshot.rooms, [
+        '床到卫生间之间的门/连接关系还不完整，暂不能给出可靠路线。',
+        '可以先按上次已知位置前往，注意走廊光线和脚下障碍。',
+        '需要时可以让系统请家人确认这条路线。'
+      ])
+    };
+  }
 
   const objectIds: string[] = [];
   let cursor = toilet.id;
@@ -79,7 +136,14 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
     objectIds.push(cursor);
     if (cursor === bed.id) break;
     const parent = prev.get(cursor);
-    if (!parent) return { route: null, reason: '路线回溯失败。' };
+    if (!parent) {
+      return {
+        status: 'unavailable',
+        route: null,
+        reason: '路线回溯失败。',
+        fallback: buildFallback(toilet, snapshot.rooms, ['请参考上次已知位置，或让家人确认。'])
+      };
+    }
     cursor = parent;
   }
   objectIds.reverse();
@@ -106,5 +170,41 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
     source: 'inferred'
   };
 
-  return { route };
+  // 只有已有人工确认记录的预置路线才算 verified；图推导出来的始终是 candidate。
+  // Demo 数据不能把路线升级成 verified；只有真实来源且明确标记为 verified 才能算已确认。
+  const preConfirmed = snapshot.routes.find(r =>
+    r.startObjectId === bed.id &&
+    r.endObjectId === toilet.id &&
+    r.status === 'verified' &&
+    r.source !== 'demo'
+  );
+  const hasDoorOnPath = objectIds.some(id => objectById.get(id)?.category === 'door');
+
+  if (!hasDoorOnPath) {
+    return {
+      status: 'needs_confirmation',
+      route,
+      reason: '路线上缺少已识别的门，无法确认房间之间的通行关系。',
+      fallback: buildFallback(toilet, snapshot.rooms, [
+        '这条候选路线没有经过已确认的门，请先参考上次已知位置。',
+        '建议让家人确认门的位置后再使用路线。'
+      ])
+    };
+  }
+
+  if (preConfirmed) {
+    route.status = 'verified';
+    route.lastConfirmedAt = preConfirmed.lastConfirmedAt;
+    return { status: 'verified', route };
+  }
+
+  route.status = 'candidate';
+  return {
+    status: 'candidate',
+    route,
+    fallback: buildFallback(toilet, snapshot.rooms, [
+      '这是根据现有空间关系推导的候选路线，不是安全保证。',
+      '夜间前往时请注意走廊光线和脚下障碍。'
+    ])
+  };
 }

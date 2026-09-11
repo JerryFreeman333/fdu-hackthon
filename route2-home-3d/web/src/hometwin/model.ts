@@ -1,4 +1,12 @@
 export type ObjectSource = 'vision' | 'manual' | 'inferred' | 'demo';
+/**
+ * 路线状态:
+ * - verified     已有人工确认过的路线（来自 snapshot.routes）
+ * - candidate    由 connects 关系推导出的候选路线，仅供参考，不代表安全保证
+ * - needs_confirmation 关键门/连接关系缺失，无法可靠推导，需要家人确认
+ * - unavailable  缺少端点对象或空间证据，无法给出路线，但仍应提供降级信息
+ */
+export type RouteStatus = 'verified' | 'candidate' | 'needs_confirmation' | 'unavailable';
 export type RelationType =
   | 'inside'
   | 'adjacent'
@@ -37,6 +45,10 @@ export interface HomeObject {
   confidence: number;
   source: ObjectSource;
   observedAt: string;
+  /** 面向老人的纯文字位置描述（如"卧室床头柜上"），不依赖 3D 坐标 */
+  locationText?: string;
+  /** 最近一次家人/照护者确认该位置的时间 */
+  lastConfirmedAt?: string;
   evidence?: {
     imageIds?: string[];
     annotationId?: string;
@@ -66,6 +78,8 @@ export interface HomeRoute {
   hazardIds: string[];
   confidence: number;
   source: ObjectSource;
+  status?: RouteStatus;
+  lastConfirmedAt?: string;
 }
 
 export interface HomeTwinSnapshot {
@@ -117,6 +131,9 @@ export function validateHomeTwin(snapshot: HomeTwinSnapshot): string[] {
       if (!objectIds.has(objectId)) errors.push(`route ${route.id} references missing object ${objectId}`);
     }
     if (!isConfidence(route.confidence)) errors.push(`route ${route.id} has invalid confidence`);
+    if (route.status !== undefined && !['verified', 'candidate', 'needs_confirmation', 'unavailable'].includes(route.status)) {
+      errors.push(`route ${route.id} has invalid status`);
+    }
   }
 
   return errors;

@@ -19,9 +19,9 @@ export function buildDemoHomeTwin(data: HazardData): HomeTwinSnapshot {
     { id: 'step-no-rail', category: 'threshold' as const, label: '高差台阶', roomId: 'corridor', position: [0.9, 0.3, -1.9] as [number, number, number] },
     { id: 'bathroom-door', category: 'door' as const, label: '卫生间入口', roomId: 'bathroom', position: [2.1, 0.04, -2.6] as [number, number, number] },
     { id: 'toilet', category: 'toilet' as const, label: '卫生间', roomId: 'bathroom', position: [2.6, 0, -3.0] as [number, number, number] },
-    { id: 'bedside-glasses', category: 'glasses' as const, label: '老花镜', roomId: 'bedroom', position: [-4.0, 0.55, -1.3] as [number, number, number] },
-    { id: 'bedside-medicine', category: 'medicine' as const, label: '降压药', roomId: 'bedroom', position: [-3.9, 0.55, -0.9] as [number, number, number] },
-    { id: 'keys', category: 'keys' as const, label: '钥匙', roomId: 'livingroom', position: [2.6, 0.45, 0.55] as [number, number, number] }
+    { id: 'bedside-glasses', category: 'glasses' as const, label: '老花镜', roomId: 'bedroom', position: [-4.0, 0.55, -1.3] as [number, number, number], locationText: '卧室床头柜上', lastConfirmedAt: now },
+    { id: 'bedside-medicine', category: 'medicine' as const, label: '降压药', roomId: 'bedroom', position: [-3.9, 0.55, -0.9] as [number, number, number], locationText: '卧室床头柜上的药盒内', lastConfirmedAt: now },
+    { id: 'keys', category: 'keys' as const, label: '钥匙', roomId: 'livingroom', position: [2.6, 0.45, 0.55] as [number, number, number], locationText: '客厅茶几上', lastConfirmedAt: now }
   ].map(obj => ({
     ...obj,
     position: { x: obj.position[0], y: obj.position[1], z: obj.position[2] },
@@ -52,7 +52,8 @@ export function buildDemoHomeTwin(data: HazardData): HomeTwinSnapshot {
       objectIds: ['bed', 'bedroom-door', 'rug-curl', 'step-no-rail', 'bathroom-door', 'toilet'],
       hazardIds: demoNight.hazardIds,
       confidence: 0.95,
-      source: 'demo' as const
+      source: 'demo' as const,
+      lastConfirmedAt: now
     }
   ] : [];
 
