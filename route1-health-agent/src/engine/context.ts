@@ -2,7 +2,7 @@
 import type { ElderProfile, Finding, MetricKey, SymptomTag, PrivacyScope } from '../types';
 import { METRICS } from '../types';
 import { diffDays, computeBaseline, recentMean } from './baseline';
-import { materializeHealthData, type HealthEvent } from '../pipeline/events';
+import { isPublicHealthEvent, materializeHealthData, type HealthEvent } from '../pipeline/events';
 import { buildPersonTwin, type PersonTwin } from './personTwin';
 
 export interface AgentMetricContext {
@@ -44,6 +44,8 @@ export interface AgentContext {
   windowDays: number;
   safetyLevel: Finding['severity'];
   personTwin: PersonTwin;
+  /** 仅用公开数据（非 private、familyEligible）重算的 Person Twin：供外部 LLM 上下文使用。 */
+  personTwinPublic: PersonTwin;
   metrics: AgentMetricContext[];
   observations: AgentObservationContext[];
   labs: AgentLabContext[];
@@ -162,6 +164,12 @@ export function buildAgentContext(
     windowDays,
     safetyLevel,
     personTwin: buildPersonTwin(profile, events, findings, today),
+    personTwinPublic: buildPersonTwin(
+      profile,
+      events.filter(isPublicHealthEvent),
+      findings.filter((finding) => finding.familyEligible !== false),
+      today,
+    ),
     metrics: buildMetricContexts(materialized.records, materialized.measurements, today, windowDays),
     observations,
     labs,
