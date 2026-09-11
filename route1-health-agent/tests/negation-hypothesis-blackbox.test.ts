@@ -4,7 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
-// Final CI verification marker: restored complete semantic/BP test set.
+// Final CI verification marker: clean branch user push gate.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
