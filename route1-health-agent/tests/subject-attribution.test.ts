@@ -16,9 +16,7 @@ test('unresolved pronoun never defaults to self', () => {
 });
 
 test('one clear family antecedent resolves a later pronoun', () => {
-  const claims = claimsOf('他也喘了', [
-    { id: '1', role: 'elder', text: '我爸今天喘', time: '09-10 10:00' },
-  ]);
+  const claims = claimsOf('他也喘了', [{ id: '1', role: 'elder', text: '我爸今天喘', time: '09-10 10:00' }]);
   assert.equal(claims.length, 1);
   assert.equal(claims[0]?.subject, 'father');
 });

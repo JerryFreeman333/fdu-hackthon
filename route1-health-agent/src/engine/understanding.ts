@@ -107,27 +107,39 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (hasHealthClaim && /(?:差点|差一点|险些|险些就|几乎要|差点就)/.test(clause)) return 'near_miss';
 
   // 反事实/条件/假设性表述，不描述已经发生的健康事件。
-  if (hasHealthClaim && /(?:如果|假如|假设|万一|要是|倘若|会不会|是不是因为|有没有可能|万一以后|怎么预防|怎么办才不会)/.test(clause)) {
+  if (
+    hasHealthClaim &&
+    /(?:如果|假如|假设|万一|要是|倘若|会不会|是不是因为|有没有可能|万一以后|怎么预防|怎么办才不会)/.test(clause)
+  ) {
     return 'hypothetical';
   }
 
   // 否定表达的词可以出现在症状前后，避免只依赖固定的“没+症状”短距离模式。
-  const negation = /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|不再|不怎么|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到|否认)/.test(clause);
+  const negation =
+    /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|不再|不怎么|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到|否认)/.test(
+      clause,
+    );
   if (hasHealthClaim && negation) {
     // “不再喘”“今天没那么喘”是对当前状态的实际描述，不能误判成否定事实。
-    const improvement = /(?:不再|不怎么|没那么|没有那么|没有以前那么|比之前)/.test(clause) && /(?:喘|胸闷|疼|痛|头晕|肿|失眠|起夜|心慌|漏服|血压|心率|体重|睡)/.test(clause);
+    const improvement =
+      /(?:不再|不怎么|没那么|没有那么|没有以前那么|比之前)/.test(clause) &&
+      /(?:喘|胸闷|疼|痛|头晕|肿|失眠|起夜|心慌|漏服|血压|心率|体重|睡)/.test(clause);
     if (!improvement) return 'negated';
   }
 
   // 不确定的自我感受/听说/猜测不应变成确定的 occurred。
-  if (hasHealthClaim && /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/.test(clause)) return 'uncertain';
+  if (hasHealthClaim && /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/.test(clause))
+    return 'uncertain';
 
   return 'occurred';
 }
 
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
   const subjects: ElderSubject[] = [];
-  for (const message of [...messages].reverse().filter((item) => item.role === 'elder').slice(0, 4)) {
+  for (const message of [...messages]
+    .reverse()
+    .filter((item) => item.role === 'elder')
+    .slice(0, 4)) {
     for (const clause of splitNaturalLanguageTexts(message.text)) {
       const explicit = explicitSubject(clause);
       if (explicit && explicit !== 'unknown' && explicit !== 'self') subjects.push(explicit);
@@ -148,7 +160,8 @@ export function understandElderInput(
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
-  if (recallRequested || clarificationQuestion) return { claims: [], recallRequested, clarificationQuestion, correction };
+  if (recallRequested || clarificationQuestion)
+    return { claims: [], recallRequested, clarificationQuestion, correction };
 
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
@@ -172,7 +185,8 @@ export function understandElderInput(
       explicitTags.length === 0 &&
       /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
-    const tags = explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : [];
+    const tags =
+      explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : [];
     const hasHealthValue =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
@@ -199,7 +213,15 @@ export function understandElderInput(
 
     if (subjects.length > 1 && subjects.every((subject) => subject !== 'unknown')) {
       for (const subject of subjects) {
-        claims.push({ text: clause, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+        claims.push({
+          text: clause,
+          subject,
+          status,
+          timeScope: time.scope,
+          eventDate: time.eventDate,
+          tags,
+          hasHealthValue,
+        });
       }
       subjectsSeen.push(...subjects.filter((subject) => subject !== 'self'));
       lastTags = tags;
@@ -208,7 +230,15 @@ export function understandElderInput(
     }
 
     if (tags.length === 0 && !hasHealthValue && primarySubject !== 'self' && primarySubject !== 'unknown') {
-      claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+      claims.push({
+        text: clause,
+        subject: primarySubject,
+        status,
+        timeScope: time.scope,
+        eventDate: time.eventDate,
+        tags,
+        hasHealthValue,
+      });
       subjectsSeen.push(primarySubject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -222,7 +252,15 @@ export function understandElderInput(
       continue;
     }
 
-    claims.push({ text: clause, subject: primarySubject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
+    claims.push({
+      text: clause,
+      subject: primarySubject,
+      status,
+      timeScope: time.scope,
+      eventDate: time.eventDate,
+      tags,
+      hasHealthValue,
+    });
     subjectsSeen.push(...subjects.filter((subject) => subject !== 'unknown' && subject !== 'self'));
     lastTags = tags;
     lastHealthValue = hasHealthValue;
