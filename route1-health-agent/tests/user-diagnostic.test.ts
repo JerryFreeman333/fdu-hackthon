@@ -184,6 +184,25 @@ async function main() {
     assert(extractHealthValues('我的血压 150/95').length === 2, 'blood pressure should still extract');
   });
 
+  await runCase('comma-separated blood pressure survives clause splitting', () => {
+    const phrases = ['血压，170,95', '血压，170，95', '血压 170,95', '血压 170，95'];
+    for (const phrase of phrases) {
+      const values = extractHealthValues(phrase);
+      assert(
+        values.some((value) => value.metric === 'systolic' && value.value === 170),
+        `${phrase}: systolic 170 should be extracted`,
+      );
+      assert(
+        values.some((value) => value.metric === 'diastolic' && value.value === 95),
+        `${phrase}: diastolic 95 should be extracted`,
+      );
+
+      const input = understandElderInput(phrase, TODAY);
+      const accepted = acceptedSelfClaims(input).filter((claim) => claim.hasHealthValue);
+      assert(accepted.length === 1, `${phrase}: BP reading should enter the self health stream exactly once`);
+    }
+  });
+
   await runCase('circle count is not converted to steps', () => {
     assert(extractHealthValues('今天走了三圈').length === 0, 'unknown circle-to-step conversion must not be invented');
   });
