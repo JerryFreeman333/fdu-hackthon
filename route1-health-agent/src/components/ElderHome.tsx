@@ -163,6 +163,28 @@ export default function ElderHome({
         </div>
       </section>
 
+      <section className="card data-source-card">
+        <div className="section-head">
+          <div>
+            <h3>数据从哪儿来</h3>
+            <span className="muted">这两条路都进入同一个个人基线和变化检测。</span>
+          </div>
+        </div>
+        <ul className="data-source-list">
+          <li>
+            <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
+            <span className="muted">— 来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）</span>
+          </li>
+          <li>
+            <b>📷 血压 / 体重 / 血糖 / 体检报告</b>
+            <span className="muted">— 来自拍照识别或手动录入</span>
+          </li>
+          <li>
+            <b>💬 主诉（"累了"、"喘"、"睡不好"）</b>
+            <span className="muted">— 来自聊天</span>
+          </li>
+        </ul>
+      </section>
       <section className="card privacy-card">
         <div className="section-head">
           <div>
