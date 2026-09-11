@@ -38,8 +38,10 @@ export function resolveTime(clause: string, today: string): ResolvedTime {
   }
   if (/(昨天|昨日)/.test(clause)) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
   if (/(几天前|前几天|这几天以前)/.test(clause)) return { scope: 'daysAgo', eventDate: null };
-  if (/(今天|刚才|刚刚|现在|目前|此刻)/.test(clause)) return { scope: 'today', eventDate: today };
+  if (/(今天|刚才|刚刚|现在|目前|此刻|今天早上|今天上午|今天下午|今天晚上)/.test(clause)) {
+    return { scope: 'today', eventDate: today };
+  }
+  if (/(早上|上午|下午|傍晚|晚上|中午)/.test(clause)) return { scope: 'today', eventDate: today };
 
-  // 无时间表达：这是“当前对话中的未标注事件”，而不是强行把它解释成今天。
   return { scope: 'unknown', eventDate: null };
 }
