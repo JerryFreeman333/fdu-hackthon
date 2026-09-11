@@ -53,7 +53,7 @@ function splitClauses(text: string): string[] {
   const protectedNumericComma = text
     .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二三四五六七八九十百]+)/g, '$1§NUM§')
     .replace(
-      /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
+      /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
       '$1§NUM§',
     )
     .replace(
@@ -155,7 +155,33 @@ function hasAmbiguousCoordinatedMeasurement(clause: string, coordinatedSubjects:
   return hasMultipleReadingMarkers && values.length > 0;
 }
 
+function parseChineseDayCount(value: string): number | null {
+  const normalized = value.trim();
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  const map: Record<string, number> = {
+    一: 1,
+    两: 2,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+  };
+  return map[normalized] ?? null;
+}
+
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
+  const daysAgo = clause.match(/(?:前|过去)(\d+|一|两|二|三|四|五|六|七|八|九|十)天(?:前)?/);
+  if (daysAgo?.[1]) {
+    const days = parseChineseDayCount(daysAgo[1]);
+    if (days !== null && days > 0) return { scope: 'historical', eventDate: subtractDays(today, days) };
+  }
+  if (/大前天/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
+  if (/前天/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 2) };
   if (/(去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/.test(clause))
     return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
