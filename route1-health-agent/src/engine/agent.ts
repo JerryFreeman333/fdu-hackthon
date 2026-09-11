@@ -113,8 +113,7 @@ function buildRuleBasedReply(
   context?: AgentContext,
 ): string {
   const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
-    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
 
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
@@ -162,7 +161,7 @@ interface ExternalAgentContext {
   metrics: AgentContext['metrics'];
   observations: AgentContext['observations'];
   labs: AgentContext['labs'];
-  priorityFindings: Finding[];
+  priorityFindings: AgentContext['priorityFindings'];
   suggestedAction?: string;
 }
 
@@ -227,10 +226,11 @@ export async function generateAgentReply(
   );
   const systemPrompt = `${SYSTEM_PROMPT}\n当前最高风险等级：${publicFinding?.severity ?? 'info'}；已识别标签：${newTags.join(', ') || '无'}。`;
   try {
+    const safeContext = context ? sanitizeExternalContext(context) : undefined;
     const completion = await adapter.complete(
       systemPrompt,
       elderText.trim().slice(0, MAX_AGENT_INPUT_LENGTH),
-      context ? (sanitizeExternalContext(context) as AgentContext) : context,
+      safeContext as AgentContext | undefined,
     );
     return isSafeAgentReply(completion.text)
       ? completion.text.trim()
@@ -245,7 +245,8 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
   return {
     async complete(systemPrompt, userText, context) {
-      if (parsePrivacyIntent(userText) === 'private' || parsePrivacyIntent(userText) === 'no_record')
+      const privacyIntent = parsePrivacyIntent(userText);
+      if (privacyIntent === 'private' || privacyIntent === 'no_record')
         throw new Error('Private and no-record inputs must stay on the local safety adapter.');
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -263,14 +264,7 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   };
 }
 
-export const QUICK_INPUTS = [
-  '最近腿有点没劲',
-  '最近走路有点喘',
-  '这两天睡不好',
-  '我有点头晕',
-  '药忘记吃了',
-  '刚才摔了一跤',
-];
+export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
