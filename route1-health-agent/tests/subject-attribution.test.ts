@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { understandElderInput } from '../src/engine/understanding';
+import type { ChatMessage } from '../src/types';
 
 const TODAY = '2026-09-10';
 
-function claimsOf(text: string, recentMessages = []) {
+function claimsOf(text: string, recentMessages: ChatMessage[] = []) {
   return understandElderInput(text, TODAY, recentMessages).claims;
 }
 
@@ -16,9 +17,7 @@ test('unresolved pronoun never defaults to self', () => {
 });
 
 test('one clear family antecedent resolves a later pronoun', () => {
-  const claims = claimsOf('他也喘了', [
-    { id: '1', role: 'elder', text: '我爸今天喘', time: '09-10 10:00' },
-  ]);
+  const claims = claimsOf('他也喘了', [{ id: '1', role: 'elder', text: '我爸今天喘', time: '09-10 10:00' }]);
   assert.equal(claims.length, 1);
   assert.equal(claims[0]?.subject, 'father');
 });

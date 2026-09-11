@@ -11,13 +11,19 @@ function claimsOf(text: string) {
 
 test('core keeps multiple natural-language facts as separate units', () => {
   const units = splitNaturalLanguageUnits('我爸今天喘，后来我也喘了');
-  assert.deepEqual(units.map((unit) => unit.text), ['我爸今天喘', '后来我也喘了']);
+  assert.deepEqual(
+    units.map((unit) => unit.text),
+    ['我爸今天喘', '后来我也喘了'],
+  );
   assert.equal(units[1]?.connector, 'later');
 });
 
 test('core splits a discourse shift even when the elder omits punctuation', () => {
   const units = splitNaturalLanguageUnits('我爸今天喘后来我也喘了');
-  assert.deepEqual(units.map((unit) => unit.text), ['我爸今天喘', '后来我也喘了']);
+  assert.deepEqual(
+    units.map((unit) => unit.text),
+    ['我爸今天喘', '后来我也喘了'],
+  );
   assert.equal(units[1]?.connector, 'later');
 });
 
@@ -57,7 +63,10 @@ test('core keeps parallel family measurements bound to their local clauses', () 
 
 test('core preserves correction wording as separate units', () => {
   const units = splitNaturalLanguageUnits('刚才说错了，不是我，是我爸');
-  assert.deepEqual(units.map((unit) => unit.text), ['刚才说错了', '不是我', '是我爸']);
+  assert.deepEqual(
+    units.map((unit) => unit.text),
+    ['刚才说错了', '不是我', '是我爸'],
+  );
 });
 
 test('core recognizes discourse connectors without deleting them', () => {
