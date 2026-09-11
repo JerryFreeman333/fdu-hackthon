@@ -80,7 +80,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|过了|了)/, /摔倒/],
+    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|摔过|过了|了)/, /摔倒/],
     replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
   },
 ];
@@ -217,11 +217,6 @@ export async function generateAgentReply(
   context?: AgentContext,
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
-  const privacyIntent = parsePrivacyIntent(elderText);
-  if (privacyIntent === 'private') return '好的，这部分我只在本次对话里帮助您处理，不自动告诉家属。';
-  if (privacyIntent === 'no_record') return '好的，这件事我不写进长期健康记录。';
-  if (privacyIntent === 'share_family') return '好的，我会按您刚才的授权范围处理。';
-
   const publicFinding = context?.priorityFindings.find(
     (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
   );
