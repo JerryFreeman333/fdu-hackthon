@@ -4,6 +4,7 @@ import type { AgentContext } from './context';
 import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
 import { parsePrivacyIntent } from './privacy';
+import { extractHealthValues } from './extract';
 
 interface IntentRule {
   tag: SymptomTag;
@@ -44,7 +45,15 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'bpHigh',
-    patterns: [/血压(有)?(高|偏高)/, /高压\d{3}/],
+    patterns: [
+      /血压(有)?(高|偏高)/,
+      /血压\s*(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)(?:\s*[/／,，比\-至~]\s*(?:\d{2,3}|[零〇一二两三四五六七八九十百]+))?/,
+      /高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
+      /低压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
+      /高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*低压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
+      /收缩压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*舒张压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
+      /舒张压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*收缩压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
+    ],
     replies: ['先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。'],
   },
   {
@@ -101,7 +110,21 @@ export function parseElderInput(text: string): ParsedInput {
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
 }
 
+function buildBloodPressureReply(text: string): string | undefined {
+  const values = extractHealthValues(text).filter((value) => value.unit === 'mmHg');
+  const systolic = values.find((value) => value.metric === 'systolic')?.value;
+  const diastolic = values.find((value) => value.metric === 'diastolic')?.value;
+  if (systolic !== undefined && diastolic !== undefined) {
+    return `您刚才说的血压是 ${systolic}/${diastolic} mmHg。先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。`;
+  }
+  if (systolic !== undefined) {
+    return `您刚才说的高压是 ${systolic} mmHg。先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。`;
+  }
+  return undefined;
+}
+
 function buildRuleBasedReply(
+  elderText: string,
   newTags: SymptomTag[],
   findings: Finding[],
   isNewFall: boolean,
@@ -120,6 +143,11 @@ function buildRuleBasedReply(
     const reply = INTENT_RULES.find((rule) => rule.tag === 'fall')?.replies[0];
     if (reply) return reply;
   }
+  if (newTags.includes('bpHigh')) {
+    const bloodPressureReply = buildBloodPressureReply(elderText);
+    if (bloodPressureReply) return bloodPressureReply;
+  }
+
   if (newTags.length === 0) {
     const unresolved = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
     return unresolved
@@ -151,7 +179,10 @@ export interface LlmAdapter {
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
-    return { text: buildRuleBasedReply(parsed.tags, [], parsed.tags.includes('fall'), context), tags: parsed.tags };
+    return {
+      text: buildRuleBasedReply(userText, parsed.tags, [], parsed.tags.includes('fall'), context),
+      tags: parsed.tags,
+    };
   },
 };
 
@@ -266,9 +297,9 @@ export async function generateAgentReply(
   try {
     const completion = await adapter.complete(systemPrompt, elderText, context);
     if (isSafeAgentReply(completion.text)) return completion.text.trim();
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    return buildRuleBasedReply(elderText, newTags, findings, isNewFall, context);
   } catch {
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    return buildRuleBasedReply(elderText, newTags, findings, isNewFall, context);
   }
 }
 export const QUICK_INPUTS = [

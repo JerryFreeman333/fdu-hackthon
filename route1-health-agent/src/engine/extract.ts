@@ -28,13 +28,12 @@ const DIGITS: Record<string, number> = {
 
 function parseChineseNumber(input: string): number | null {
   if (/^\d/.test(input)) return Number(input);
-  if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) {
-    return (DIGITS[input[0]] + DIGITS[input[1]]) / 2;
-  }
+  if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) return DIGITS[input[0]] * 10 + DIGITS[input[1]];
   if (input in DIGITS) return DIGITS[input];
 
   let total = 0;
   let current = 0;
+  let hasHundredOrThousand = false;
   for (const ch of input) {
     if (ch === '十') {
       total += (current || 1) * 10;
@@ -42,18 +41,22 @@ function parseChineseNumber(input: string): number | null {
     } else if (ch === '百') {
       total += (current || 1) * 100;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch === '千') {
       total += (current || 1) * 1000;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch === '万') {
       total = (total + current) * 10000;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch in DIGITS) {
       current = DIGITS[ch];
     } else {
       return null;
     }
   }
+  if (hasHundredOrThousand && current > 0 && !input.includes('十')) return total + current * 10;
   return total + current;
 }
 
@@ -108,16 +111,48 @@ const RULES: Rule[] = [
   },
 ];
 
-function extractBloodPressure(text: string): ExtractedValue[] {
-  const match = text.match(new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`));
-  if (!match) return [];
-  const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
-  const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));
-  if (systolic === null || diastolic === null) return [];
+function isPlausibleBloodPressure(systolic: number, diastolic: number): boolean {
+  return systolic >= 70 && systolic <= 260 && diastolic >= 40 && diastolic <= 160 && systolic > diastolic;
+}
+
+function buildBloodPressure(systolicRaw: string, diastolicRaw: string, sourceText: string): ExtractedValue[] {
+  const systolic = parseChineseNumber(systolicRaw.replace(/\s/g, ''));
+  const diastolic = parseChineseNumber(diastolicRaw.replace(/\s/g, ''));
+  if (systolic === null || diastolic === null || !isPlausibleBloodPressure(systolic, diastolic)) return [];
   return [
-    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: match[0] },
-    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: match[0] },
+    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText },
+    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText },
   ];
+}
+
+function buildPartialSystolic(raw: string, sourceText: string): ExtractedValue[] {
+  const systolic = parseChineseNumber(raw.replace(/\s/g, ''));
+  if (systolic === null || systolic < 70 || systolic > 260) return [];
+  return [{ metric: 'systolic', value: systolic, unit: 'mmHg', sourceText }];
+}
+
+function extractBloodPressure(text: string): ExtractedValue[] {
+  const systolicDiastolicLabels = text.match(new RegExp(String.raw`收缩压\s*(${NUMBER}).{0,4}?舒张压\s*(${NUMBER})`));
+  const diastolicSystolicLabels = text.match(new RegExp(String.raw`舒张压\s*(${NUMBER}).{0,4}?收缩压\s*(${NUMBER})`));
+  const highLow = text.match(new RegExp(String.raw`高压\s*(${NUMBER}).{0,4}?低压\s*(${NUMBER})`));
+  const lowHigh = text.match(new RegExp(String.raw`低压\s*(${NUMBER}).{0,4}?高压\s*(${NUMBER})`));
+  const pair = text.match(new RegExp(String.raw`(?:血压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`));
+  const fallbackPair = text.match(new RegExp(String.raw`(${NUMBER})\s*[/／,，、比]\s*(${NUMBER})`));
+
+  if (systolicDiastolicLabels)
+    return buildBloodPressure(systolicDiastolicLabels[1], systolicDiastolicLabels[2], systolicDiastolicLabels[0]);
+  if (diastolicSystolicLabels)
+    return buildBloodPressure(diastolicSystolicLabels[2], diastolicSystolicLabels[1], diastolicSystolicLabels[0]);
+  if (highLow) return buildBloodPressure(highLow[1], highLow[2], highLow[0]);
+  if (lowHigh) return buildBloodPressure(lowHigh[2], lowHigh[1], lowHigh[0]);
+  if (pair) return buildBloodPressure(pair[1], pair[2], pair[0]);
+  if (fallbackPair) return buildBloodPressure(fallbackPair[1], fallbackPair[2], fallbackPair[0]);
+
+  const partialSystolic = text.match(
+    new RegExp(String.raw`(?:收缩压|高压|血压)\s*(${NUMBER})(?!\s*[/／,，、比\-至~]\s*${NUMBER})`),
+  );
+  if (partialSystolic) return buildPartialSystolic(partialSystolic[1], partialSystolic[0]);
+  return [];
 }
 
 export function extractHealthValues(text: string): ExtractedValue[] {
@@ -127,11 +162,14 @@ export function extractHealthValues(text: string): ExtractedValue[] {
       const match = text.match(pattern);
       if (!match) continue;
       const value = parseValue(match[1].replace(/\s/g, ''));
-      if (Number.isFinite(value)) {
-        results.push({ metric: rule.metric, value, unit: rule.unit, sourceText: match[0] });
-      }
+      if (Number.isFinite(value)) results.push({ metric: rule.metric, value, unit: rule.unit, sourceText: match[0] });
       break;
     }
   }
   return results;
+}
+
+/** Legacy black-box API: expose only BP measurements from the unified extractor. */
+export function extractBloodPressureValues(text: string): ExtractedValue[] {
+  return extractHealthValues(text).filter((value) => value.metric === 'systolic' || value.metric === 'diastolic');
 }
