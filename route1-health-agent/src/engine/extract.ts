@@ -235,6 +235,7 @@ export function extractSymptomTags(text: string): SymptomTag[] {
     ['dizziness', /头晕|眩晕|晕乎乎/],
     ['fall', /摔倒|摔了一跤|跌倒|跌了一跤|滑倒/],
     ['edema', /水肿|浮肿|脚肿|腿肿|眼皮肿/],
+    ['nocturia', /夜尿|起夜|晚上尿多/],
     ['poorSleep', /睡不好|睡不着|失眠|睡眠差/],
     ['medicationMissed', /没吃药|漏服|忘记吃药|忘了吃药|没按时吃药/],
   ];
