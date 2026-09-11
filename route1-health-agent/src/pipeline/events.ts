@@ -153,6 +153,13 @@ export function legacySnapshotToEvents(snapshot: LegacyHealthRecordSnapshot): He
   );
 }
 
+/** 隐私边界：private 事件不进入任何对外上下文（外部 LLM、家属视图在各自出口另有更严格过滤）。 */
+export function isPublicHealthEvent(event: HealthEvent): boolean {
+  if (event.type === 'measurement') return event.measurement.visibility !== 'private';
+  if (event.type === 'observation') return event.observation.visibility !== 'private';
+  return event.labResult.visibility !== 'private';
+}
+
 export function materializeHealthData(events: HealthEvent[]): MaterializedHealthData {
   const sorted = mergeHealthEvents(events);
   const measurements = sorted.filter((e): e is MeasurementEvent => e.type === 'measurement').map((e) => e.measurement);

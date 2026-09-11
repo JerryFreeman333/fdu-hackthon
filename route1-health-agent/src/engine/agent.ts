@@ -272,32 +272,23 @@ interface ExternalAgentContext {
   suggestedAction?: string;
 }
 
-function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
+/**
+ * 对外上下文的隐私边界 = 逐条 visibility / familyEligible 标记（与 metrics/observations/labs 一致）。
+ * Person Twin 用仅公开数据重算（context.personTwinPublic），不再整体置 unknown——
+ * 否则外部 LLM 模式拿不到任何趋势信号，“有理由地追问”完全失效。
+ */
+export function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
   const publicFindings = context.priorityFindings.filter((finding) => finding.familyEligible !== false);
   const safetyRank: Record<Finding['severity'], number> = { urgent: 0, alert: 1, watch: 2, info: 3 };
   const publicSafety = publicFindings.reduce<Finding['severity']>(
     (highest, finding) => (safetyRank[finding.severity] < safetyRank[highest] ? finding.severity : highest),
     'info',
   );
-  const publicSymptoms = context.observations
-    .filter((observation) => observation.visibility !== 'private')
-    .flatMap((observation) => observation.tags)
-    .filter((tag, index, tags) => tags.indexOf(tag) === index);
   return {
     today: context.today,
     windowDays: context.windowDays,
     safetyLevel: publicSafety,
-    personTwin: {
-      asOf: context.personTwin.asOf,
-      activity: 'unknown',
-      mobility: 'unknown',
-      sleep: 'unknown',
-      nightActivity: 'unknown',
-      recentSymptoms: publicSymptoms,
-      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
-      safetyRelevantChanges: [],
-      functionalProfile: { mobility: 'unknown', usesCane: false, nightVision: 'unknown', cognition: 'unknown' },
-    },
+    personTwin: context.personTwinPublic,
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
     labs: context.labs.filter((lab) => lab.visibility !== 'private'),
@@ -306,9 +297,27 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
   };
 }
 
-/** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
-export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
-  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
+/** 同源路径或明确的 HTTPS / 本机开发地址；Agent 上下文不能被指向任意外部主机。 */
+export function isAllowedAgentEndpoint(endpoint: string): boolean {
+  if (endpoint.startsWith('/')) return true;
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol === 'https:') return true;
+    return (
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '[::1]' ||
+        url.hostname === '::1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端；慢响应超时后由规则引擎兜底。 */
+export function createHttpLlmAdapter(endpoint: string, timeoutMs = 15000): LlmAdapter {
+  if (!isAllowedAgentEndpoint(endpoint))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
   return {
     async complete(systemPrompt, userText, context) {
@@ -317,14 +326,22 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
         throw new Error('Private and no-record inputs must stay on the local safety adapter.');
       const safeContext = context ? sanitizeExternalContext(context) : undefined;
       const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
-      });
-      if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
-      const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
-      return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+      // 超时必须覆盖响应体读取，否则挂起的端点仍会让整个对话回合无限等待。
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
+        const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
+        return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }

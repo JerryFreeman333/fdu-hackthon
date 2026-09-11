@@ -5,9 +5,14 @@
  */
 import type { ChatMessage, DayRecord, ElderProfile, Observation } from '../types';
 
+/** 把墙上时间格式化为本地日期 YYYY-MM-DD；不能用 toISOString（UTC+ 时区会退回前一天）。 */
+export function formatLocalDate(date: Date): string {
+  const pad = (value: number, width = 2): string => `${value}`.padStart(width, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function localToday(): string {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+  return formatLocalDate(new Date());
 }
 
 export const TODAY = localToday();

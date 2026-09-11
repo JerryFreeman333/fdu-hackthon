@@ -2,7 +2,7 @@
 import type { ElderProfile, Finding, MetricKey, SymptomTag, PrivacyScope } from '../types';
 import { METRICS } from '../types';
 import { diffDays, computeBaseline, recentMean } from './baseline';
-import { materializeHealthData, type HealthEvent } from '../pipeline/events';
+import { isPublicHealthEvent, materializeHealthData, type HealthEvent } from '../pipeline/events';
 import { buildPersonTwin, type PersonTwin } from './personTwin';
 
 export interface AgentMetricContext {
@@ -44,6 +44,8 @@ export interface AgentContext {
   windowDays: number;
   safetyLevel: Finding['severity'];
   personTwin: PersonTwin;
+  /** 仅用公开数据（非 private、familyEligible）重算的 Person Twin：供外部 LLM 上下文使用。 */
+  personTwinPublic: PersonTwin;
   metrics: AgentMetricContext[];
   observations: AgentObservationContext[];
   labs: AgentLabContext[];
@@ -162,57 +164,16 @@ export function buildAgentContext(
     windowDays,
     safetyLevel,
     personTwin: buildPersonTwin(profile, events, findings, today),
+    personTwinPublic: buildPersonTwin(
+      profile,
+      events.filter(isPublicHealthEvent),
+      findings.filter((finding) => finding.familyEligible !== false),
+      today,
+    ),
     metrics: buildMetricContexts(materialized.records, materialized.measurements, today, windowDays),
     observations,
     labs,
     priorityFindings,
     suggestedAction: findings.find((f) => f.carePath)?.carePath,
   };
-}
-
-export function serializeAgentContext(context: AgentContext): string {
-  const metrics = context.metrics
-    .filter((m) => m.visibility !== 'private')
-    .map((m) => {
-      const change =
-        m.changeRatio === null ? '无足够基线' : `${m.changeRatio >= 0 ? '+' : ''}${Math.round(m.changeRatio * 100)}%`;
-      return `${m.label}=${m.latestValue}${m.unit}；近${context.windowDays}天均值=${m.recentMean ?? '无'}；较个人基线=${change}`;
-    })
-    .join('\n');
-  const observations = context.observations
-    .filter((o) => o.visibility !== 'private')
-    .map((o) => `${o.date}：${o.text} [${o.tags.join('、')}]`)
-    .join('\n');
-  const labs = context.labs
-    .filter((lab) => lab.visibility !== 'private')
-    .map((l) => `${l.name}=${l.value}${l.unit} (${l.timestamp.slice(0, 10)})`)
-    .join('\n');
-  const findings = context.priorityFindings
-    .filter((f) => f.familyEligible !== false)
-    .map((f) => `${f.severity}：${f.title}；证据：${f.evidence.join('；')}`)
-    .join('\n');
-  const functionProfile = [
-    `行动能力=${context.personTwin.functionalProfile.mobility}`,
-    `是否使用拐杖=${context.personTwin.functionalProfile.usesCane ? '是' : '否'}`,
-    `夜间视力=${context.personTwin.functionalProfile.nightVision}`,
-    `认知状态=${context.personTwin.functionalProfile.cognition}`,
-  ].join('；');
-  return [
-    `日期：${context.today}`,
-    `当前安全等级：${context.safetyLevel}`,
-    `Person Twin：活动=${context.personTwin.activity}；行动趋势=${context.personTwin.mobility}；睡眠=${context.personTwin.sleep}；夜间活动=${context.personTwin.nightActivity}`,
-    `功能画像：${functionProfile}`,
-    `与居家安全相关的近期变化：${context.personTwin.safetyRelevantChanges.join('、') || '暂无'}`,
-    '近期关键指标：',
-    metrics || '暂无',
-    '近期主诉：',
-    observations || '暂无',
-    '近期化验：',
-    labs || '暂无',
-    '当前重点发现：',
-    findings || '暂无',
-    context.suggestedAction ? `建议行动：${context.suggestedAction}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
 }

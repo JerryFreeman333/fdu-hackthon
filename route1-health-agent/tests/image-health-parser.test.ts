@@ -21,7 +21,7 @@ import { DemoImageHealthParser, demoImageHealthParser } from '../src/adapters/De
 import { ImageParserError } from '../src/adapters/ImageHealthParser';
 import { selectImageParser } from '../src/adapters/parserSelector';
 import { HttpVisionProvider } from '../src/adapters/HttpVisionProvider';
-import { validateVisionResult, MIN_OVERALL_CONFIDENCE } from '../src/adapters/imageNormalizer';
+import { buildParsedHealthData, validateVisionResult, MIN_OVERALL_CONFIDENCE } from '../src/adapters/imageNormalizer';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -30,11 +30,10 @@ function assert(condition: unknown, message: string): asserts condition {
 function fakeImage(kind: 'bp' | 'weight' | 'report' = 'bp'): Blob {
   // 一个最小可用的 1x1 PNG；测试并不读取像素，只用作 Blob 占位。
   const png = new Uint8Array([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-    0x42, 0x60, 0x82,
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49,
+    0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00,
+    0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
   ]);
   return new Blob([png], { type: 'image/png' });
 }
@@ -136,10 +135,7 @@ async function main(): Promise<void> {
     } catch (error) {
       caught = error as ImageParserError;
     }
-    assert(
-      caught?.code === 'invalid_blood_pressure',
-      `expected invalid_blood_pressure, got ${caught?.code}`,
-    );
+    assert(caught?.code === 'invalid_blood_pressure', `expected invalid_blood_pressure, got ${caught?.code}`);
   });
 
   await runCase('empty blob is rejected as empty_image', async () => {
@@ -161,10 +157,7 @@ async function main(): Promise<void> {
     } catch (error) {
       caught = error as ImageParserError;
     }
-    assert(
-      caught?.code === 'unsupported_format',
-      `expected unsupported_format, got ${caught?.code}`,
-    );
+    assert(caught?.code === 'unsupported_format', `expected unsupported_format, got ${caught?.code}`);
   });
 
   await runCase('Demo parser continues to work as offline fallback', async () => {
@@ -295,6 +288,35 @@ async function main(): Promise<void> {
       threw = e instanceof ImageParserError && e.code === 'low_confidence';
     }
     assert(threw, 'low confidence should be rejected');
+  });
+
+  await runCase('mg/dL glucose is converted to mmol/L before entering the pipeline', () => {
+    // P2-1 回归：Provider 按 mg/dL 返回血糖时必须换算，否则 18 倍偏差会触发高血糖假警报。
+    const mgdl = buildParsedHealthData(
+      {
+        kind: 'report',
+        measurements: [{ metric: 'bloodGlucose', value: 108, unit: 'mg/dL', confidence: 0.9 }],
+        labResults: [],
+        confidence: 0.9,
+      },
+      {},
+      'http-proxy',
+    );
+    assert(mgdl.measurements.length === 1, 'glucose measurement should survive normalization');
+    assert(mgdl.measurements[0]?.unit === 'mmol/L', 'mg/dL must be converted to mmol/L');
+    assert(Math.abs((mgdl.measurements[0]?.value ?? 0) - 6) < 0.05, '108 mg/dL ~= 6.0 mmol/L');
+
+    const passthrough = buildParsedHealthData(
+      {
+        kind: 'report',
+        measurements: [{ metric: 'bloodGlucose', value: 6.1, unit: 'mmol/L', confidence: 0.9 }],
+        labResults: [],
+        confidence: 0.9,
+      },
+      {},
+      'http-proxy',
+    );
+    assert(passthrough.measurements[0]?.value === 6.1, 'mmol/L values must pass through untouched');
   });
 }
 

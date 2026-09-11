@@ -169,6 +169,53 @@ test('glucose \u4f4e/\u9ad8 \u5747\u80fd\u89e6\u53d1\u5b89\u5168\u89c4\u5219', (
   );
 });
 
+test('同日多次血糖：正常读数不得掩盖低血糖（P0-2 回归）', () => {
+  const mixed = runDetection([measurement('bloodGlucose', 3.2), measurement('bloodGlucose', 7.0)], TODAY);
+  const f = mixed.find((x) => x.ruleId === 'safety.blood_glucose.extreme');
+  assert.ok(f, '低血糖 3.2 不得被同日正常读数 7.0 掩盖');
+  assert.equal(f.severity, 'urgent', '当日最低 3.2 < 3.5 应为 urgent');
+  assert.ok(f.evidence.join(' ').includes('3.2'), '证据应包含当日最低读数 3.2');
+});
+
+test('同日多次血糖：低高两个方向同时越阈合并为波动异常 finding', () => {
+  const mixed = runDetection([measurement('bloodGlucose', 3.7), measurement('bloodGlucose', 14.5)], TODAY);
+  const f = mixed.find((x) => x.ruleId === 'safety.blood_glucose.extreme');
+  assert.ok(f, '最低 3.7 与最高 14.5 都越 alert 阈值，应触发');
+  assert.equal(f.severity, 'alert', '两个方向都未达 urgent 阈值');
+  assert.ok(f.title.includes('波动'), '双向越阈应使用波动异常标题');
+});
+
+test('同日多次心率：正常读数不得掩盖心动过缓（P0-2 回归）', () => {
+  const mixed = runDetection([measurement('restingHr', 42), measurement('restingHr', 100)], TODAY);
+  const f = mixed.find((x) => x.ruleId === 'safety.heart_rate.extreme');
+  assert.ok(f, '心率 42 不得被同日正常读数 100 掩盖');
+  assert.equal(f.severity, 'alert', '当日最低 42 在 40-50 区间应为 alert');
+  assert.ok(f.evidence.join(' ').includes('42'), '证据应包含当日最低读数 42');
+});
+
+test('同日心率快慢双向越阈：合并为快慢波动 finding', () => {
+  const mixed = runDetection([measurement('restingHr', 45), measurement('restingHr', 125)], TODAY);
+  const f = mixed.find((x) => x.ruleId === 'safety.heart_rate.extreme');
+  assert.ok(f, '最低 45 与最高 125 都越 alert 阈值，应触发');
+  assert.equal(f.severity, 'alert', '两个方向都未达 extreme 阈值');
+  assert.ok(f.title.includes('波动'), '双向越阈应使用快慢波动标题');
+});
+
+test('同日多次安全区间读数不应触发', () => {
+  const glucose = runDetection([measurement('bloodGlucose', 7.0), measurement('bloodGlucose', 6.8)], TODAY);
+  assert.equal(
+    glucose.find((f) => f.ruleId === 'safety.blood_glucose.extreme'),
+    undefined,
+    '安全区间内的多次血糖不应触发',
+  );
+  const hr = runDetection([measurement('restingHr', 72), measurement('restingHr', 88)], TODAY);
+  assert.equal(
+    hr.find((f) => f.ruleId === 'safety.heart_rate.extreme'),
+    undefined,
+    '安全区间内的多次心率不应触发',
+  );
+});
+
 test('\u5386\u53f2 finding \u4e0d\u80fd\u8fdb\u5165\u5f53\u524d\u5b89\u5168\u89c4\u5219', () => {
   // \u4eca\u65e5\u4ec5\u6709\u6628\u65e5\u7684\u9ad8\u538b\uff0c\u5b89\u5168\u89c4\u5219\u5e94\u4e3a\u7a7a
   const yesterdayBp = measurementToEvent({

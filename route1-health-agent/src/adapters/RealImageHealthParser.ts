@@ -10,12 +10,7 @@
  *
  * 不向 HealthEvent 直接写入：UI 必须拿到结果后让用户确认。
  */
-import type {
-  HealthVisionProvider,
-  ImageHealthParser,
-  ImageParseContext,
-  ParsedHealthData,
-} from './ImageHealthParser';
+import type { HealthVisionProvider, ImageHealthParser, ImageParseContext, ParsedHealthData } from './ImageHealthParser';
 import { ImageParserError } from './ImageHealthParser';
 import { buildParsedHealthData, validateImageInput } from './imageNormalizer';
 

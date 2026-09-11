@@ -7,7 +7,7 @@
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
-import { parsePrivacyIntent } from './privacy';
+import { ASKS_FAMILY_RELAY, parsePrivacyIntent, TELLS_FAMILY } from './privacy';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain' | 'near_miss';
@@ -84,7 +84,34 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   return null;
 }
 
+/**
+ * “告诉女儿我头晕 / 跟女儿说今天走了六千步”里的称谓是信息接收人，不是健康事实主体；
+ * 主体要看去掉接收人短语后的剩余部分：剩余部分点名家人 → 转述家人的事实，
+ * 剩余部分省略主语（老人口语常态）→ 默认是老人本人。
+ */
+function subjectFromShareRecipient(clause: string): ElderSubject | null {
+  const match = clause.match(/^(?:我)?(?:告诉|通知|跟|让).{0,2}\s*(?:孩子|女儿|儿子|家人|家里人|老伴|爱人|老公|丈夫)/);
+  if (!match) return null;
+  const remainder = clause.slice(match[0].length);
+  const remainderKinships = new Set<ElderSubject>();
+  if (/(?:我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(remainder)) remainderKinships.add('spouse');
+  if (/(?:我爸|我父亲|爸爸|父亲)/.test(remainder)) remainderKinships.add('father');
+  if (/(?:我妈|我母亲|妈妈|母亲)/.test(remainder)) remainderKinships.add('mother');
+  if (/(?:儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(remainder))
+    remainderKinships.add('family_other');
+  if (remainderKinships.size > 1) return 'unknown';
+  if (remainderKinships.size === 1) return [...remainderKinships][0];
+  if (/(?:我|我的|我自己|本人)/.test(remainder)) return 'self';
+  if (/(?:他|她|他们|她们)/.test(remainder)) return 'unknown';
+  return 'self';
+}
+
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 分享句式判定必须先于多主体冲突检查：
+  // “告诉女儿妈妈摔倒了”里女儿是接收人，唯一的健康事实主体是妈妈。
+  const shareRecipientSubject = subjectFromShareRecipient(clause);
+  if (shareRecipientSubject) return shareRecipientSubject;
+
   // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
   const explicitlyMentionedSubjects = new Set<ElderSubject>();
   if (/(我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
@@ -204,6 +231,13 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
     .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
 }
 
+/** 单独出现的问候语：是社交表达，不是没听清，也不是健康事实。 */
+const GREETING_PATTERN =
+  /^(?:您好|你好|早上好|上午好|中午好|下午好|晚上好|早安|晚安|哈喽|哈罗|嗨|在吗|喂|新年好|节日好)[呀啊嘛呢吧啦哇咯哦哈!！?？。~～\s]*$/i;
+
+/** 单独出现的道谢：同样不该被当成没听清。 */
+const THANKS_PATTERN = /^(?:谢谢|谢谢您|多谢|多谢您|辛苦了|辛苦您|麻烦你了|麻烦您了)[啦呀哪!！。~～\s]*$/;
+
 export function understandElderInput(
   text: string,
   today: string,
@@ -215,15 +249,20 @@ export function understandElderInput(
   const correctionTargetMessageId = correction
     ? [...recentMessages].reverse().find((message) => message.role === 'elder')?.id
     : undefined;
-  let clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
-    ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
-    : undefined;
+  let clarificationQuestion: string | undefined;
+  if (/凶闷/.test(trimmed)) {
+    // 语音输入的错字：确认之前不能当症状记录。
+    clarificationQuestion = '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。';
+  } else if (/胸闷[?？]$/.test(trimmed)) {
+    // 带问号的“胸闷？”更可能是在提问，而不是陈述症状；问清楚再记录。
+    clarificationQuestion = '您是想问胸闷是怎么回事，还是想说您现在有胸闷的感觉？';
+  }
 
   if (recallRequested || clarificationQuestion) {
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
 
-  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
+  const hasExplicitFamilyShare = TELLS_FAMILY.test(trimmed) || ASKS_FAMILY_RELAY.test(trimmed);
   const hasExplicitFamilyRefusal =
     /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
       trimmed,
@@ -375,14 +414,22 @@ export function understandElderInput(
   // 不取决于是否含有安全规则/有值。
   const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown');
 
-  // 输入中仅含人名、事件、时间词等语义素但不含任何可识别的健康信息：提示清请求明以避免黑盒。
+  // 输入不含任何可识别的健康信息时，给一句温和的引导，而不是宣称"没听清"。
   const hasAnyHealthSignal =
-    /(血压|血氧|spo2|SPO2|SpO2|心跳|心率|血糖|跳|踩|痛|晕|发烧|睡|饮|仔子|心衰|肺|脑|不舒服|肚子|不舒)/.test(trimmed);
+    /(血压|血氧|spo2|心跳|心率|脉搏|血糖|痛|疼|晕|发烧|发热|睡|起夜|累|喘|肿|麻|摔|跌|药|胸口|心口|闷|咳|肚子|不舒服|乏力|没劲|心衰|中风|肺|脑)/i.test(
+      trimmed,
+    );
   const isGibberish =
     !hasAnyHealthSignal && !/(他|她|他们|她们)/.test(trimmed) && !/(中文数字|阿拉伯数字)/.test(trimmed);
-  if (claims.length === 0 && !clarificationQuestion && !recallRequested && trimmed.length > 0 && isGibberish) {
-    clarificationQuestion =
-      '我没有听清您说的是什么。您是该该心跳、血压、血糖、血氧，还是某个具体的不舒服？请用常见的话说出来。';
+  if (claims.length === 0 && !clarificationQuestion && !recallRequested && trimmed.length > 0) {
+    if (GREETING_PATTERN.test(trimmed)) {
+      clarificationQuestion = '您好，我在呢。今天身体怎么样，有没有哪里不舒服？';
+    } else if (THANKS_PATTERN.test(trimmed)) {
+      clarificationQuestion = '不客气，我一直都在。有事情随时叫我。';
+    } else if (isGibberish) {
+      clarificationQuestion =
+        '我在听。您可以说说身体的情况——比如血压、血糖、睡得怎么样，或者哪里不舒服；其他想说的事也可以慢慢讲。';
+    }
   }
   return {
     claims,

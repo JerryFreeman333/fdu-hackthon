@@ -53,7 +53,7 @@ Phase 4  Agent 解释 + 帮助行动 + 家庭协同
 
 ### 单设备双角色说明
 
-当前 Demo 使用同一个浏览器的 `localStorage` 保存演示状态，老人端和家属端通过“切换身份”模拟两个角色。这意味着它不是跨设备同步方案：两台手机分别打开时不会共享这份浏览器本地数据。跨设备同步属于下一阶段的远程 Store / BaaS 工作，不应在当前版本中冒充已经完成。
+当前 Demo 的健康数据、聊天记录、家庭绑定与授权全部保存在**当前浏览器会话内存**中：刷新页面即清空，老人端和家属端通过“切换身份”在同一个页面里模拟两个角色。这意味着它不是跨设备同步方案：两台手机分别打开时不会共享数据，会话结束也不会留存。跨设备同步与持久化属于下一阶段的远程 Store / BaaS 工作，不应在当前版本中冒充已经完成。
 
 ## Person Twin
 
@@ -186,7 +186,7 @@ interface DeviceAdapter {
 
 真实 HealthKit、Health Connect、蓝牙设备或厂商 SDK 后续只需要实现 Adapter；Detection、Person Twin、Agent 不应该依赖具体硬件。
 
-图像识别同样保留 `ImageHealthParser` 接口；当前不把预置样张冒充成真实 OCR。
+图像识别保留 `ImageHealthParser` 接口：默认使用明确标注的 Demo parser（不读取图片内容，写入示例数据）；配置 `VITE_HEALTH_VISION_ENDPOINT` 指向服务端视觉代理后，走 `RealImageHealthParser` + `HttpVisionProvider` 真实解析。无论哪种 parser，识别结果都必须经用户在界面上确认，才会进入健康事件流；Provider 按 mg/dL 返回的血糖会自动换算为 mmol/L。
 
 ## 医疗安全边界
 
@@ -194,21 +194,17 @@ interface DeviceAdapter {
 
 ## 回归测试
 
-`tests/detection.test.ts` 当前覆盖：
+单元回归（`npm test`，35+ 个套件）覆盖：
 
-- 多信号变化；
-- 稳定 Finding；
-- 稀疏数据沉默；
-- 单指标 `watch`；
-- 极高血压安全分流；
-- 胸痛 / 跌倒等危险症状；
-- 三类健康输入统一事件流；
-- Person Twin Context；
-- 隐私过滤；
-- 中文数值抽取；
-- Agent Adapter 与有理由追问；
-- 周报私密信息隔离；
-- `pending → completed` 任务状态机。
+- 健康事件流：统一事件、按事实去重、更正撤销；
+- 变化检测：单指标基线偏移、多信号融合、安全分级、数据稀疏时沉默、同日多次读数的方向性安全规则（低血糖/心动过缓不被正常读数掩盖）；
+- 对话理解：人物归属与“接收人”句式、肯否/假设、时间归档、中文与阿拉伯数字抽取（含“一百零五”类零位补零）、错字确认；
+- 隐私与家属协同：逐条 visibility、一次性/长期共享与撤销、分享审计、会话隔离；
+- Agent：规则回复与有理由追问、外部 LLM 上下文的隐私边界（仅公开 Person Twin）；
+- 图像解析：parser 选择、严格校验、mg/dL 换算、确认后入库；
+- 本地日期与时区安全。
+
+真实浏览器黑盒（CI 中的 `p0-blackbox`，本地 `npm run test:browser`）覆盖角色切换、家属绑定/撤销、一次性共享可见性、拍照确认入库等端到端链路。
 
 ## 运行
 

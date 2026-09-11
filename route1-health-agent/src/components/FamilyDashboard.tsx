@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
+import { useState } from 'react';
+import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
 import type { FamilyNotification } from '../engine/escalate';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
 import { SYMPTOM_LABELS } from '../types';
@@ -15,7 +15,6 @@ interface FamilyDashboardProps {
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
   homeSafetyActions: HomeSafetyAction[];
-  records: DayRecord[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
@@ -24,8 +23,6 @@ interface FamilyDashboardProps {
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
   onViewChange: (view: 'home' | 'detail' | 'report') => void;
-  onConsumeFindingShare: (findingIds: string[]) => void;
-  onConsumeFamilyEventShare: (eventIds: string[]) => void;
   view: 'home' | 'detail' | 'report';
 }
 
@@ -65,17 +62,6 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const openHomeActions = canViewSharedDetail
     ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
     : [];
-
-  useEffect(() => {
-    const oneTimeFindingIds = props.notifications
-      .filter((notification) => notification.oneTime)
-      .map((notification) => notification.finding.id);
-    const oneTimeFamilyEventIds = recentFamilyEvents
-      .filter((event) => event.shareMode === 'one_time')
-      .map((event) => event.id);
-    props.onConsumeFindingShare(oneTimeFindingIds);
-    props.onConsumeFamilyEventShare(oneTimeFamilyEventIds);
-  }, [props.notifications, recentFamilyEvents, props.onConsumeFindingShare, props.onConsumeFamilyEventShare]);
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -345,7 +331,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                   )}
                   {notification.finding.severity === 'urgent' && (
                     <div className="notif-actions">
-                      <button className="btn-primary" onClick={props.onContactDoctor}>📞 联系社区医生</button>
+                      <button className="btn-primary" onClick={props.onContactDoctor}>
+                        📞 联系社区医生
+                      </button>
                     </div>
                   )}
                 </div>

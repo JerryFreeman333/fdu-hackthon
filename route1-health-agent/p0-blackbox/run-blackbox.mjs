@@ -5,7 +5,8 @@ const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
 const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
 const CASE_TIMEOUT_MS = 20_000;
-const SYSTEM_CHROME = '/usr/bin/google-chrome';
+// CI 提供系统 Chrome；本地开发可用 P0_CHROME_PATH 覆盖以复用本机浏览器。
+const SYSTEM_CHROME = process.env.P0_CHROME_PATH ?? '/usr/bin/google-chrome';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -213,6 +214,70 @@ async function caseFamilyRevocation(browser) {
   }
 }
 
+async function caseOneTimeSharePersistence(browser) {
+  const context = await browser.newContext();
+  try {
+    const page = await newPage(context);
+    await chooseRole(page, '我是老人');
+    await elderChat(page, '我刚才摔了一跤，告诉女儿一声');
+    assert(
+      (await bodyText(page)).includes('分享给家属一次'),
+      'one-time share receipt was not shown to the elder',
+    );
+
+    const invite = await generateInvite(page);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    const boundText = await bindFamily(page, invite);
+    assert(
+      boundText.includes('老人报告刚刚跌倒') || boundText.includes('发生跌倒'),
+      'one-time shared urgent finding was not visible to the bound family',
+    );
+
+    // 关键回归：一次性共享不得在家属端挂载帧内被"消费"掉——多等一拍后必须仍然可见。
+    await page.waitForTimeout(1000);
+    const laterText = (await bodyText(page)) ?? '';
+    assert(
+      laterText.includes('老人报告刚刚跌倒') || laterText.includes('发生跌倒'),
+      'one-time share disappeared from the family view after render',
+    );
+    return 'PASS one-time share persistence';
+  } finally {
+    await context.close();
+  }
+}
+
+async function casePhotoDemoImport(browser) {
+  const context = await browser.newContext();
+  try {
+    const page = await newPage(context);
+    await chooseRole(page, '我是老人');
+    const fileInput = page.locator('.photo-card input[type=file]');
+    await fileInput.setInputFiles({
+      name: 'bp.png',
+      mimeType: 'image/png',
+      // 1x1 PNG；Demo parser 不读像素，只走"选择 → 确认"的完整链路。
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await page.locator('button', { hasText: '确认记录' }).waitFor();
+    assert(
+      (await bodyText(page)).includes('确认识别结果'),
+      'parsed photo confirmation card is missing',
+    );
+    await page.locator('button', { hasText: '确认记录' }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await bodyText(page)).includes('已记录 2 项'),
+      'confirmed photo import did not record the parsed values',
+    );
+    return 'PASS photo demo import';
+  } finally {
+    await context.close();
+  }
+}
+
 async function caseFamilySessionReset(browser) {
   const context = await browser.newContext();
   try {
@@ -251,6 +316,8 @@ const cases = [
   caseFamilySmoke,
   caseFamilyBinding,
   caseFamilyRevocation,
+  caseOneTimeSharePersistence,
+  casePhotoDemoImport,
   caseFamilySessionReset,
 ];
 

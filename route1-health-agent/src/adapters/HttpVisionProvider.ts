@@ -92,12 +92,8 @@ function parseProviderResponse(payload: unknown): HealthVisionResult {
   }
   const measurementsRaw = Array.isArray(obj.measurements) ? obj.measurements : [];
   const labResultsRaw = Array.isArray(obj.labResults) ? obj.labResults : [];
-  const measurements = measurementsRaw
-    .map(parseMeasurement)
-    .filter((item): item is VisionMeasurement => item !== null);
-  const labResults = labResultsRaw
-    .map(parseLabResult)
-    .filter((item): item is VisionLabResult => item !== null);
+  const measurements = measurementsRaw.map(parseMeasurement).filter((item): item is VisionMeasurement => item !== null);
+  const labResults = labResultsRaw.map(parseLabResult).filter((item): item is VisionLabResult => item !== null);
   const confidenceNum = sanitizeNumber(obj.confidence);
   const result: HealthVisionResult = {
     kind: obj.kind,
@@ -155,10 +151,7 @@ export class HttpVisionProvider implements HealthVisionProvider {
     }
 
     if (!response.ok) {
-      throw new ImageParserError(
-        'provider_error',
-        `Vision provider responded with status ${response.status}`,
-      );
+      throw new ImageParserError('provider_error', `Vision provider responded with status ${response.status}`);
     }
 
     const text = await response.text();

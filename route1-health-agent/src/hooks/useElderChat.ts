@@ -2,9 +2,17 @@ import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
-import { TODAY } from '../data/demo';
-import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
-import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
+import { formatLocalDate, TODAY } from '../data/demo';
+import {
+  appendHealthEvents,
+  labResultToEvent,
+  measurementToEvent,
+  observationToEvent,
+  type HealthEvent,
+} from '../pipeline/events';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
+import type { PendingPhotoImport } from '../adapters/ImageHealthParser';
+import { selectImageParser } from '../adapters/parserSelector';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -30,11 +38,19 @@ import {
   type StructuredElderInput,
 } from '../engine/understanding';
 import { removeCorrectedChatHealthEvents, removeCorrectedFamilyEvents } from '../engine/correction';
+import { createTurnQueue, type TurnQueue } from '../engine/turnQueue';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
+// Vite 只在浏览器构建里内联 import.meta.env；端点在调用侧读出后经 endpointOverride
+// 注入 parserSelector，测试构建（CommonJS）因此不需要碰 import.meta。
+const imageParserSelection = selectImageParser({
+  endpointOverride: import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim() || undefined,
+});
+const imageParser = imageParserSelection.parser;
+const photoParserMode = imageParserSelection.mode;
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
@@ -54,7 +70,15 @@ interface UseElderChatOptions {
 }
 
 function localIsoTimestamp(): string {
-  return new Date().toISOString();
+  // 本地墙上时间（无时区后缀），与 Demo 数据 `${date}T12:00:00` 约定一致：
+  // slice(0, 10) 恒等于本地日期。toISOString 会在 UTC+8 的 0-8 点把日期算成前一天，
+  // 导致拍照录入落在"今天"之外、被全部检测窗口排除。
+  const now = new Date();
+  const pad = (value: number, width = 2): string => `${value}`.padStart(width, '0');
+  return `${formatLocalDate(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(
+    now.getMilliseconds(),
+    3,
+  )}`;
 }
 
 function recallSummary(chat: ChatMessage[]): string {
@@ -99,10 +123,6 @@ function isCurrentReassurance(text: string): boolean {
   return /^(?:我)?(?:现在)?(?:感觉)?(?:没事|没什么事|没什么事情|还好|挺好的)[。！!,.，]*$/.test(text.trim());
 }
 
-export function shouldCommitElderTurn(turnId: number, latestTurnId: number): boolean {
-  return turnId === latestTurnId;
-}
-
 export function useElderChat({
   familySharing,
   events,
@@ -117,13 +137,39 @@ export function useElderChat({
   onShareFindingIds,
   onShareFamilyEventIds,
 }: UseElderChatOptions) {
-  const latestTurnRef = useRef(0);
+  const turnQueueRef = useRef<TurnQueue | null>(null);
+  if (!turnQueueRef.current) turnQueueRef.current = createTurnQueue();
 
   async function handleElderSend(text: string) {
-    const turnId = ++latestTurnRef.current;
+    const intent = parsePrivacyIntent(text);
+    const persisted = intent !== 'no_record';
+    const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
+    const elderMessage = msg('elder', text, now, persisted);
+    // 回显与上下文在入队前定格：队列里的后续回合会继续改写 chat。
+    const priorChat = chat;
+    const understanding = understandElderInput(text, TODAY, priorChat);
+
+    // 先把老人原话上屏：重处理无论多慢，这句话都不会被静默丢弃。
+    setChat((current) => [...current, elderMessage]);
+
+    void turnQueueRef.current?.enqueue(async () => {
+      try {
+        await runElderTurn(text, elderMessage, understanding, priorChat);
+      } catch (error) {
+        console.error(error);
+        showToast('这条消息没有处理成功，麻烦您再说一次。');
+      }
+    });
+  }
+
+  async function runElderTurn(
+    text: string,
+    elderMessage: ChatMessage,
+    understanding: StructuredElderInput,
+    priorChat: ChatMessage[],
+  ) {
     const intent = parsePrivacyIntent(text);
     const sharingHistoryQuery = sharingHistoryRequested(text);
-    const understanding = understandElderInput(text, TODAY, chat);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
@@ -134,9 +180,8 @@ export function useElderChat({
     const canShare = canShareWithFamily(familySharing, intent);
     const visibility = canShare ? 'family_ok' : 'private';
     const shareMode = intent === 'share_family' ? 'one_time' : canShare ? 'persistent' : 'private';
-    const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
-    const persisted = intent !== 'no_record';
-    const elderMessage = msg('elder', text, now, persisted);
+    const now = elderMessage.time;
+    const persisted = elderMessage.persisted ?? true;
 
     let agentText: string;
     if (sharingHistoryQuery) {
@@ -149,7 +194,7 @@ export function useElderChat({
             : undefined;
       agentText = buildHistoricalSharingAnswer(loadSharingAudit(), recipient ?? inferSharingRecipient(text));
     } else if (understanding.recallRequested) {
-      agentText = recallSummary(chat);
+      agentText = recallSummary(priorChat);
     } else if (understanding.clarificationQuestion) {
       agentText = understanding.clarificationQuestion;
     } else if (understanding.correction && acceptedClaims.length === 0 && familyClaims.length === 0) {
@@ -181,8 +226,6 @@ export function useElderChat({
       );
     }
 
-    if (!shouldCommitElderTurn(turnId, latestTurnRef.current)) return;
-
     let familyAcknowledgement = '';
     if (familyClaims.length > 0 && intent !== 'no_record') {
       familyAcknowledgement = buildFamilyAcknowledgement(
@@ -192,18 +235,18 @@ export function useElderChat({
     }
 
     if (intent === 'no_record') {
-      setChat((current) => [...current, elderMessage, msg('agent', agentText, now, persisted)]);
+      setChat((current) => [...current, msg('agent', agentText, now, persisted)]);
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
 
-    if (!shouldCommitElderTurn(turnId, latestTurnRef.current)) return;
-
-    let nextBaseEvents = events;
+    let corrected = false;
     if (understanding.correction && understanding.correctionTargetMessageId) {
-      nextBaseEvents = removeCorrectedChatHealthEvents(nextBaseEvents, understanding.correctionTargetMessageId);
+      corrected = true;
       setFamilyEvents((current) => removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId));
     }
+    const dropCorrected = (current: HealthEvent[]) =>
+      corrected ? removeCorrectedChatHealthEvents(current, understanding.correctionTargetMessageId) : current;
 
     const receivedAt = localIsoTimestamp();
 
@@ -251,9 +294,8 @@ export function useElderChat({
 
     if (acceptedClaims.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [...current, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
-      setEvents(nextBaseEvents);
       return;
     }
 
@@ -302,16 +344,15 @@ export function useElderChat({
 
     if (incomingEvents.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [...current, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
-      setEvents(nextBaseEvents);
       return;
     }
-    const nextEvents = appendHealthEvents(nextBaseEvents, incomingEvents);
-    setEvents(nextEvents);
+    setEvents((current) => appendHealthEvents(dropCorrected(current), incomingEvents));
 
     if (intent === 'share_family') {
-      const shareableFindingIds = runDetection(nextEvents, TODAY)
+      const mergedForDetection = appendHealthEvents(dropCorrected(events), incomingEvents);
+      const shareableFindingIds = runDetection(mergedForDetection, TODAY)
         .filter(
           (finding) =>
             (finding.severity === 'alert' || finding.severity === 'urgent') &&
@@ -351,12 +392,12 @@ export function useElderChat({
     ]);
     const hasSafetyGuidance = acceptedTags.some((tag) => safetyTags.has(tag));
     const SAFETY_NOTICES: Record<string, string> = {
-      fall: '现在最重要的是先确认安全：先别照急起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。',
+      fall: '现在最重要的是先确认安全：先别着急起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。',
       spo2Low:
         '现在最重要的是保持呼吸：先坐稳、保持手部温暖，按设备说明复测一次；如果仍低或伴嘴唇发紫、测不到呼吸，立即告诉我们或找家人。',
       hrHigh:
         '现在最重要的是先停下休息：走动起来都不要急，按设备说明复测；如果仍快或伴胸闷、头晕，立即告诉我们或找家人。',
-      hrLow: '现在最重要的是先坐下不要独自活动：按设备说明复测；如果仍慢或伴头晕、黑眉，立即告诉我们或找家人。',
+      hrLow: '现在最重要的是先坐下不要独自活动：按设备说明复测；如果仍慢或伴头晕、黑朦，立即告诉我们或找家人。',
       glucoseHigh: '现在最重要的是保持调节：复测一次确认测量时间和是否空腹；持续偏高或伴口渴、意识变化，请联系医生。',
       glucoseLow:
         '现在最重要的是避免低血糖危险：按医生方案补糖，15 分钟内复测；如出现意识变化、站不稳或出冷汗，立即告诉我们或找家人。',
@@ -378,30 +419,55 @@ export function useElderChat({
       sharingReceipt,
     ].filter(Boolean);
     const finalAgentText = receiptParts.join('\n');
-    setChat((current) => [...current, elderMessage, msg('agent', finalAgentText, now, persisted)]);
+    setChat((current) => [...current, msg('agent', finalAgentText, now, persisted)]);
 
     showToast(finalAgentText.replace(/\n/g, ' '));
 
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
   }
 
-  async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+  async function handlePhotoImport(file: Blob, kind: DemoImageKind): Promise<PendingPhotoImport | null> {
     try {
       const capturedAt = localIsoTimestamp();
-      const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
-      const measurements = parsed.measurements.map((item) => measurementToEvent({ ...item, visibility }));
-      if (measurements.length === 0) {
+      const parsed = await imageParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      if (parsed.measurements.length === 0 && parsed.labResults.length === 0) {
         showToast('这张图片没有识别到可记录的健康数值。');
-        return;
+        return null;
       }
-      setEvents((current) => appendHealthEvents(current, measurements));
-      showToast(`已记录 ${measurements.length} 项图片中的健康数值。`);
+      // 只解析、不入库：ImageHealthParser 的契约是识别结果经用户确认后才进入事件流。
+      return {
+        draftId: `photo-draft-${Date.now()}`,
+        detectedKind: parsed.parseMeta?.detectedKind ?? kind,
+        capturedAt,
+        measurements: parsed.measurements,
+        labResults: parsed.labResults,
+        tags: parsed.tags,
+        rawText: parsed.rawText,
+        provider: parsed.parseMeta?.provider ?? 'demo',
+        overallConfidence: parsed.parseMeta?.overallConfidence ?? 0.6,
+        warnings: parsed.parseMeta?.warnings ?? [],
+        image: file,
+      };
     } catch (error) {
       console.error(error);
       showToast('图片解析失败，请稍后重试。');
+      return null;
     }
   }
 
-  return { handleElderSend, handlePhotoImport, quickInputs: QUICK_INPUTS };
+  function confirmPhotoRecord(pending: PendingPhotoImport) {
+    const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
+    const incoming = [
+      ...pending.measurements.map((item) => measurementToEvent({ ...item, visibility })),
+      ...pending.labResults.map((lab) => labResultToEvent({ ...lab, visibility })),
+    ];
+    if (incoming.length === 0) {
+      showToast('这次识别没有可记录的数值。');
+      return;
+    }
+    setEvents((current) => appendHealthEvents(current, incoming));
+    showToast(`已记录 ${incoming.length} 项照片中的数值（${visibility === 'family_ok' ? '家属可见' : '仅本人'}）。`);
+  }
+
+  return { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs: QUICK_INPUTS, photoParserMode };
 }

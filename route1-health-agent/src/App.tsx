@@ -11,7 +11,6 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
-import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
@@ -90,18 +89,11 @@ export default function App() {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-    claimOneTimeShares,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
-  const { records, observations, measurements } = healthData;
-  const familyRecords = useMemo(
-    () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
-    [measurements],
-  );
+  const { records, observations } = healthData;
   const visibleFamilyFacts = useMemo(
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
@@ -116,7 +108,7 @@ export default function App() {
     [findings, familySharing, sharedFindingIds],
   );
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
-  const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
+  const { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs, photoParserMode } = useElderChat({
     familySharing,
     events,
     chat,
@@ -159,17 +151,6 @@ export default function App() {
     for (const finding of newFamilyRelevantFindings) promptedFamilyFindingIdsRef.current.add(finding.id);
     promptFamilyShare();
   }, [familySharing, findings, promptFamilyShare]);
-
-  useEffect(() => {
-    if (role !== 'family' || familyLink?.status !== 'active') return;
-    const oneTimeFindingIds = familyNotifs
-      .filter((notification) => notification.oneTime)
-      .map((notification) => notification.finding.id);
-    const oneTimeFamilyEventIds = visibleFamilyFacts
-      .filter((event) => event.shareMode === 'one_time')
-      .map((event) => event.id);
-    void claimOneTimeShares(oneTimeFindingIds, oneTimeFamilyEventIds);
-  }, [role, familyLink?.status, familyNotifs, visibleFamilyFacts, claimOneTimeShares]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
@@ -236,6 +217,8 @@ export default function App() {
             chat={chat}
             onSend={handleElderSend}
             onPhotoImport={handlePhotoImport}
+            onConfirmPhotoRecord={confirmPhotoRecord}
+            photoParserMode={photoParserMode}
             quickInputs={quickInputs}
             tasks={tasks}
             findings={findings}
@@ -283,7 +266,6 @@ export default function App() {
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
           homeSafetyActions={homeSafetyActions}
-          records={familyRecords}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
@@ -292,15 +274,14 @@ export default function App() {
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}
-          onConsumeFindingShare={consumeSharedFindingIds}
-          onConsumeFamilyEventShare={consumeSharedFamilyEventIds}
           view={familyView}
         />
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
+        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口默认使用明确标注的 Demo parser，可经
+        VITE_HEALTH_VISION_ENDPOINT 接入真实视觉服务，识别结果经确认后才会记录；LLM 可通过服务端 Endpoint
+        接入，浏览器端不保存厂商 API key。
       </footer>
     </div>
   );

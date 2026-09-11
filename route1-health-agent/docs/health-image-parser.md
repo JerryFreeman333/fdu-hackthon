@@ -39,20 +39,20 @@ Baseline / Detection / Person Twin / Family
 
 ## 3. 模块清单
 
-| 文件 | 角色 |
-| --- | --- |
-| `src/adapters/ImageHealthParser.ts` | 公共接口：`ImageHealthParser`、`HealthVisionProvider`、`PendingPhotoImport`、`HealthVisionResult`、`ImageParserError`、白名单 `ALLOWED_METRIC_KEYS` |
-| `src/adapters/RealImageHealthParser.ts` | 真实实现：调用 Provider → 严格 JSON 校验 → 返回 `ParsedHealthData` |
-| `src/adapters/HttpVisionProvider.ts` | 默认 Provider：调用服务端代理 `POST {VITE_HEALTH_VISION_ENDPOINT}`，遵守 multipart/form-data 协议 |
-| `src/adapters/MockVisionProvider.ts` | 测试用 Provider：可注入异常分支（malformed / low_confidence / unknown / missing_unit / systolic_only） |
-| `src/adapters/DemoImageHealthParser.ts` | 离线 fallback（保留旧 Demo 行为，固定示例数据） |
-| `src/adapters/imageNormalizer.ts` | Provider 输出 → `ParsedHealthData` 的校验与归一化（单位、范围、血压完整性、confidence 阈值） |
-| `src/adapters/parserSelector.ts` | 根据 `VITE_HEALTH_VISION_ENDPOINT` 自动选 Real 或 Demo；测试可注入 provider 或 endpoint |
-| `src/hooks/useElderChat.ts` | `handlePhotoImport` 只返回 `PendingPhotoImport`（不写事件）；`commitPendingPhotoImport` 才是真正写入 |
-| `src/components/ElderHome.tsx` | 照片识别 + 预览 + 确认面板（PhotoReviewPanel） |
-| `src/styles.css` | 适老化样式：`.photo-review`、`.review-summary`、`.review-edit`、`.review-actions` |
-| `src/vite-env.d.ts` | 新增 `VITE_HEALTH_VISION_ENDPOINT` |
-| `tests/image-health-parser.test.ts` | 20 个子测试，覆盖所有错误分支 |
+| 文件                                    | 角色                                                                                                                                                |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/adapters/ImageHealthParser.ts`     | 公共接口：`ImageHealthParser`、`HealthVisionProvider`、`PendingPhotoImport`、`HealthVisionResult`、`ImageParserError`、白名单 `ALLOWED_METRIC_KEYS` |
+| `src/adapters/RealImageHealthParser.ts` | 真实实现：调用 Provider → 严格 JSON 校验 → 返回 `ParsedHealthData`                                                                                  |
+| `src/adapters/HttpVisionProvider.ts`    | 默认 Provider：调用服务端代理 `POST {VITE_HEALTH_VISION_ENDPOINT}`，遵守 multipart/form-data 协议                                                   |
+| `src/adapters/MockVisionProvider.ts`    | 测试用 Provider：可注入异常分支（malformed / low_confidence / unknown / missing_unit / systolic_only）                                              |
+| `src/adapters/DemoImageHealthParser.ts` | 离线 fallback（保留旧 Demo 行为，固定示例数据）                                                                                                     |
+| `src/adapters/imageNormalizer.ts`       | Provider 输出 → `ParsedHealthData` 的校验与归一化（单位、范围、血压完整性、confidence 阈值）                                                        |
+| `src/adapters/parserSelector.ts`        | 根据 `VITE_HEALTH_VISION_ENDPOINT` 自动选 Real 或 Demo；测试可注入 provider 或 endpoint                                                             |
+| `src/hooks/useElderChat.ts`             | `handlePhotoImport` 只返回 `PendingPhotoImport`（不写事件）；`commitPendingPhotoImport` 才是真正写入                                                |
+| `src/components/ElderHome.tsx`          | 照片识别 + 预览 + 确认面板（PhotoReviewPanel）                                                                                                      |
+| `src/styles.css`                        | 适老化样式：`.photo-review`、`.review-summary`、`.review-edit`、`.review-actions`                                                                   |
+| `src/vite-env.d.ts`                     | 新增 `VITE_HEALTH_VISION_ENDPOINT`                                                                                                                  |
+| `tests/image-health-parser.test.ts`     | 20 个子测试，覆盖所有错误分支                                                                                                                       |
 
 ## 4. Provider 接口与请求协议
 
@@ -80,8 +80,8 @@ meta={"capturedAt":"...","imageMeta":"..."}
 {
   "kind": "bloodPressure",
   "measurements": [
-    { "metric": "systolic",  "value": 148, "unit": "mmHg", "confidence": 0.95 },
-    { "metric": "diastolic", "value": 88,  "unit": "mmHg", "confidence": 0.95 }
+    { "metric": "systolic", "value": 148, "unit": "mmHg", "confidence": 0.95 },
+    { "metric": "diastolic", "value": 88, "unit": "mmHg", "confidence": 0.95 }
   ],
   "labResults": [],
   "rawText": "SYS 148\nDIA 88",
@@ -95,20 +95,20 @@ meta={"capturedAt":"...","imageMeta":"..."}
 
 ## 5. 错误码 → UI 提示
 
-| code | 含义 | UI 文案 |
-| --- | --- | --- |
-| `empty_image` | 图片为空 | 这张图片是空的，请重新拍一张。 |
-| `unsupported_format` | 格式不支持 | 请换成 JPG/PNG/WebP 重试。 |
-| `image_unreadable` | 图片损坏 | 这张图片似乎损坏了，请重新拍一张。 |
-| `missing_values` | 数值缺失 | 请重新拍或直接告诉我数字。 |
-| `missing_unit` | 缺少单位 | 请重拍或在预览里手动补充。 |
-| `low_confidence` | confidence 过低 | 请再拍一张更清楚的。 |
-| `malformed_json` | provider 返回非法 JSON | 识别服务返回的数据格式异常，请稍后再试。 |
-| `unknown_image` | 无法识别为已知类型 | 请重新拍摄。 |
-| `invalid_blood_pressure` | 血压不完整/越界 | 请再拍一张或直接告诉我数字。 |
-| `invalid_weight` | 体重越界 | 请重拍或直接告诉我数字。 |
-| `provider_error` | 网络/HTTP 失败 | 默认降级提示 |
-| `aborted` | 用户取消 | 已取消这次识别。 |
+| code                     | 含义                   | UI 文案                                  |
+| ------------------------ | ---------------------- | ---------------------------------------- |
+| `empty_image`            | 图片为空               | 这张图片是空的，请重新拍一张。           |
+| `unsupported_format`     | 格式不支持             | 请换成 JPG/PNG/WebP 重试。               |
+| `image_unreadable`       | 图片损坏               | 这张图片似乎损坏了，请重新拍一张。       |
+| `missing_values`         | 数值缺失               | 请重新拍或直接告诉我数字。               |
+| `missing_unit`           | 缺少单位               | 请重拍或在预览里手动补充。               |
+| `low_confidence`         | confidence 过低        | 请再拍一张更清楚的。                     |
+| `malformed_json`         | provider 返回非法 JSON | 识别服务返回的数据格式异常，请稍后再试。 |
+| `unknown_image`          | 无法识别为已知类型     | 请重新拍摄。                             |
+| `invalid_blood_pressure` | 血压不完整/越界        | 请再拍一张或直接告诉我数字。             |
+| `invalid_weight`         | 体重越界               | 请重拍或直接告诉我数字。                 |
+| `provider_error`         | 网络/HTTP 失败         | 默认降级提示                             |
+| `aborted`                | 用户取消               | 已取消这次识别。                         |
 
 ## 6. 隐私与医疗边界
 
@@ -163,11 +163,12 @@ async def parse_image(image: UploadFile, kind: str = Form(...), meta: str = Form
 ```
 
 服务端提示词应包含：
+
 1. 输出格式必须严格 JSON，禁止自然语言
 2. `metric` 仅限：`systolic / diastolic / restingHr / weight / spo2 / bloodGlucose`
 3. `unit` 必须填写
-5. `kind` 仅限 `bloodPressure / weight / report / unknown`，识别不出时填 `unknown` 而不是猜测
-6. `confidence` 必须是 0~1 的小数
+4. `kind` 仅限 `bloodPressure / weight / report / unknown`，识别不出时填 `unknown` 而不是猜测
+5. `confidence` 必须是 0~1 的小数
 
 ## 8. 现场演示步骤（完整闭环）
 
@@ -182,9 +183,9 @@ npm run dev
 
 1. 在「记录一下血压、体重或报告」卡片选择 **血压**
 2. 点 **拍一张/选一张**，随便选一张图片（甚至空白）
-4. UI 提示：演示示例 **血压 148/88 mmHg**
-5. 点 **确认保存** → "已保存：收缩压 148 mmHg、舒张压 88 mmHg"
-6. 在「查看我的状态」里能看到新写入的 `HealthMeasurement(source=photo)`
+3. UI 提示：演示示例 **血压 148/88 mmHg**
+4. 点 **确认保存** → "已保存：收缩压 148 mmHg、舒张压 88 mmHg"
+5. 在「查看我的状态」里能看到新写入的 `HealthMeasurement(source=photo)`
 
 ### Demo B：真实血压计照片（需启动后端代理）
 
@@ -226,6 +227,7 @@ npm run build     # 通过
 ```
 
 新增 `tests/image-health-parser.test.ts` 覆盖：
+
 - 血压 / 体重 / 化验报告正常解析
 - `malformed_json` / `low_confidence` / `missing_unit` / `unknown_image` / `invalid_blood_pressure` / `empty_image` / `unsupported_format` / `provider_error` 错误分支
 - 用户取消后无 HealthEvent 输出
@@ -235,22 +237,22 @@ npm run build     # 通过
 
 ## 11. 修改清单
 
-| 类型 | 文件 |
-| --- | --- |
-| 新增 | `src/adapters/RealImageHealthParser.ts` |
-| 新增 | `src/adapters/HttpVisionProvider.ts` |
-| 新增 | `src/adapters/MockVisionProvider.ts` |
-| 新增 | `src/adapters/imageNormalizer.ts` |
-| 新增 | `src/adapters/parserSelector.ts` |
-| 新增 | `tests/image-health-parser.test.ts` |
-| 新增 | `docs/health-image-parser.md`（本文档） |
+| 类型 | 文件                                                                          |
+| ---- | ----------------------------------------------------------------------------- |
+| 新增 | `src/adapters/RealImageHealthParser.ts`                                       |
+| 新增 | `src/adapters/HttpVisionProvider.ts`                                          |
+| 新增 | `src/adapters/MockVisionProvider.ts`                                          |
+| 新增 | `src/adapters/imageNormalizer.ts`                                             |
+| 新增 | `src/adapters/parserSelector.ts`                                              |
+| 新增 | `tests/image-health-parser.test.ts`                                           |
+| 新增 | `docs/health-image-parser.md`（本文档）                                       |
 | 扩展 | `src/adapters/ImageHealthParser.ts`（新增 Vision 接口、Pending 类型、错误码） |
-| 扩展 | `src/adapters/DemoImageHealthParser.ts`（保留并补充语义注释） |
-| 扩展 | `src/hooks/useElderChat.ts`（两步式拍照流） |
-| 扩展 | `src/components/ElderHome.tsx`（确认面板 + 编辑） |
-| 扩展 | `src/App.tsx`（注入 `commitPendingPhotoImport` 与 `imageParserMode`） |
-| 扩展 | `src/styles.css`（确认面板适老化样式） |
-| 扩展 | `src/vite-env.d.ts`（`VITE_HEALTH_VISION_ENDPOINT`） |
-| 扩展 | `tsconfig.test.json`（把 `src/adapters`/`src/pipeline` 加入测试 include） |
+| 扩展 | `src/adapters/DemoImageHealthParser.ts`（保留并补充语义注释）                 |
+| 扩展 | `src/hooks/useElderChat.ts`（两步式拍照流）                                   |
+| 扩展 | `src/components/ElderHome.tsx`（确认面板 + 编辑）                             |
+| 扩展 | `src/App.tsx`（注入 `commitPendingPhotoImport` 与 `imageParserMode`）         |
+| 扩展 | `src/styles.css`（确认面板适老化样式）                                        |
+| 扩展 | `src/vite-env.d.ts`（`VITE_HEALTH_VISION_ENDPOINT`）                          |
+| 扩展 | `tsconfig.test.json`（把 `src/adapters`/`src/pipeline` 加入测试 include）     |
 
 **未触碰**：`engine/` 下所有 detection / baseline / personTwin / privacy / agent / report 等模块；`pipeline/events.ts` 的签名；`App.tsx` 中除拍照外的所有交互。
