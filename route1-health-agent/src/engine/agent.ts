@@ -44,7 +44,12 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'bpHigh',
-    patterns: [/血压(有)?(高|偏高)/, /高压\d{3}/],
+    patterns: [
+      /血压\s*(?:有)?(?:高|偏高)/,
+      /高压\s*\d{3}/,
+      /血压\s*\d{2,3}\s*[/／,，、比\-至~]\s*\d{2,3}/,
+      /收缩压\s*\d{2,3}.{0,3}舒张压\s*\d{2,3}/,
+    ],
     replies: ['先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。'],
   },
   {
@@ -107,36 +112,28 @@ function buildRuleBasedReply(
   isNewFall: boolean,
   context?: AgentContext,
 ): string {
-  if (newTags.includes('chestPain'))
-    return (
-      INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
-      '先停止活动并保持安全姿势，必要时立即寻求急救。'
-    );
-  if (newTags.includes('neuroChange'))
-    return (
-      INTENT_RULES.find((rule) => rule.tag === 'neuroChange')?.replies[0] ?? '先别走动，立即联系家里人并寻求急救。'
-    );
+  const replyFor = (tag: SymptomTag): string =>
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+
+  if (newTags.includes('chestPain')) return replyFor('chestPain');
+  if (newTags.includes('neuroChange')) return replyFor('neuroChange');
   if (newTags.includes('fall')) {
-    const reply = INTENT_RULES.find((rule) => rule.tag === 'fall')?.replies[0];
-    if (reply) return reply;
+    const base = replyFor('fall');
+    return isNewFall ? `${base} 请先确认自己现在是否安全。` : base;
   }
+  if (newTags.includes('bpHigh')) return replyFor('bpHigh');
   if (newTags.length === 0) {
     const unresolved = context?.priorityFindings.find((finding) => finding.severity === 'urgent');
     return unresolved
       ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。`
       : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
-  const parts: string[] = [];
-  for (const tag of newTags.slice(0, 2)) {
-    const rule = INTENT_RULES.find((item) => item.tag === tag);
-    if (rule) parts.push(rule.replies[0]);
-  }
+
+  const parts = newTags.slice(0, 2).map(replyFor);
   if (context) {
     const followUps = suggestFollowUpQuestions(newTags, context);
     if (followUps.length > 0) parts.push(followUps[0].question);
   }
-  if (isNewFall && !parts.some((part) => part.includes('摔倒')))
-    parts.push('我会把这次情况当作需要优先确认安全的事件处理。');
   if (findings.some((finding) => finding.severity === 'urgent') && isNewFall) parts.push('请先确认自己现在是否安全。');
   return parts.join('\n');
 }
@@ -148,6 +145,7 @@ export interface LlmAdapter {
     context?: AgentContext,
   ): Promise<{ text: string; tags: SymptomTag[] }>;
 }
+
 export const ruleBasedAdapter: LlmAdapter = {
   async complete(_systemPrompt, userText, context) {
     const parsed = parseElderInput(userText);
@@ -159,21 +157,11 @@ interface ExternalAgentContext {
   today: string;
   windowDays: number;
   safetyLevel: Finding['severity'];
-  personTwin: {
-    asOf: string;
-    activity: 'stable' | 'declining' | 'improving' | 'unknown';
-    mobility: 'stable' | 'declining' | 'improving' | 'unknown';
-    sleep: 'stable' | 'declining' | 'improving' | 'unknown';
-    nightActivity: 'stable' | 'declining' | 'improving' | 'unknown';
-    recentSymptoms: SymptomTag[];
-    activeConcerns: string[];
-    safetyRelevantChanges: string[];
-    functionalProfile: AgentContext['personTwin']['functionalProfile'];
-  };
+  personTwin: AgentContext['personTwin'];
   metrics: AgentContext['metrics'];
   observations: AgentContext['observations'];
   labs: AgentContext['labs'];
-  priorityFindings: AgentContext['priorityFindings'];
+  priorityFindings: Finding[];
   suggestedAction?: string;
 }
 
@@ -184,25 +172,11 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
     (highest, finding) => (safetyRank[finding.severity] < safetyRank[highest] ? finding.severity : highest),
     'info',
   );
-  const publicSymptoms = context.observations
-    .filter((observation) => observation.visibility !== 'private')
-    .flatMap((observation) => observation.tags)
-    .filter((tag, index, tags) => tags.indexOf(tag) === index);
   return {
     today: context.today,
     windowDays: context.windowDays,
     safetyLevel: publicSafety,
-    personTwin: {
-      asOf: context.personTwin.asOf,
-      activity: 'unknown',
-      mobility: 'unknown',
-      sleep: 'unknown',
-      nightActivity: 'unknown',
-      recentSymptoms: publicSymptoms,
-      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
-      safetyRelevantChanges: [],
-      functionalProfile: { mobility: 'unknown', usesCane: false, nightVision: 'unknown', cognition: 'unknown' },
-    },
+    personTwin: { ...context.personTwin, safetyRelevantChanges: [], activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4) },
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
     labs: context.labs.filter((lab) => lab.visibility !== 'private'),
@@ -211,43 +185,21 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
   };
 }
 
-/** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端。 */
-export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
-  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
-    throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
-  return {
-    async complete(systemPrompt, userText, context) {
-      const privacyIntent = parsePrivacyIntent(userText);
-      if (privacyIntent === 'private' || privacyIntent === 'no_record')
-        throw new Error('Private and no-record inputs must stay on the local safety adapter.');
-      const safeContext = context ? sanitizeExternalContext(context) : undefined;
-      const safeUserText = userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText: safeUserText, context: safeContext }),
-      });
-      if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
-      const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
-      return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
-    },
-  };
-}
-
+const MAX_AGENT_INPUT_LENGTH = 1000;
+const MAX_AGENT_REPLY_LENGTH = 500;
 const SYSTEM_PROMPT =
-  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
+  '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；不要补写用户没有说过的症状、诱因、趋势或人物。';
 const UNSAFE_REPLY_PATTERNS = [
   /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
   /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
   /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
 ];
-const MAX_AGENT_REPLY_LENGTH = 500;
-const MAX_AGENT_INPUT_LENGTH = 1000;
-export function isSafeAgentReply(text: string): boolean {
+
+function isSafeAgentReply(text: string): boolean {
   const normalized = text.trim();
-  if (!normalized || normalized.length > MAX_AGENT_REPLY_LENGTH) return false;
-  return !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
+  return normalized.length > 0 && normalized.length <= MAX_AGENT_REPLY_LENGTH && !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
 }
+
 export async function generateAgentReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -256,32 +208,50 @@ export async function generateAgentReply(
   context?: AgentContext,
   adapter: LlmAdapter = ruleBasedAdapter,
 ): Promise<string> {
-  const safetyFinding = context?.priorityFindings.find(
+  const privacyIntent = parsePrivacyIntent(elderText);
+  if (privacyIntent === 'private') return '好的，这部分我只在本次对话里帮助您处理，不自动告诉家属。';
+  if (privacyIntent === 'no_record') return '好的，这件事我不写进长期健康记录。';
+  if (privacyIntent === 'share_family') return '好的，我会按您刚才的授权范围处理。';
+
+  const publicFinding = context?.priorityFindings.find(
     (finding) => (finding.severity === 'urgent' || finding.severity === 'alert') && finding.familyEligible !== false,
   );
-  const safetyGuard = safetyFinding
-    ? `当前最高风险等级为 ${safetyFinding.severity}，不要自行提高或降低等级。`
-    : '当前没有可供外部模型使用的更高等级安全信号。';
-  const systemPrompt = `${SYSTEM_PROMPT}\n${safetyGuard}\n已识别标签：${newTags.join(', ') || '无'}。`;
+  const systemPrompt = `${SYSTEM_PROMPT}\n当前最高风险等级：${publicFinding?.severity ?? 'info'}；已识别标签：${newTags.join(', ') || '无'}。`;
   try {
-    const completion = await adapter.complete(systemPrompt, elderText, context);
-    if (isSafeAgentReply(completion.text)) return completion.text.trim();
-    return buildRuleBasedReply(newTags, findings, isNewFall, context);
+    const completion = await adapter.complete(systemPrompt, elderText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), context ? sanitizeExternalContext(context) as AgentContext : context);
+    return isSafeAgentReply(completion.text)
+      ? completion.text.trim()
+      : buildRuleBasedReply(newTags, findings, isNewFall, context);
   } catch {
     return buildRuleBasedReply(newTags, findings, isNewFall, context);
   }
 }
-export const QUICK_INPUTS = [
-  '最近腿有点没劲',
-  '最近走路有点喘',
-  '这两天睡不好',
-  '我有点头晕',
-  '药忘记吃了',
-  '刚才摔了一跤',
-];
+
+export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
+  if (!endpoint.startsWith('/') && !endpoint.startsWith('https://') && !endpoint.startsWith('http://localhost'))
+    throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
+  return {
+    async complete(systemPrompt, userText, context) {
+      if (parsePrivacyIntent(userText) === 'private' || parsePrivacyIntent(userText) === 'no_record')
+        throw new Error('Private and no-record inputs must stay on the local safety adapter.');
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt, userText: userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), context: context ? sanitizeExternalContext(context) : undefined }),
+      });
+      if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
+      const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
+      return { text: payload.text ?? '', tags: payload.tags ?? parseElderInput(userText).tags };
+    },
+  };
+}
+
+export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
 }
+
 export function tagLabel(tag: SymptomTag): string {
   return SYMPTOM_LABELS[tag];
 }
