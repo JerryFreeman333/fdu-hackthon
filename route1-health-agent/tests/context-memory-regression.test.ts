@@ -61,3 +61,11 @@ test('a self-only previous turn cannot become a family pronoun anchor', () => {
   assert.match(result.clarificationQuestion ?? '', /指谁|确认清楚/);
   assert.equal(result.claims[0]?.subject, 'unknown');
 });
+
+test('preserves subject continuity inside a previous multi-clause family turn', () => {
+  const history = [elder('m1', '我爸走路不稳，后来摔了一跤'), agent('a1', '我先分别记下。')];
+  const result = understandElderInput('他现在还喘', TODAY, history);
+
+  assert.equal(result.claims[0]?.subject, 'father');
+  assert.deepEqual(result.claims[0]?.tags, ['dyspnea']);
+});
