@@ -113,7 +113,8 @@ function buildRuleBasedReply(
   context?: AgentContext,
 ): string {
   const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
+    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
 
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
@@ -176,7 +177,11 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
     today: context.today,
     windowDays: context.windowDays,
     safetyLevel: publicSafety,
-    personTwin: { ...context.personTwin, safetyRelevantChanges: [], activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4) },
+    personTwin: {
+      ...context.personTwin,
+      safetyRelevantChanges: [],
+      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
+    },
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
     labs: context.labs.filter((lab) => lab.visibility !== 'private'),
@@ -197,7 +202,11 @@ const UNSAFE_REPLY_PATTERNS = [
 
 function isSafeAgentReply(text: string): boolean {
   const normalized = text.trim();
-  return normalized.length > 0 && normalized.length <= MAX_AGENT_REPLY_LENGTH && !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized));
+  return (
+    normalized.length > 0 &&
+    normalized.length <= MAX_AGENT_REPLY_LENGTH &&
+    !UNSAFE_REPLY_PATTERNS.some((pattern) => pattern.test(normalized))
+  );
 }
 
 export async function generateAgentReply(
@@ -218,7 +227,11 @@ export async function generateAgentReply(
   );
   const systemPrompt = `${SYSTEM_PROMPT}\n当前最高风险等级：${publicFinding?.severity ?? 'info'}；已识别标签：${newTags.join(', ') || '无'}。`;
   try {
-    const completion = await adapter.complete(systemPrompt, elderText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), context ? sanitizeExternalContext(context) as AgentContext : context);
+    const completion = await adapter.complete(
+      systemPrompt,
+      elderText.trim().slice(0, MAX_AGENT_INPUT_LENGTH),
+      context ? (sanitizeExternalContext(context) as AgentContext) : context,
+    );
     return isSafeAgentReply(completion.text)
       ? completion.text.trim()
       : buildRuleBasedReply(newTags, findings, isNewFall, context);
@@ -237,7 +250,11 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userText: userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH), context: context ? sanitizeExternalContext(context) : undefined }),
+        body: JSON.stringify({
+          systemPrompt,
+          userText: userText.trim().slice(0, MAX_AGENT_INPUT_LENGTH),
+          context: context ? sanitizeExternalContext(context) : undefined,
+        }),
       });
       if (!response.ok) throw new Error(`LLM endpoint returned ${response.status}`);
       const payload = (await response.json()) as { text?: string; tags?: SymptomTag[] };
@@ -246,7 +263,14 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   };
 }
 
-export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+export const QUICK_INPUTS = [
+  '最近腿有点没劲',
+  '最近走路有点喘',
+  '这两天睡不好',
+  '我有点头晕',
+  '药忘记吃了',
+  '刚才摔了一跤',
+];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
