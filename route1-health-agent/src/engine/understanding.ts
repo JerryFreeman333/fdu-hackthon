@@ -116,7 +116,6 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
 
   if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
 
-  // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏。
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
     return 'occurred';
   }
