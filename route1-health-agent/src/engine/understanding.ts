@@ -175,6 +175,16 @@ function parseChineseDayCount(value: string): number | null {
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
+  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
+  const hasYesterday = /(昨天|昨日)/.test(clause);
+  const currentComparison =
+    hasToday &&
+    hasYesterday &&
+    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
+
+  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
+  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+
   if (/过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天/.test(clause)) return { scope: 'historical', eventDate: null };
   const daysAgo = clause.match(/(\d+|一|两|二|三|四|五|六|七|八|九|十)天前/);
   if (daysAgo?.[1]) {
@@ -186,26 +196,6 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   if (/(去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/.test(clause))
     return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
-
-  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
-  const hasYesterday = /(昨天|昨日)/.test(clause);
-  const currentComparison =
-    hasToday &&
-    hasYesterday &&
-    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
-
-  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
-  if (
-    hasYesterday &&
-    !hasToday &&
-    /(比|相比|比起|比上|跟.{0,4}比)/.test(clause) &&
-    /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|血氧|spo2|SPO2|SpO2|心率|体重|气短|憋气|血糖)/.test(
-      clause,
-    )
-  ) {
-    return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-  }
-  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
 
   return { scope: 'today', eventDate: today };
 }
