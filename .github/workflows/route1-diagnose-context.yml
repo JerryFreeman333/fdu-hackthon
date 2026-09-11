@@ -6,7 +6,7 @@ on:
       - route1-context-memory
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
@@ -24,18 +24,6 @@ jobs:
       - name: Install locked dependencies
         working-directory: route1-health-agent
         run: npm ci
-      - name: Capture test output
+      - name: Run complete test command
         working-directory: route1-health-agent
-        run: |
-          set +e
-          npm test > diagnostic-test-output.txt 2>&1
-          status=$?
-          echo "TEST_EXIT_CODE=$status" >> diagnostic-test-output.txt
-          exit 0
-      - name: Commit diagnostic output
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add route1-health-agent/diagnostic-test-output.txt
-          git commit -m "chore(route1): capture context test diagnostics"
-          git push origin HEAD:route1-context-memory
+        run: npm test
