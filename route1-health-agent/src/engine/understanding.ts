@@ -2,7 +2,7 @@
  * 用户输入的保守结构化理解层。
  *
  * 事实接纳边界：只有人物、状态、时间和数值足够明确的内容，才能进入本人健康事实流。
- * 本轮重点是人物归属：无法唯一确认“他/她/老伴”指向谁时，一律 unknown，不猜 self。
+ * 人物无法唯一确认时一律 unknown；否定、假设和差点发生也绝不进入 occurred 事实流。
  */
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
@@ -12,7 +12,7 @@ import { splitNaturalLanguageTexts } from './naturalLanguage';
 import { resolveTime, type TimeScope } from './time';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
-export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
+export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'near_miss' | 'uncertain';
 
 export interface StructuredClaim {
   text: string;
@@ -83,8 +83,7 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 在老人聊天界面里，“昨晚没睡好”“今天头晕”这类无主语陈述默认是说话者本人。
-  // 只有出现第三人称代词且没有唯一 antecedent 时，才进入 unknown。
+  // 在老人聊天界面里，无主语陈述默认是说话者本人；但第三人称代词没有唯一 antecedent 时不得猜 self。
   if (matchesAny(clause, SELF_PATTERNS) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
   return 'unknown';
 }
@@ -102,29 +101,27 @@ function subjectCandidatesForClause(clause: string, priorSubjects: ElderSubject[
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'hypothetical';
+  const hasHealthClaim = tags.length > 0 || hasHealthValue;
 
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) return 'occurred';
-  if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
+  // “差点/险些/差一点/几乎”描述的是未实际发生的近失事件，必须与 occurred 分开。
+  if (hasHealthClaim && /(?:差点|差一点|险些|险些就|几乎要|差点就)/.test(clause)) return 'near_miss';
 
-  const comparativeImprovement =
-    /(今天|现在|目前)/.test(clause) &&
-    /(没|没有|不再|不那么)/.test(clause) &&
-    /(像|那么|这么|那样|比)/.test(clause) &&
-    /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
-  if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
-  if (
-    /(今天|现在|目前)/.test(clause) &&
-    /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
-    tags.length > 0
-  ) {
-    return 'occurred';
+  // 反事实/条件/假设性表述，不描述已经发生的健康事件。
+  if (hasHealthClaim && /(?:如果|假如|假设|万一|要是|倘若|会不会|是不是因为|有没有可能|万一以后|怎么预防|怎么办才不会)/.test(clause)) {
+    return 'hypothetical';
   }
 
-  if (/(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause)) {
-    return 'negated';
+  // 否定表达的词可以出现在症状前后，避免只依赖固定的“没+症状”短距离模式。
+  const negation = /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|不再|不怎么|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到|否认)/.test(clause);
+  if (hasHealthClaim && negation) {
+    // “不再喘”“今天没那么喘”是对当前状态的实际描述，不能误判成否定事实。
+    const improvement = /(?:不再|不怎么|没那么|没有那么|没有以前那么|比之前)/.test(clause) && /(?:喘|胸闷|疼|痛|头晕|肿|失眠|起夜|心慌|漏服|血压|心率|体重|睡)/.test(clause);
+    if (!improvement) return 'negated';
   }
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) return 'uncertain';
+
+  // 不确定的自我感受/听说/猜测不应变成确定的 occurred。
+  if (hasHealthClaim && /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/.test(clause)) return 'uncertain';
+
   return 'occurred';
 }
 
@@ -181,7 +178,7 @@ export function understandElderInput(
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
     const time = resolveTime(clause, today);
     const status = statusFromText(clause, tags, hasHealthValue);
-    const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
+    const deathReported = /(?:去世|过世|死了|死亡|没了)/.test(clause);
 
     if (deathReported) {
       claims.push({
