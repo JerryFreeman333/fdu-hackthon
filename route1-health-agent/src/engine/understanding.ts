@@ -115,6 +115,63 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   return 'self';
 }
 
+function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
+  if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
+  if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
+
+  const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
+  const hasYesterday = /(昨天|昨日)/.test(clause);
+  const currentComparison =
+    hasToday &&
+    hasYesterday &&
+    /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
+
+  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
+  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+
+  return { scope: 'today', eventDate: today };
+}
+
+function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
+  const semanticSymptomLanguage =
+    /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
+      clause,
+    );
+
+  if (
+    /(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) &&
+    (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
+  )
+    return 'hypothetical';
+  if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause))
+    return 'occurred';
+  if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
+
+  const comparativeImprovement =
+    /(今天|现在|目前)/.test(clause) &&
+    /(没|没有|不再|不那么)/.test(clause) &&
+    /(像|那么|这么|那样|比)/.test(clause) &&
+    /(喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(clause);
+  if (comparativeImprovement && (tags.length > 0 || hasHealthValue)) return 'occurred';
+  if (
+    /(今天|现在|目前)/.test(clause) &&
+    /(好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause) &&
+    tags.length > 0
+  )
+    return 'occurred';
+
+  if (
+    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
+      clause,
+    )
+  )
+    return 'negated';
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue || semanticSymptomLanguage))
+    return 'uncertain';
+  return 'occurred';
+}
+
 /**
  * 跨轮主体记忆只允许继承“最近一轮 + 健康语义明确 + 唯一家庭主体”这一最小安全条件。
  *
