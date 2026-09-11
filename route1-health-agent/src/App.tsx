@@ -90,9 +90,6 @@ export default function App() {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-    claimOneTimeShares,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
@@ -159,17 +156,6 @@ export default function App() {
     for (const finding of newFamilyRelevantFindings) promptedFamilyFindingIdsRef.current.add(finding.id);
     promptFamilyShare();
   }, [familySharing, findings, promptFamilyShare]);
-
-  useEffect(() => {
-    if (role !== 'family' || familyLink?.status !== 'active') return;
-    const oneTimeFindingIds = familyNotifs
-      .filter((notification) => notification.oneTime)
-      .map((notification) => notification.finding.id);
-    const oneTimeFamilyEventIds = visibleFamilyFacts
-      .filter((event) => event.shareMode === 'one_time')
-      .map((event) => event.id);
-    void claimOneTimeShares(oneTimeFindingIds, oneTimeFamilyEventIds);
-  }, [role, familyLink?.status, familyNotifs, visibleFamilyFacts, claimOneTimeShares]);
 
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
@@ -292,8 +278,6 @@ export default function App() {
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}
-          onConsumeFindingShare={consumeSharedFindingIds}
-          onConsumeFamilyEventShare={consumeSharedFamilyEventIds}
           view={familyView}
         />
       </main>

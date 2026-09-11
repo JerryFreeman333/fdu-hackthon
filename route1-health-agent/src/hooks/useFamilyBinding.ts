@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
 import { formatLocalDate, TODAY } from '../data/demo';
 
@@ -31,6 +31,8 @@ interface UseFamilyBindingOptions {
  * Demo-only family authorization state.
  * Security-sensitive state deliberately lives in React memory and is not restored from localStorage.
  * Family binding, consent, invite codes, and one-time grants expire with the current browser session.
+ * One-time grants stay held for the whole session and are only cleared by revoke/reset:
+ * the family view must be able to show exactly what the elder was told was shared.
  */
 export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>('denied');
@@ -39,8 +41,6 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   const [issuedInviteCode, setIssuedInviteCode] = useState<string | null>(null);
   const [sharedFindingIds, setSharedFindingIds] = useState<string[]>([]);
   const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>([]);
-  const [claimedOneTimeFindingIds, setClaimedOneTimeFindingIds] = useState<string[]>([]);
-  const [claimedOneTimeFamilyEventIds, setClaimedOneTimeFamilyEventIds] = useState<string[]>([]);
 
   function updateFamilySharing(next: ElderProfile['familySharing']) {
     const updatedAt = localIsoTimestamp();
@@ -64,8 +64,6 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     setConsentUpdatedAt('');
     setSharedFindingIds([]);
     setSharedFamilyEventIds([]);
-    setClaimedOneTimeFindingIds([]);
-    setClaimedOneTimeFamilyEventIds([]);
   }
 
   function keepFamilyPrivate() {
@@ -117,48 +115,12 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
-  const claimOneTimeShares = useCallback(
-    async (candidateFindingIds: string[], candidateFamilyEventIds: string[]): Promise<void> => {
-      const findingCandidates = new Set(candidateFindingIds);
-      const eventCandidates = new Set(candidateFamilyEventIds);
-      const findingIds = sharedFindingIds.filter((id) => findingCandidates.has(id));
-      const familyEventIds = sharedFamilyEventIds.filter((id) => eventCandidates.has(id));
-      if (findingIds.length === 0 && familyEventIds.length === 0) return;
-
-      setSharedFindingIds((current) => current.filter((id) => !findingIds.includes(id)));
-      setSharedFamilyEventIds((current) => current.filter((id) => !familyEventIds.includes(id)));
-      setClaimedOneTimeFindingIds((current) =>
-        [...new Set([...current, ...findingIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-      );
-      setClaimedOneTimeFamilyEventIds((current) =>
-        [...new Set([...current, ...familyEventIds])].slice(-MAX_PENDING_ONE_TIME_IDS),
-      );
-    },
-    [sharedFindingIds, sharedFamilyEventIds],
-  );
-
-  const consumeSharedFindingIds = useCallback(
-    (findingIds: string[]) => {
-      void claimOneTimeShares(findingIds, []);
-    },
-    [claimOneTimeShares],
-  );
-
-  const consumeSharedFamilyEventIds = useCallback(
-    (familyEventIds: string[]) => {
-      void claimOneTimeShares([], familyEventIds);
-    },
-    [claimOneTimeShares],
-  );
-
   return {
     familySharing,
     consentUpdatedAt,
     familyLink,
     sharedFindingIds,
     sharedFamilyEventIds,
-    claimedOneTimeFindingIds,
-    claimedOneTimeFamilyEventIds,
     promptFamilyShare,
     requestFamilyShare,
     keepFamilyPrivate,
@@ -167,8 +129,5 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-    claimOneTimeShares,
-    consumeSharedFindingIds,
-    consumeSharedFamilyEventIds,
   };
 }
