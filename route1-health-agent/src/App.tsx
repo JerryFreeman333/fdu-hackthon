@@ -126,7 +126,7 @@ export default function App() {
     setFamilyEvents,
     setChat,
     showToast,
-    onMedicationMissed: ensureMedicationCheck,
+    onMedicationMissed: () => ensureMedicationCheck(profile.medications),
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
@@ -142,6 +142,11 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    // 开应用就生成今天的"💊 今天的药"任务；老人不用等 chat 触发。
+    ensureMedicationCheck(profile.medications);
+  }, [profile.medications, ensureMedicationCheck]);
 
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });

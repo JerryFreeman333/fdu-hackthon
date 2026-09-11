@@ -54,22 +54,25 @@ export function useCareTasks({ findings }: UseCareTasksOptions) {
     setTasks((current) => current.map((task) => (task.id === taskId ? updateTaskStatus(task, status) : task)));
   }
 
-  function ensureMedicationCheck(createdAt: string) {
+  function ensureMedicationCheck(medications: string[], createdAt?: string) {
     setTasks((current) => {
       if (
         current.some((task) => task.kind === 'medication_check' && task.dueDate === TODAY && task.status === 'pending')
       ) {
         return current;
       }
+      const medList = medications.length
+        ? medications.map((m) => `• ${m}`).join('\n')
+        : '• （暂无录入的药物）';
       return [
         ...current,
         {
           id: `task-medication-${TODAY}`,
-          title: '确认今天是否按原来的医生方案服药',
-          description: '不要自行加倍或调整药量，只确认并按原方案处理。',
+          title: '💊 今天的药',
+          description: `${medList}\n\n按原来的医生方案服用；不要自行加倍或调整药量。`,
           dueDate: TODAY,
           status: 'pending',
-          createdAt,
+          createdAt: createdAt ?? `${TODAY}T08:00:00`,
           kind: 'medication_check',
         },
       ];
