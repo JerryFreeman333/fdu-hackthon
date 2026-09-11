@@ -187,7 +187,7 @@ export function understandElderInput(
       lastTags.length > 0;
     const tags =
       explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : [];
-    const hasHealthValue =
+    const hasHealthValue: boolean =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
     const time = resolveTime(clause, today);
