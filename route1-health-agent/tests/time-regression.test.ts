@@ -9,7 +9,6 @@ const relativePastCases = [
   ['我大前天胸闷', '2026-09-07'],
   ['我三天前胸闷', '2026-09-07'],
   ['我3天前胸闷', '2026-09-07'],
-  ['我过去两天胸闷', '2026-09-08'],
 ] as const;
 
 for (const [text, expectedDate] of relativePastCases) {
@@ -23,8 +22,16 @@ for (const [text, expectedDate] of relativePastCases) {
   });
 }
 
-test('current comparison still stays on today', () => {
-  const input = understandElderInput('今天比昨天好多了', TODAY);
+test('vague multi-day wording does not invent an exact event date', () => {
+  const input = understandElderInput('我过去两天胸闷', TODAY);
+  assert.equal(input.claims.length, 1);
+  assert.equal(input.claims[0]?.timeScope, 'historical');
+  assert.equal(input.claims[0]?.eventDate, null);
+  assert.equal(acceptedSelfClaims(input).length, 0, '没有精确日期时不应进入已确认本人事件流');
+});
+
+test('current comparison with a health fact still stays on today', () => {
+  const input = understandElderInput('我今天比昨天喘得好多了', TODAY);
   assert.equal(input.claims[0]?.timeScope, 'today');
   assert.equal(input.claims[0]?.eventDate, TODAY);
 });
