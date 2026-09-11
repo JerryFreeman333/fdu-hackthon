@@ -132,14 +132,16 @@ export const redFlagSymptomRule: DetectionRule = {
   },
 };
 
-function peakTodayMetric(context: DetectionContext, metric: 'spo2' | 'restingHr' | 'bloodGlucose'): number | undefined {
+/** 当日该指标的全部读数范围。低方向（低血糖/心动过缓）看 min，高方向看 max，互不掩盖。 */
+function todayMetricExtremes(
+  context: DetectionContext,
+  metric: 'spo2' | 'restingHr' | 'bloodGlucose',
+): { min: number; max: number } | undefined {
   const values = context.measurements
     .filter((m) => m.metric === metric && m.timestamp.slice(0, 10) === context.today)
     .map((m) => m.value);
   if (values.length === 0) return undefined;
-  // spo2 取最小, 其余取最大 (higherIsBad)
-  if (metric === 'spo2') return Math.min(...values);
-  return Math.max(...values);
+  return { min: Math.min(...values), max: Math.max(...values) };
 }
 
 function familyEligibleMeasurements(context: DetectionContext, metric: 'spo2' | 'restingHr' | 'bloodGlucose'): boolean {
@@ -151,10 +153,10 @@ function familyEligibleMeasurements(context: DetectionContext, metric: 'spo2' | 
 export const spo2SafetyRule: DetectionRule = {
   id: 'safety.spo2.low',
   evaluate(context) {
-    const peak = peakTodayMetric(context, 'spo2');
-    if (peak === undefined) return null;
-    const urgent = peak < 88;
-    const alert = peak < 92;
+    const lowest = todayMetricExtremes(context, 'spo2')?.min;
+    if (lowest === undefined) return null;
+    const urgent = lowest < 88;
+    const alert = lowest < 92;
     if (!alert) return null;
     const dyspnea = hadTag(context.observations, 'dyspnea', context.today, 1);
     const shareable =
@@ -167,7 +169,7 @@ export const spo2SafetyRule: DetectionRule = {
         ? '血氧低到危险水平。请立即坐下、不要独自活动；如伴呼吸困难、胸痛、嘴唇发紫或意识变化，立即寻求急救。'
         : '血氧低于个人平时。按设备说明复测一次，保持手部温暖；如持续走低或伴呼吸困难，及时联系医疗人员。',
       evidence: [
-        `今日最低血氧 ${peak} %`,
+        `今日最低血氧 ${lowest} %`,
         ...(dyspnea && dyspnea.visibility !== 'private' ? [`今日呼吸不适：${tagText(dyspnea)}`] : []),
       ],
       familyMessage: shareable
@@ -189,44 +191,63 @@ export const spo2SafetyRule: DetectionRule = {
 export const heartRateSafetyRule: DetectionRule = {
   id: 'safety.heart_rate.extreme',
   evaluate(context) {
-    const peak = peakTodayMetric(context, 'restingHr');
-    if (peak === undefined) return null;
-    const tachyExtreme = peak >= 140;
-    const tachyAlert = peak >= 120;
-    const bradyExtreme = peak <= 40;
-    const bradyAlert = peak <= 50;
+    const extremes = todayMetricExtremes(context, 'restingHr');
+    if (!extremes) return null;
+    const fastest = extremes.max;
+    const slowest = extremes.min;
+    // 快/慢两个方向分别对照当日最高/最低读数，避免一次正常读数掩盖同日的心动过缓。
+    const tachyExtreme = fastest >= 140;
+    const tachyAlert = fastest >= 120;
+    const bradyExtreme = slowest <= 40;
+    const bradyAlert = slowest <= 50;
     if (!(tachyAlert || bradyAlert)) return null;
     const chestPain = hadTag(context.observations, 'chestPain', context.today, 1);
     const dizziness = hadTag(context.observations, 'dizziness', context.today, 1);
     const danger = chestPain ?? dizziness;
     const urgent = tachyExtreme || bradyExtreme || danger !== null;
     const shareable = familyEligibleMeasurements(context, 'restingHr') && (!danger || danger.visibility !== 'private');
-    const dir = tachyAlert ? 'fast' : 'slow';
+    const dir = tachyAlert && bradyAlert ? 'both' : tachyAlert ? 'fast' : 'slow';
+    const rangeText =
+      slowest === fastest
+        ? `${slowest}`
+        : dir === 'both'
+          ? `最低 ${slowest}、最高 ${fastest}`
+          : dir === 'fast'
+            ? `最高 ${fastest}`
+            : `最低 ${slowest}`;
     return addFinding(context.findings, {
       date: context.today,
       severity: urgent ? 'urgent' : 'alert',
       title: urgent
         ? dir === 'fast'
           ? '静息心率极快，需要立即确认'
-          : '静息心率极慢，需要立即确认'
+          : dir === 'slow'
+            ? '静息心率极慢，需要立即确认'
+            : '静息心率快慢波动大，需要立即确认'
         : dir === 'fast'
           ? '静息心率偏快，建议复测'
-          : '静息心率偏慢，建议复测',
+          : dir === 'slow'
+            ? '静息心率偏慢，建议复测'
+            : '静息心率快慢波动大，建议复测',
       detail: urgent
         ? dir === 'fast'
           ? '安静时心跳过快，伴胸痛、头晕或明显不舒服时不要硬撑，立即联系老人并按急救路径处理。'
-          : '安静时心跳过慢，伴头晕、意识模糊或站不稳时立即寻求帮助。'
-        : '按设备说明复测一次；持续异常或伴不舒服时及时联系医疗人员。',
+          : dir === 'slow'
+            ? '安静时心跳过慢，伴头晕、意识模糊或站不稳时立即寻求帮助。'
+            : '安静时心率快慢波动明显，伴胸痛、头晕或站不稳时不要硬撑，立即联系老人并按急救路径处理。'
+        : dir === 'both'
+          ? '今天同时记录到偏快和偏慢的心率。按设备说明规范复测并记下时间；持续波动或伴不舒服时及时联系医疗人员。'
+          : '按设备说明复测一次；持续异常或伴不舒服时及时联系医疗人员。',
       evidence: [
-        `今日心率峰值 ${peak} bpm`,
+        `今日心率 ${rangeText} bpm`,
         ...(danger && danger.visibility !== 'private'
           ? [`今日${danger.tags.includes('chestPain') ? '胸痛' : '头晕'}：${tagText(danger)}`]
           : []),
       ],
       familyMessage: shareable
         ? urgent
-          ? `【紧急】${context.today}：老人今日心率${dir === 'fast' ? '过快' : '过慢'}（峰值 ${peak} bpm），请立即联系老人确认情况。`
-          : `【请关注】${context.today}：老人今日心率${dir === 'fast' ? '持续偏快' : '持续偏慢'}（峰值 ${peak} bpm），请帮助复测。`
+          ? `【紧急】${context.today}：老人今日心率${dir === 'fast' ? '过快' : dir === 'slow' ? '过慢' : '快慢波动明显'}（${rangeText} bpm），请立即联系老人确认情况。`
+          : `【请关注】${context.today}：老人今日心率${dir === 'fast' ? '持续偏快' : dir === 'slow' ? '持续偏慢' : '快慢波动明显'}（${rangeText} bpm），请帮助复测。`
         : undefined,
       carePath: urgent
         ? '立即联系老人；伴胸痛、严重头晕或意识变化时立即拨打当地急救电话。'
@@ -242,43 +263,66 @@ export const heartRateSafetyRule: DetectionRule = {
 export const glucoseSafetyRule: DetectionRule = {
   id: 'safety.blood_glucose.extreme',
   evaluate(context) {
-    const peak = peakTodayMetric(context, 'bloodGlucose');
-    if (peak === undefined) return null;
-    // 低血糖优先 (危险): < 3.5 紧急, < 3.9 alert; 高血糖: > 16.7 紧急, > 13.9 alert
-    const lowUrgent = peak < 3.5;
-    const lowAlert = peak < 3.9;
-    const highUrgent = peak > 16.7;
-    const highAlert = peak > 13.9;
+    const extremes = todayMetricExtremes(context, 'bloodGlucose');
+    if (!extremes) return null;
+    const lowest = extremes.min;
+    const highest = extremes.max;
+    // 低血糖优先 (危险): 最低 < 3.5 紧急, < 3.9 alert; 高血糖: 最高 > 16.7 紧急, > 13.9 alert。
+    // 低/高两个方向分别对照当日最低/最高读数，避免正常读数掩盖同日的低血糖危险值。
+    const lowUrgent = lowest < 3.5;
+    const lowAlert = lowest < 3.9;
+    const highUrgent = highest > 16.7;
+    const highAlert = highest > 13.9;
     if (!(lowAlert || highAlert)) return null;
     const urgent = lowUrgent || highUrgent;
     const shareable = familyEligibleMeasurements(context, 'bloodGlucose');
-    const dir = lowAlert ? 'low' : 'high';
+    const dir = lowAlert && highAlert ? 'both' : lowAlert ? 'low' : 'high';
+    const rangeText =
+      lowest === highest
+        ? `${lowest}`
+        : dir === 'both'
+          ? `最低 ${lowest}、最高 ${highest}`
+          : dir === 'low'
+            ? `最低 ${lowest}`
+            : `最高 ${highest}`;
     return addFinding(context.findings, {
       date: context.today,
       severity: urgent ? 'urgent' : 'alert',
       title: urgent
         ? dir === 'low'
           ? '血糖极低，需要立即处理'
-          : '血糖明显偏高，需要立即确认'
+          : dir === 'high'
+            ? '血糖明显偏高，需要立即确认'
+            : '血糖波动异常，需要立即处理'
         : dir === 'low'
           ? '血糖偏低，按低血糖路径处理'
-          : '血糖偏高，建议复测并联系医生',
+          : dir === 'high'
+            ? '血糖偏高，建议复测并联系医生'
+            : '血糖波动异常，建议复测并记录',
       detail: urgent
         ? dir === 'low'
           ? '低血糖可快速进展为意识模糊。请立即按医生方案补糖，15 分钟内复测；如出现意识变化、抽搐，立即寻求急救。'
-          : '血糖明显偏高并伴口渴、乏力或意识变化时不要硬扛，立即联系医疗人员。'
+          : dir === 'high'
+            ? '血糖明显偏高并伴口渴、乏力或意识变化时不要硬扛，立即联系医疗人员。'
+            : '今天同时出现低血糖和明显偏高的读数。请先按医生方案处理低血糖，15 分钟内复测；如出现意识变化、抽搐，立即寻求急救，并尽快联系医生核对测量与用药。'
         : dir === 'low'
           ? '按低血糖路径补糖，15 分钟后再测一次，避免空腹剧烈活动；反复出现及时联系医生。'
-          : '复测一次确认测量时间和是否空腹；持续偏高或伴不舒服时及时联系医生。',
-      evidence: [`今日血糖 ${peak} mmol/L`],
+          : dir === 'high'
+            ? '复测一次确认测量时间和是否空腹；持续偏高或伴不舒服时及时联系医生。'
+            : '今天同时记录到偏低和偏高的血糖。请规范复测并记下测量时间与是否空腹；波动持续或伴不舒服时及时联系医生。',
+      evidence: [`今日血糖 ${rangeText} mmol/L`],
       familyMessage: shareable
         ? urgent
-          ? `【紧急】${context.today}：老人今日血糖读数${dir === 'low' ? '过低' : '明显偏高'}（${peak} mmol/L），请立即联系老人按医生方案处理。`
-          : `【请关注】${context.today}：老人今日血糖${dir === 'low' ? '偏低' : '偏高'}（${peak} mmol/L），请帮助复测并按医生方案处理。`
+          ? `【紧急】${context.today}：老人今日血糖${dir === 'low' ? '过低' : dir === 'high' ? '明显偏高' : '同时过低和明显偏高'}（${rangeText} mmol/L），请立即联系老人按医生方案处理。`
+          : `【请关注】${context.today}：老人今日血糖${dir === 'low' ? '偏低' : dir === 'high' ? '偏高' : '同时偏低和偏高'}（${rangeText} mmol/L），请帮助复测并按医生方案处理。`
         : undefined,
       carePath: urgent
-        ? '立即联系老人按医生方案处理；如出现意识变化、抽搐或严重不适，立即拨打当地急救电话。'
-        : '复测一次确认测量时间和是否空腹；持续异常或伴不舒服时及时联系医疗人员。',
+        ? dir === 'both'
+          ? '立即联系老人按医生方案处理并先排除低血糖；如出现意识变化、抽搐或严重不适，立即拨打当地急救电话。'
+          : '立即联系老人按医生方案处理；如出现意识变化、抽搐或严重不适，立即拨打当地急救电话。'
+        : dir === 'both'
+          ? '规范复测并记录测量时间和是否空腹；持续波动或伴不舒服时及时联系医疗人员。'
+          : '复测一次确认测量时间和是否空腹；持续异常或伴不舒服时及时联系医疗人员。',
       ruleId: 'safety.blood_glucose.extreme',
       score: urgent ? 5 : 4,
       signalKeys: ['bloodGlucose'],
