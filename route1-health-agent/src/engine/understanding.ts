@@ -43,8 +43,7 @@ const SELF_EXPLICIT = [
 const PERCEPTION = /(?:觉得|看他|看她|看见|看到|发现|听见|听到|说他|说她|说他们|说她们)/;
 const UNCERTAIN_WORDS = /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/;
 const HYPOTHETICAL_WORDS = /(?:如果|假如|假设|万一|要是|倘若|会不会|怎么预防|怎么办才不会|有没有可能)/;
-const NEGATION_WORDS =
-  /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
+const NEGATION_WORDS = /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
 const NEAR_MISS_WORDS = /(?:差点|差一点|险些|险些就|几乎要|差点就)/;
 
 function explicitFamilySubjects(text: string): ElderSubject[] {
@@ -52,8 +51,7 @@ function explicitFamilySubjects(text: string): ElderSubject[] {
 }
 
 function hasExplicitSelf(text: string): boolean {
-  const familyTokens =
-    /(?:我爸|我妈|我父亲|我母亲|我老公|我丈夫|我爱人|我老伴|我儿子|我女儿|我哥哥|我弟弟|我姐姐|我妹妹|我爷爷|我奶奶|我外公|我外婆|我家人|我家里人)/g;
+  const familyTokens = /(?:我爸|我妈|我父亲|我母亲|我老公|我丈夫|我爱人|我老伴|我儿子|我女儿|我哥哥|我弟弟|我姐姐|我妹妹|我爷爷|我奶奶|我外公|我外婆|我家人|我家里人)/g;
   const withoutFamily = text.replace(familyTokens, '');
   return SELF_EXPLICIT.some((pattern) => pattern.test(withoutFamily));
 }
@@ -103,10 +101,7 @@ function statusFromText(text: string, tags: SymptomTag[], hasHealthValue: boolea
 
 function recentFamilySubjects(messages: ChatMessage[]): ElderSubject[] {
   const result: ElderSubject[] = [];
-  for (const message of [...messages]
-    .reverse()
-    .filter((item) => item.role === 'elder')
-    .slice(0, 4)) {
+  for (const message of [...messages].reverse().filter((item) => item.role === 'elder').slice(0, 4)) {
     for (const unit of splitNaturalLanguageTexts(message.text)) {
       const family = explicitFamilySubjects(unit);
       if (family.length === 1) result.push(family[0]);
@@ -116,16 +111,10 @@ function recentFamilySubjects(messages: ChatMessage[]): ElderSubject[] {
 }
 
 function isPureReassurance(text: string, tags: SymptomTag[], hasHealthValue: boolean): boolean {
-  return (
-    tags.length === 0 && !hasHealthValue && /(?:没事|没什么事|没啥事|挺好的|好多了|好多了吧|放心吧|不用担心)/.test(text)
-  );
+  return tags.length === 0 && !hasHealthValue && /(?:没事|没什么事|没啥事|挺好的|好多了|好多了吧|放心吧|不用担心)/.test(text);
 }
 
-export function understandElderInput(
-  text: string,
-  today: string,
-  recentMessages: ChatMessage[] = [],
-): StructuredElderInput {
+export function understandElderInput(text: string, today: string, recentMessages: ChatMessage[] = []): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
   const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
@@ -157,7 +146,7 @@ export function understandElderInput(
     const omittedParallel = explicitTags.length === 0 && /^(?:我|我自己|本人)也/.test(unit) && lastTags.length > 0;
 
     const tags = explicitTags.length > 0 ? explicitTags : omittedComparison || omittedParallel ? lastTags : [];
-    const hasHealthValue =
+    const hasHealthValue: boolean =
       explicitHealthValue || (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
     const time = resolveTime(unit, today);
     const status = statusFromText(unit, tags, hasHealthValue);
@@ -176,22 +165,8 @@ export function understandElderInput(
         hasHealthValue,
         outcome: 'death_reported',
       });
-    } else if (
-      subject === 'unknown' ||
-      tags.length > 0 ||
-      hasHealthValue ||
-      subject !== 'self' ||
-      status !== 'occurred'
-    ) {
-      claims.push({
-        text: unit,
-        subject,
-        status,
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-      });
+    } else if (subject === 'unknown' || tags.length > 0 || hasHealthValue || subject !== 'self' || status !== 'occurred') {
+      claims.push({ text: unit, subject, status, timeScope: time.scope, eventDate: time.eventDate, tags, hasHealthValue });
     }
 
     if (subject !== 'self' && subject !== 'unknown') seenSubjects.push(subject);
@@ -213,9 +188,7 @@ export function understandElderInput(
     };
   }
 
-  const clarification = claims.some(
-    (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
-  )
+  const clarification = claims.some((claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue))
     ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录。'
     : undefined;
 
