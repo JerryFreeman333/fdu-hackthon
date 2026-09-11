@@ -173,35 +173,35 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
 }
 
 /**
- * 跨轮主体记忆只允许继承“最近一轮 + 健康语义明确 + 唯一家庭主体”这一最小安全条件。
- *
- * 不能把几轮以前提过的爸爸/妈妈继续当作当前“他/她”的默认指代，也不能把同一轮中
- * 的多个家庭成员压缩成一个主体。失败时返回空上下文，让本轮代词进入 clarification。
+ * 跨轮主体记忆只允许继承“近期健康主体唯一 + 明确语义”这一最小安全条件。
+ * 最近几轮中只要出现两个不同的健康事实主体，就不再猜测当前“他/她”指谁。
+ * 未解析的历史代词不建立新的主体锚点；它也不会覆盖已经明确的主体。
  */
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
-  const latestElderMessage = [...messages].reverse().find((message) => message.role === 'elder');
-  if (!latestElderMessage) return [];
+  const elderMessages = [...messages]
+    .reverse()
+    .filter((message) => message.role === 'elder')
+    .slice(0, 4);
 
-  const establishedSubjects = splitClauses(latestElderMessage.text).map((clause) => {
-    const parsed = parseElderInput(clause);
-    const hasHealthValue = extractHealthValues(clause).length > 0;
-    const hasHealthSemantic = parsed.tags.length > 0 || hasHealthValue;
-    return {
-      subject: subjectFromText(clause, []),
-      hasHealthSemantic,
-    };
-  });
+  const establishedSubjects: ElderSubject[] = [];
+  let hasHealthSemantic = false;
 
-  if (!establishedSubjects.some((entry) => entry.hasHealthSemantic)) return [];
+  for (const message of elderMessages) {
+    for (const clause of splitClauses(message.text)) {
+      const parsed = parseElderInput(clause);
+      const hasHealthValue = extractHealthValues(clause).length > 0;
+      if (parsed.tags.length === 0 && !hasHealthValue) continue;
 
-  const uniqueSubjects: ElderSubject[] = [];
-  for (const entry of establishedSubjects) {
-    if (!uniqueSubjects.includes(entry.subject)) uniqueSubjects.push(entry.subject);
+      hasHealthSemantic = true;
+      const subject = subjectFromText(clause, []);
+      if (subject === 'unknown') continue;
+      if (!establishedSubjects.includes(subject)) establishedSubjects.push(subject);
+    }
   }
 
-  if (uniqueSubjects.length !== 1) return [];
-  const subject: ElderSubject = uniqueSubjects[0]!;
-  if (subject === 'self' || subject === 'unknown') return [];
+  if (!hasHealthSemantic || establishedSubjects.length !== 1) return [];
+  const [subject] = establishedSubjects;
+  if (!subject || subject === 'self' || subject === 'unknown') return [];
   return [subject];
 }
 
