@@ -55,12 +55,7 @@ function splitClauses(text: string): string[] {
 
   return implicitBoundary
     .split(/[。！？!?；;,，\n]+|§CLAUSE§+/)
-    .map((clause) =>
-      clause
-        .replace(/§NUM§/g, ',')
-        .replace(/§KEEP§/g, ',')
-        .trim(),
-    )
+    .map((clause) => clause.replace(/§NUM§/g, ',').replace(/§KEEP§/g, ',').trim())
     .filter(Boolean);
 }
 
@@ -201,12 +196,10 @@ export function understandElderInput(
 
   const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
   const hasExplicitFamilyRefusal =
-    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
-      trimmed,
-    ) ||
+    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(trimmed) ||
     /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(trimmed) ||
     /不想让.{0,3}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见|知道这件事)/.test(trimmed);
-  if (hasExplicitFamilyShare && hasExplicitFamilyRefusal) {
+  if (hasExplicitFamilyShare && hasExplicitFamilyRefusal && parsePrivacyIntent(trimmed) === 'private') {
     return {
       claims: [],
       recallRequested,
@@ -263,8 +256,6 @@ export function understandElderInput(
       continue;
     }
 
-    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
-    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
     if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
       claims.push({
         text: clause,
