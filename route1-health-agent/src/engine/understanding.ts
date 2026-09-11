@@ -471,13 +471,14 @@ export function understandElderInput(
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
     const rawTime = timeFromText(clause, today);
-    const inheritsPreviousTime =
+    const inheritsPreviousTime: boolean =
       !hasExplicitTime(clause) &&
       lastTime !== null &&
       claims.length > 0 &&
       claims[claims.length - 1]?.subject === subject &&
       (explicitTags.length > 0 || hasExplicitHealthValue);
-    const time = inheritsPreviousTime ? lastTime : rawTime;
+    const time: { scope: TimeScope; eventDate: string | null } =
+      inheritsPreviousTime && lastTime ? lastTime : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
 
