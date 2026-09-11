@@ -69,7 +69,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return 'unknown';
+    return 'family_other';
   }
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
