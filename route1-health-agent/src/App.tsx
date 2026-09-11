@@ -18,6 +18,10 @@ import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { healthRecordStore } from './store/LocalHealthRecordStore';
+import { useNotificationDispatch } from './hooks/useNotificationDispatch';
+import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
+import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
+import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
 import ElderHome from './components/ElderHome';
 import FamilyDashboard from './components/FamilyDashboard';
 import ProfileView from './components/ProfileView';
@@ -115,6 +119,69 @@ export default function App() {
     () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
     [findings, familySharing, sharedFindingIds],
   );
+  // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
+  // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
+  const todaySignalCount = useMemo(
+    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(TODAY)).length,
+    [events],
+  );
+  // 派发引擎只关心"是否真的送出去了"，UI 列表继续走 familyNotifs；
+  // 二者共享 collectFamilyNotifications 的判定，但派发有台账和确认闭环。
+  // 跨设备协同：仅当家里某个角色端存在可用邀请码时才打开 PeerJS；
+  // 角色端未选择或邀请码还没生成时退化为仅同浏览器 tab 协同。
+  const sync = useCrossDeviceSync({
+    role,
+    peerId: familyLink?.inviteCode ?? null,
+    endpoint: role === 'elder' ? 'host' : role === 'family' ? 'guest' : 'none',
+  });
+  const {
+    records: dispatchRecords,
+    acknowledge: acknowledgeDispatch,
+    mergeRecord,
+    mergeAcknowledge,
+  } = useNotificationDispatch({
+    findings,
+    familySharing,
+    familyLink,
+  });
+
+  // 把本地派发台账的变更广播给其它 tab，让"老人端"和"家属端"在同一浏览器内
+  // 互相能看到对方的动作。这是真跨设备同步上线前最诚实的演示形态：
+  // 至少不是切同一个 useState。
+  useEffect(() => {
+    const unsubscribe = sync.subscribe((envelope: CrossTabMessageEnvelope) => {
+      if (envelope.type === 'dispatch.acknowledge') {
+        const payload = envelope.payload as { findingId: string };
+        mergeAcknowledge(payload.findingId);
+      } else if (envelope.type === 'dispatch.append') {
+        const record = envelope.payload as import('./engine/notify').FamilyNotificationRecord;
+        mergeRecord(record);
+      }
+    });
+    return unsubscribe;
+  }, [sync, mergeAcknowledge, mergeRecord]);
+
+  // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
+  const handleAcknowledge = useCallback(
+    (findingId: string) => {
+      acknowledgeDispatch(findingId);
+      sync.broadcast('dispatch.acknowledge', { findingId });
+    },
+    [acknowledgeDispatch, sync],
+  );
+
+  // 把本地新派发的台账广播给其它 tab：另一 tab 的 findings 签名未变，
+  // 不会重跑派发引擎，所以不会重复触发系统通知，只接收并合并台账。
+  const lastBroadcastRecordIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(dispatchRecords.map((record) => record.findingId));
+    for (const record of dispatchRecords) {
+      if (!lastBroadcastRecordIdsRef.current.has(record.findingId)) {
+        sync.broadcast('dispatch.append', record);
+      }
+    }
+    lastBroadcastRecordIdsRef.current = currentIds;
+  }, [dispatchRecords, sync]);
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
   const {
     handleElderSend,
@@ -188,6 +255,14 @@ export default function App() {
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
   }
+
+  // 家属首次进入 dashboard 时主动请求系统通知权限，
+  // 这一刀是“行动闭环”离开页面的入口；用户拒接也能继续用，仅送达状态会标记为 unavailable。
+  useEffect(() => {
+    if (role !== 'family') return;
+    if (pushPermission() !== 'default') return;
+    void requestPushPermission();
+  }, [role]);
 
   function resetRole() {
     setRole(null);
@@ -264,6 +339,7 @@ export default function App() {
             onKeepFamilyPrivate={keepFamilyPrivate}
             onRevokeFamilyShare={revokeFamilyShare}
             onGenerateInvite={generateInvite}
+            syncStatus={sync.status}
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
@@ -298,6 +374,8 @@ export default function App() {
           profile={activeProfile}
           familyLink={familyLink}
           notifications={familyNotifs}
+          dispatchRecords={dispatchRecords}
+          onAcknowledgeDispatch={handleAcknowledge}
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
@@ -314,6 +392,9 @@ export default function App() {
           onConsumeFindingShare={consumeSharedFindingIds}
           onConsumeFamilyEventShare={consumeSharedFamilyEventIds}
           view={familyView}
+          syncStatus={sync.status}
+          tabId={sync.tabId}
+          todaySignalCount={todaySignalCount}
         />
       </main>
       {toast && <div className="toast">{toast}</div>}

@@ -25,6 +25,7 @@ interface ElderHomeProps {
   onKeepFamilyPrivate: () => void;
   onRevokeFamilyShare: () => void;
   onGenerateInvite: () => void;
+  syncStatus?: import('../hooks/useCrossDeviceSync').CrossDeviceStatus;
 }
 
 export default function ElderHome({
@@ -46,6 +47,7 @@ export default function ElderHome({
   onKeepFamilyPrivate,
   onRevokeFamilyShare,
   onGenerateInvite,
+  syncStatus,
 }: ElderHomeProps) {
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
@@ -271,9 +273,19 @@ export default function ElderHome({
             )}
           </>
         ) : familyLink ? (
-          <p>
-            请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
-          </p>
+          <>
+            <p>
+              请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
+            </p>
+            {syncStatus && (
+              <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
+                {syncStatus.mode === 'cross-device' && '✅ 家属端已通过 P2P 连入，跨设备实时协同。'}
+                {syncStatus.mode === 'connecting' && '⏳ 等待家属端在另一台设备输入邀请码…'}
+                {syncStatus.mode === 'failed' && `⚠️ 跨设备连接失败：${syncStatus.detail}。当前仅同浏览器协同。`}
+                {syncStatus.mode === 'local-only' && '当前仅同浏览器 tab 协同。'}
+              </p>
+            )}
+          </>
         ) : (
           <button className="btn-primary" onClick={onGenerateInvite}>
             生成家属邀请码
