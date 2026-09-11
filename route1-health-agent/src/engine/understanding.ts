@@ -137,11 +137,14 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
 
   if (!establishedSubjects.some((entry) => entry.hasHealthSemantic)) return [];
 
-  const uniqueSubjects = [...new Set(establishedSubjects.map((entry) => entry.subject))];
-  if (uniqueSubjects.length !== 1) return [];
-  const subject = uniqueSubjects[0];
+  const uniqueSubjects: ElderSubject[] = [];
+  for (const entry of establishedSubjects) {
+    if (!uniqueSubjects.includes(entry.subject)) uniqueSubjects.push(entry.subject);
+  }
 
-  if (subject === undefined || subject === 'self' || subject === 'unknown') return [];
+  if (uniqueSubjects.length !== 1) return [];
+  const subject: ElderSubject = uniqueSubjects[0]!;
+  if (subject === 'self' || subject === 'unknown') return [];
   return [subject];
 }
 
