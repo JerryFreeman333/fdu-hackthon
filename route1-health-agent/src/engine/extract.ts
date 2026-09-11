@@ -139,8 +139,10 @@ function extractBloodPressure(text: string): ExtractedValue[] {
   const pair = text.match(new RegExp(String.raw`(?:血压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`));
   const fallbackPair = text.match(new RegExp(String.raw`(${NUMBER})\s*[/／,，、比]\s*(${NUMBER})`));
 
-  if (systolicDiastolicLabels) return buildBloodPressure(systolicDiastolicLabels[1], systolicDiastolicLabels[2], systolicDiastolicLabels[0]);
-  if (diastolicSystolicLabels) return buildBloodPressure(diastolicSystolicLabels[2], diastolicSystolicLabels[1], diastolicSystolicLabels[0]);
+  if (systolicDiastolicLabels)
+    return buildBloodPressure(systolicDiastolicLabels[1], systolicDiastolicLabels[2], systolicDiastolicLabels[0]);
+  if (diastolicSystolicLabels)
+    return buildBloodPressure(diastolicSystolicLabels[2], diastolicSystolicLabels[1], diastolicSystolicLabels[0]);
   if (highLow) return buildBloodPressure(highLow[1], highLow[2], highLow[0]);
   if (lowHigh) return buildBloodPressure(lowHigh[2], lowHigh[1], lowHigh[0]);
   if (pair) return buildBloodPressure(pair[1], pair[2], pair[0]);
