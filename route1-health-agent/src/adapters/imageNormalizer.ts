@@ -9,7 +9,13 @@
  *   - 血压只识别到收缩压 → 抛 ImageParserError('invalid_blood_pressure')
  *   - 体重出现明显异常值 → 抛 ImageParserError('invalid_weight')
  */
-import { ALLOWED_METRIC_KEYS, ImageParserError, type HealthVisionResult, type ImageParseContext, type ParsedHealthData } from './ImageHealthParser';
+import {
+  ALLOWED_METRIC_KEYS,
+  ImageParserError,
+  type HealthVisionResult,
+  type ImageParseContext,
+  type ParsedHealthData,
+} from './ImageHealthParser';
 import type { HealthMeasurement, LabResult, MetricKey, SymptomTag } from '../types';
 
 const METRIC_TO_UNIT_HINT: Record<MetricKey, string[]> = {

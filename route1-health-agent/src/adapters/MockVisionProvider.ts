@@ -7,11 +7,7 @@
  *
  * 设计目标：让 Real parser 的所有分支都能在本地无后端、无 API Key 的情况下被覆盖。
  */
-import type {
-  HealthVisionProvider,
-  HealthVisionResult,
-  VisionParseContext,
-} from './ImageHealthParser';
+import type { HealthVisionProvider, HealthVisionResult, VisionParseContext } from './ImageHealthParser';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,7 +17,10 @@ function cloneResult(result: HealthVisionResult): HealthVisionResult {
   return {
     kind: result.kind,
     measurements: result.measurements.map((item) => ({ ...item })),
-    labResults: result.labResults.map((item) => ({ ...item, referenceRange: item.referenceRange ? { ...item.referenceRange } : undefined })),
+    labResults: result.labResults.map((item) => ({
+      ...item,
+      referenceRange: item.referenceRange ? { ...item.referenceRange } : undefined,
+    })),
     rawText: result.rawText,
     confidence: result.confidence,
   };
