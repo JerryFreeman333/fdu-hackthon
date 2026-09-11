@@ -63,11 +63,11 @@ jobs:
           text = text[:start] + text[end:]
           p.write_text(text)
           PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/engine/understanding.ts .github/workflows/route1-ci.yml
-          git commit -m "style(route1): commit exact Prettier formatting for issue2"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+          git -C .. config user.name "github-actions[bot]"
+          git -C .. config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C .. add route1-health-agent/src/engine/understanding.ts .github/workflows/route1-ci.yml
+          git -C .. commit -m "style(route1): commit exact Prettier formatting for issue2"
+          git -C .. push origin "HEAD:${{ github.head_ref || github.ref_name }}"
       - name: Check formatting
         run: npm run format:check
       - name: Check blackbox syntax
