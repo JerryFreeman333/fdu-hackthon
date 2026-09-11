@@ -35,30 +35,42 @@ function parseChineseNumber(input: string): number | null {
 
   let total = 0;
   let current = 0;
-  let hasHundredOrThousand = false;
+  // 口语截断位：结尾数字补在最后一个 百/千/万 单位的下一位
+  //（“一百二”=120、“一千五”=1500、“一万二”=12000）。
+  let lastUnitMagnitude = 0;
+  // “一百零五”里的“零”是个位补零：结尾数字已是真实数值，不能再按口语截断放大。
+  let zeroAfterUnit = false;
   for (const ch of input) {
     if (ch === '十') {
       total += (current || 1) * 10;
       current = 0;
+      lastUnitMagnitude = 0;
+      zeroAfterUnit = false;
     } else if (ch === '百') {
       total += (current || 1) * 100;
       current = 0;
-      hasHundredOrThousand = true;
+      lastUnitMagnitude = 100;
+      zeroAfterUnit = false;
     } else if (ch === '千') {
       total += (current || 1) * 1000;
       current = 0;
-      hasHundredOrThousand = true;
+      lastUnitMagnitude = 1000;
+      zeroAfterUnit = false;
     } else if (ch === '万') {
       total = (total + current) * 10000;
       current = 0;
-      hasHundredOrThousand = true;
+      lastUnitMagnitude = 10000;
+      zeroAfterUnit = false;
     } else if (ch in DIGITS) {
+      if (DIGITS[ch] === 0 && lastUnitMagnitude > 0) zeroAfterUnit = true;
       current = DIGITS[ch];
     } else {
       return null;
     }
   }
-  if (hasHundredOrThousand && current > 0 && !input.includes('十')) return total + current * 10;
+  if (lastUnitMagnitude > 0 && current > 0 && !zeroAfterUnit) {
+    return total + current * (lastUnitMagnitude / 10);
+  }
   return total + current;
 }
 

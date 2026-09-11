@@ -50,6 +50,7 @@ async function main() {
     ['高压一百五，低压九十', 150, 90],
     ['血压一百五比九十', 150, 90],
     ['高压二百一十低压一百二十五', 210, 125],
+    ['血压一百零五比九十', 105, 90],
   ];
 
   for (const [text, systolic, diastolic] of pairCases) {
