@@ -11,8 +11,10 @@ function metaForMetric(metric: HealthMeasurement['metric']): Record<string, stri
   // 偏好源 = 老人最常戴的那个（Apple Watch）；只有手环类指标走手机
   const watchOnly = new Set(['restingHr', 'spo2', 'walkSpeed']);
   const phoneOnly = new Set(['steps', 'sleepHours', 'nightWakes']);
-  if (watchOnly.has(metric)) return { adapter: 'DemoDeviceAdapter', device: 'Apple Watch Series 9', sourceId: 'apple_watch_series_9' };
-  if (phoneOnly.has(metric)) return { adapter: 'DemoDeviceAdapter', device: 'iPhone 15', sourceId: 'iphone_motion_coprocessor' };
+  if (watchOnly.has(metric))
+    return { adapter: 'DemoDeviceAdapter', device: 'Apple Watch Series 9', sourceId: 'apple_watch_series_9' };
+  if (phoneOnly.has(metric))
+    return { adapter: 'DemoDeviceAdapter', device: 'iPhone 15', sourceId: 'iphone_motion_coprocessor' };
   return { adapter: 'DemoDeviceAdapter', device: 'iPhone 15 + Apple Watch Series 9', sourceId: 'combined' };
 }
 export const demoDeviceAdapter: DeviceAdapter = {
@@ -21,18 +23,20 @@ export const demoDeviceAdapter: DeviceAdapter = {
     return records
       .filter((record) => record.date >= from && record.date <= to)
       .flatMap((record) =>
-        Object.entries(record.metrics).map(([metric, value]) => {
-          const key = metric as HealthMeasurement['metric'];
-          return {
-            id: `demo-device-${record.date}-${metric}`,
-            timestamp: `${record.date}T12:00:00`,
-            metric: key,
-            value: value as number,
-            unit: METRICS[key].unit,
-            source: 'demo' as const,
-            metadata: metaForMetric(metric),
-          };
-        }),
+        (Object.keys(record.metrics) as HealthMeasurement['metric'][])
+          .filter((metric) => metric in METRICS)
+          .map((metric) => {
+            const value = record.metrics[metric] as number;
+            return {
+              id: `demo-device-${record.date}-${metric}`,
+              timestamp: `${record.date}T12:00:00`,
+              metric,
+              value,
+              unit: METRICS[metric].unit,
+              source: 'demo' as const,
+              metadata: metaForMetric(metric),
+            };
+          }),
       );
   },
 };

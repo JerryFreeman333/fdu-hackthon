@@ -155,3 +155,59 @@ test('corpus: 血压150/90，我爸的是180/110', () => {
   assert.ok(values.some((v) => v.metric === 'systolic' && v.value === 180));
   assert.ok(values.some((v) => v.metric === 'diastolic' && v.value === 110));
 });
+
+// === Issue ⑦ regression: pronoun inheritance must skip co-subject clauses ===
+function withHistory(text: string, history: string[]) {
+  return understandElderInput(
+    text,
+    TODAY,
+    history.map((t, i) => ({ id: `m-${i}`, role: 'elder' as const, text: t, time: TODAY })),
+  );
+}
+
+test('issue ⑦: 独立分句提到爸 -> 代词"他"应继承 father', () => {
+  const c = withHistory('他也喘', ['我爸喘']).claims;
+  assert.ok(
+    c.some((cl) => cl.subject === 'father'),
+    '"我爸喘" 后"他也喘"应归给 father',
+  );
+});
+
+test('issue ⑦: 独立分句提到妈 -> 代词"她"应继承 mother', () => {
+  const c = withHistory('她血压高', ['我妈血压150']).claims;
+  assert.ok(
+    c.some((cl) => cl.subject === 'mother'),
+    '"我妈血压150" 后"她血压高"应归给 mother',
+  );
+});
+
+test('issue ⑦: "我和老伴都喘" 后"他也喘" 不应被强继承为 spouse', () => {
+  // 关键场景：并列共主语分句不应让那个并列者进入代词池，
+  // 否则代词被强行指到 spouse 是误判。
+  const c = withHistory('他也喘', ['我和老伴都喘']).claims;
+  assert.ok(
+    c.every((cl) => cl.subject !== 'spouse'),
+    'spouse 不应作为"他"的继承候选',
+  );
+  assert.ok(
+    c.every((cl) => cl.subject !== 'father'),
+    'father 也不应被凭空赋予',
+  );
+  assert.ok(
+    c.some((cl) => cl.subject === 'unknown'),
+    '歧义应明确走 unknown',
+  );
+});
+
+test('issue ⑦: "我和妈都胸闷" 后"她不舒服" 不应被强继承为 mother', () => {
+  // 同理：并列共主语排除掉 mother 后，歧义走 unknown。
+  const c = withHistory('她不舒服', ['我和妈都胸闷']).claims;
+  assert.ok(
+    c.every((cl) => cl.subject !== 'mother'),
+    '并列共主语里的 mom 不应被代词强继承',
+  );
+  assert.ok(
+    c.some((cl) => cl.subject === 'unknown'),
+    '歧义应明确走 unknown',
+  );
+});

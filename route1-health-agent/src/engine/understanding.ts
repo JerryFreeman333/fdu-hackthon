@@ -30,6 +30,14 @@ export interface StructuredElderInput {
   clarificationQuestion?: string;
   correction: boolean;
   correctionTargetMessageId?: string;
+  /**
+   * 撤销标签：从 correction 子句中解析出来的"用户在否认/撤掉"的症状标签。
+   * 例如"刚才说错了，没有头晕" -> ['dizziness']。
+   * 下游 removeCorrectedChatHealthEvents 只删除上一条消息中带这些标签的事件，
+   * 而不是把整条消息的所有事件都抹掉。
+   * 空数组 = 整条撤销（保留旧行为作为兜底）。
+   */
+  correctionTargetTags?: SymptomTag[];
 }
 
 function subtractDays(today: string, days: number): string {
@@ -44,7 +52,10 @@ function splitClauses(text: string): string[] {
       /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
       '$1§NUM§',
     )
-    .replace(/[,，](?=\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/g, '§KEEP§');
+    .replace(
+      /[,，](?=\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在|(?:但|不过)\s*(?:不(?:太)?确定|不清楚|不知道|不算|不知道算|不知道算不算)))/g,
+      '§KEEP§',
+    );
 
   const explicitSubjectStart =
     '(?:我老公|我丈夫|老公|丈夫|爱人|老伴|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
@@ -139,6 +150,17 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
       clause,
     );
 
+  // 用户在话里自带"模棱两可"的语气词（可能 / 好像 / 似乎 / 不太确定 / 不清楚），
+  // 表明他/她并不在断言事实。这类表达一律当作 uncertain，
+  // 优先于 near_miss / "没吃药 / 没睡好" / 比较式改善 / 否定 等所有
+  // "用户在报告已发生事实"的分支。即便同时存在"好像没睡好"这类组合，
+  // 也不能被当作 occurred 进入本人事实流。
+  //   "我可能没睡好"          -> uncertain（而不是 occurred / poorSleep）
+  //   "我好像差点摔了"        -> uncertain（而不是 near_miss）
+  //   "我好像没胸痛"          -> uncertain（而不是 negated）
+  //   "我刚才差点摔倒，但不确定算不算" -> uncertain（而不是 near_miss）
+  if (/(?:可能|好像|似乎|也许|大概|估计|说不定|不敢说|不(?:太)?确定|不清楚|不知道)/.test(clause)) return 'uncertain';
+
   if (
     /(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) &&
     (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
@@ -168,7 +190,6 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     )
   )
     return 'negated';
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause)) return 'uncertain';
   return 'occurred';
 }
 
@@ -197,11 +218,21 @@ function isPureCorrectionMarker(clause: string): boolean {
 }
 
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
+  // 仅把"独立指向某人"的分句主体作为代词继承池。
+  // 同一分句里若同时出现"我"+"老伴/爸/妈"等并列主体，那个人不能进入代词池，
+  // 否则"我和老伴都喘"之后"他也喘"会被强行归给 spouse（issue ⑦ 修法）。
   return [...messages]
     .reverse()
     .filter((message) => message.role === 'elder')
     .slice(0, 4)
-    .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
+    .flatMap((message) =>
+      splitClauses(message.text)
+        // 只把"我和老伴"/"我也X"/"我跟他"这类把"我"作并列共主语的分句排除掉。
+        // "我爸喘"/"我妈血压150"这种所有格形态的"我"不在排除范围——
+        // 因为这里的"我"是所有格（my），实际主语是爸/妈，仍应作为代词继承候选。
+        .filter((clause) => !/(?:我(?:和|跟|与|也|还|都|一起|俩|两人))/.test(clause))
+        .map((clause) => subjectFromText(clause, [])),
+    );
 }
 
 export function understandElderInput(
@@ -215,12 +246,37 @@ export function understandElderInput(
   const correctionTargetMessageId = correction
     ? [...recentMessages].reverse().find((message) => message.role === 'elder')?.id
     : undefined;
+  // 解析"用户在撤销哪些症状"：用现有 parseElderInput 抽取 tags，然后
+  // 只保留 status 为 negated/hypothetical/uncertain 的——这些都是用户
+  // 在表达"撤回/假设/不确定"，而非新增事实。
+  // 例：
+  //   "刚才说错了，没有头晕"   -> 头晕是纠正目标
+  //   "刚才说错了，血压没那么高" -> 没有具体标签（uncertain/negated），仍按整条撤销
+  let correctionTargetTags: SymptomTag[] = [];
+  if (correction) {
+    for (const clause of splitClauses(trimmed)) {
+      if (isPureCorrectionMarker(clause)) continue;
+      const parsed = parseElderInput(clause);
+      const status = statusFromText(clause, parsed.tags, extractHealthValues(clause).length > 0);
+      if (status === 'occurred' || status === 'near_miss') continue;
+      for (const tag of parsed.tags) {
+        if (!correctionTargetTags.includes(tag)) correctionTargetTags.push(tag);
+      }
+    }
+  }
   let clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
   if (recallRequested || clarificationQuestion) {
-    return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion,
+      correction,
+      correctionTargetMessageId,
+      correctionTargetTags,
+    };
   }
 
   const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
@@ -238,6 +294,7 @@ export function understandElderInput(
         '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
       correction,
       correctionTargetMessageId,
+      correctionTargetTags,
     };
   }
 
@@ -392,6 +449,7 @@ export function understandElderInput(
       : (clarificationQuestion ?? undefined),
     correction,
     correctionTargetMessageId,
+    correctionTargetTags,
   };
 }
 

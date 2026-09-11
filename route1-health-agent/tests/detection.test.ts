@@ -221,6 +221,89 @@ async function main() {
       'report should expose task state',
     );
   });
+
+  // === Issue ⑨ regression: observation.status 必须传到 safety.* 规则 ===
+  function observationWithStatus(
+    tag: Observation['tags'][number],
+    text: string,
+    status: Observation['status'],
+    visibility: Observation['visibility'] = 'family_ok',
+  ): Observation {
+    return {
+      id: `obs-${tag}-${status}-${visibility}-${Math.random()}`,
+      date: TODAY,
+      source: 'chat',
+      text,
+      tags: [tag],
+      status,
+      visibility,
+    };
+  }
+
+  await runCase('issue ⑨: negated chest pain does not upgrade severe BP to urgent', () => {
+    const events = [
+      ...recordsToEvents(makeRecords({ systolic: 130, diastolic: 80 }, { systolic: 185, diastolic: 121 })).filter(
+        (e) => e.type === 'measurement',
+      ),
+      observationToEvent(observationWithStatus('chestPain', '我今天没胸痛', 'negated')),
+    ];
+    const findings = runDetection(events, TODAY);
+    const safety = findings.find((finding) => finding.ruleId === 'safety.blood_pressure.severe_reading');
+    assert(safety, '严重 BP 仍应触发安全规则');
+    assert(safety.severity === 'alert', '否定胸痛不应把严重 BP 升到 urgent，应保持 alert');
+  });
+
+  await runCase('issue ⑨: hypothetical fall does not trigger fall rule', () => {
+    const events = [observationToEvent(observationWithStatus('fall', '如果我摔了怎么办', 'hypothetical'))];
+    const findings = runDetection(events, TODAY);
+    const fall = findings.find((finding) => finding.ruleId === 'safety.fall');
+    assert(!fall, '假设摔倒不是真摔倒，不应触发 fall safety rule');
+  });
+
+  await runCase('issue ⑨: near miss fall does not trigger fall rule', () => {
+    const events = [observationToEvent(observationWithStatus('fall', '我刚才差点摔倒，但没摔', 'near_miss'))];
+    const findings = runDetection(events, TODAY);
+    const fall = findings.find((finding) => finding.ruleId === 'safety.fall');
+    assert(!fall, '差点摔倒未真正发生，不应触发 fall safety rule');
+  });
+
+  await runCase('issue ⑨: uncertain chest pain does not trigger red flag', () => {
+    const events = [observationToEvent(observationWithStatus('chestPain', '我好像有点胸痛，不太确定', 'uncertain'))];
+    const findings = runDetection(events, TODAY);
+    const redFlag = findings.find((finding) => finding.ruleId === 'safety.red_flag_symptom');
+    assert(!redFlag, '用户明确说不确定，不应触发 urgent');
+  });
+
+  await runCase('issue ⑨: occurred chest pain still triggers urgent', () => {
+    const events = [observationToEvent(observationWithStatus('chestPain', '我胸口现在很疼', 'occurred'))];
+    const findings = runDetection(events, TODAY);
+    const redFlag = findings.find((finding) => finding.ruleId === 'safety.red_flag_symptom');
+    assert(redFlag?.severity === 'urgent', '真实胸痛仍应触发 urgent');
+  });
+
+  await runCase('issue ⑨: legacy observation without status still fires (backward compat)', () => {
+    const events = [observationToEvent(observation('chestPain', '胸口突然疼得厉害'))];
+    const findings = runDetection(events, TODAY);
+    const redFlag = findings.find((finding) => finding.ruleId === 'safety.red_flag_symptom');
+    assert(redFlag?.severity === 'urgent', '老数据 status 缺失应视为 occurred');
+  });
+
+  await runCase('issue ⑨: HR=125 (alert) + negated chest pain stays alert, not urgent', () => {
+    const hr = measurementToEvent({
+      id: 'hr-125',
+      timestamp: `${TODAY}T08:00:00`,
+      metric: 'restingHr',
+      value: 125,
+      unit: 'bpm',
+      source: 'chat',
+      confidence: 0.9,
+      metadata: {},
+    });
+    const events = [hr, observationToEvent(observationWithStatus('chestPain', '我好像没胸痛', 'uncertain'))];
+    const f = runDetection(events, TODAY).find((x) => x.ruleId === 'safety.heart_rate.extreme');
+    assert(f, 'HR=125 应触发 heart rate safety rule');
+    assert(f.severity === 'alert', '否定胸痛后，HR 应保持 alert，不应被升到 urgent');
+  });
 }
 
 void main().catch((error) => {

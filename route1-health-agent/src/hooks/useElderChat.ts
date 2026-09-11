@@ -1,9 +1,15 @@
 import { useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
+import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding } from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
-import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
+import {
+  appendHealthEvents,
+  labResultToEvent,
+  measurementToEvent,
+  observationToEvent,
+  type HealthEvent,
+} from '../pipeline/events';
 import { selectImageParser } from '../adapters/parserSelector';
 import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
@@ -203,7 +209,13 @@ export function useElderChat({
 
     let nextBaseEvents = events;
     if (understanding.correction && understanding.correctionTargetMessageId) {
-      nextBaseEvents = removeCorrectedChatHealthEvents(nextBaseEvents, understanding.correctionTargetMessageId);
+      // 把用户在 correction 子句中明确否认的标签透传给删除函数，
+      // 避免把同 sourceMessageId 但与否认内容无关的事件一起抹掉。
+      nextBaseEvents = removeCorrectedChatHealthEvents(
+        nextBaseEvents,
+        understanding.correctionTargetMessageId,
+        understanding.correctionTargetTags,
+      );
       setFamilyEvents((current) => removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId));
     }
 
@@ -272,6 +284,10 @@ export function useElderChat({
           source: 'chat',
           text: claim.text,
           tags: claim.tags,
+          // 显式把 status 传下去，让 safety.* 规则能用 hadOccurredObservation
+          // 跳过"用户说没/假设/差点/不确定"的事件。shouldPersistClaim 已经
+          // 保证 status==='occurred'，这里写出来是给入口和检测层之间的契约。
+          status: claim.status,
           visibility,
           metadata: {
             sourceMessageId: elderMessage.id,
@@ -421,12 +437,8 @@ export function useElderChat({
     // 真实数据走 HealthVisionProvider 时，ELDER 端通常不会带 visibility；这里按授权状态补一个标签。
     const photoVisibility = familySharing === 'granted' ? 'family_ok' : 'private';
     const events = [
-      ...pendingPhoto.measurements.map((m) =>
-        measurementToEvent({ ...m, visibility: photoVisibility }),
-      ),
-      ...pendingPhoto.labResults.map((l) =>
-        labResultToEvent({ ...l, visibility: photoVisibility }),
-      ),
+      ...pendingPhoto.measurements.map((m) => measurementToEvent({ ...m, visibility: photoVisibility })),
+      ...pendingPhoto.labResults.map((l) => labResultToEvent({ ...l, visibility: photoVisibility })),
     ];
     if (events.length === 0) {
       setPendingPhoto(null);
@@ -445,5 +457,14 @@ export function useElderChat({
     setPendingPhotoError(null);
   }
 
-  return { handleElderSend, handlePhotoImport, commitPhotoImport, cancelPhotoImport, pendingPhoto, pendingPhotoKind, pendingPhotoError, quickInputs: QUICK_INPUTS };
+  return {
+    handleElderSend,
+    handlePhotoImport,
+    commitPhotoImport,
+    cancelPhotoImport,
+    pendingPhoto,
+    pendingPhotoKind,
+    pendingPhotoError,
+    quickInputs: QUICK_INPUTS,
+  };
 }
