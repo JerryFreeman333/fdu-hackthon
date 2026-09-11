@@ -1,0 +1,37 @@
+name: route1-bp-split-fix-temp
+on:
+  push:
+    branches: [route1/final-green]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: route1/final-green
+          fetch-depth: 0
+      - name: Patch numeric comma splitting
+        working-directory: route1-health-agent
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/engine/understanding.ts')
+          s = p.read_text()
+          start = s.index('function splitClauses(text: string): string[] {')
+          end = s.index('\n}\n\nfunction inferPronounSubject', start) + 2
+          fn = '''function splitClauses(text: string): string[] {\n  const protectedNumericComma = text.replace(\n    /([0-9零〇一二两三四五六七八九十百]+)\\s*[,，]\\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g,\n    '$1§',\n  );\n  return protectedNumericComma\n    .split(/[。！？!?；;，,\\n]+(?!\\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)\n    .map((clause) => clause.replace(/§/g, ',').trim())\n    .filter(Boolean);\n}'''
+          p.write_text(s[:start] + fn + s[end:])
+      - name: Format and commit
+        working-directory: route1-health-agent
+        shell: bash
+        run: |
+          npx --yes prettier@3.5.3 --write src/engine/understanding.ts
+          cd ..
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add route1-health-agent/src/engine/understanding.ts
+          git commit -m 'fix(route1): preserve numeric BP comma pairs'
+          git push origin HEAD:route1/final-green
