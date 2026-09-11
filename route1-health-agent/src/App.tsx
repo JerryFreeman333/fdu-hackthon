@@ -47,9 +47,9 @@ function clearLegacyHomeSafetyStorage() {
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   clearLegacyHealthStorage();
+  if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], chat: [] };
   const stored = healthRecordStore.load();
   if (stored.events.length || stored.familyEvents.length || stored.chat.length) return stored;
-  if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], chat: [] };
   const events = legacySnapshotToEvents({
     records: seedRecords,
     observations: [...seedObservations, ...seedPhotoObservations],
@@ -84,7 +84,10 @@ export default function App() {
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
-  const healthKitAdapter = useMemo(() => new HealthKitDeviceAdapter(runtimeConfig.healthkitEndpoint), []);
+  const healthKitAdapter = useMemo(
+    () => new HealthKitDeviceAdapter(runtimeConfig.healthkitEndpoint, runtimeConfig.healthkitBridgeToken),
+    [],
+  );
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
@@ -160,10 +163,12 @@ export default function App() {
         lastSyncAt: new Date().toISOString(),
         diagnostics: healthKitAdapter.lastDiagnostics,
       });
-      showToast(`已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`);
+      showToast(
+        `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setDeviceSync((current) => ({ ...current, status: 'error', error: message, diagnostics: healthKitAdapter.lastDiagnostics }));
+      setDeviceSync({ status: 'error', received: [], error: message, diagnostics: healthKitAdapter.lastDiagnostics });
       showToast('同步失败，未使用 Demo 数据替代。');
     }
   }, [healthKitAdapter, showToast]);
@@ -235,7 +240,14 @@ export default function App() {
 
   const configurationErrors = runtimeConfigurationErrors();
   if (configurationErrors.length > 0) {
-    return <main className="configuration-error"><h1>运行配置错误</h1>{configurationErrors.map((error) => <p key={error}>{error}</p>)}</main>;
+    return (
+      <main className="configuration-error">
+        <h1>运行配置错误</h1>
+        {configurationErrors.map((error) => (
+          <p key={error}>{error}</p>
+        ))}
+      </main>
+    );
   }
 
   if (!role) return <RoleGate onSelect={selectRole} />;
@@ -348,7 +360,8 @@ export default function App() {
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        当前模式：设备 {runtimeConfig.deviceMode} · 图像 {runtimeConfig.healthVisionMode} · Agent {runtimeConfig.agentMode}。
+        当前模式：设备 {runtimeConfig.deviceMode} · 图像 {runtimeConfig.healthVisionMode} · Agent{' '}
+        {runtimeConfig.agentMode}。
         {runtimeConfig.deviceMode === 'healthkit' ? '真实模式失败时不会回退到 Demo。' : '当前数据仅用于演示。'}
       </footer>
     </div>

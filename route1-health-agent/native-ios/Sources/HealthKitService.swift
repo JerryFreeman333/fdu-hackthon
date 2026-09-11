@@ -6,6 +6,7 @@ import UIKit
 final class HealthKitService: ObservableObject {
     @Published var authorizationStatus = "not-requested"
     @Published var measurements: [HealthMeasurement] = []
+    @Published var lastReadAt: Date?
     @Published var message = "尚未请求 Apple 健康权限"
     @Published var isWorking = false
 
@@ -44,6 +45,8 @@ final class HealthKitService: ObservableObject {
             return
         }
         isWorking = true
+        measurements = []
+        lastReadAt = nil
         defer { isWorking = false }
         do {
             let start = calendar.date(byAdding: .day, value: -21, to: calendar.startOfDay(for: Date()))!
@@ -54,6 +57,7 @@ final class HealthKitService: ObservableObject {
             async let sleep = querySleep(from: start)
             let (stepItems, heartItems, speedItems, oxygenItems, sleepItems) = try await (steps, heart, speed, oxygen, sleep)
             measurements = (stepItems + heartItems + speedItems + oxygenItems + sleepItems).sorted { $0.timestamp < $1.timestamp }
+            lastReadAt = Date()
             if measurements.isEmpty {
                 authorizationStatus = "limited-or-no-data"
                 message = "没有读到样本：可能是权限未开放、只开放了有限历史，或 Apple 健康中尚无这些数据。不会生成 Demo 数据。"
