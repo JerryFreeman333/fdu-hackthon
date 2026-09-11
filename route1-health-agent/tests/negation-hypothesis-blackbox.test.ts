@@ -29,6 +29,38 @@ test('negation with natural elder wording stays negated', () => {
   assert.equal(accepted('今天倒是没喘，也没胸闷').length, 0);
 });
 
+test('rhetorical denial cannot become an actual fall', () => {
+  const claims = claimsOf('谁说我摔倒了，我没有');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim, '必须保留跌倒语义供解释层判断，但不能丢失这条反驳');
+  assert.equal(fallClaim?.subject, 'self');
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('谁说我摔倒了，我没有').length, 0);
+});
+
+test('postposed denial cancels the immediately preceding self event', () => {
+  const claims = claimsOf('我摔倒了，没有啊');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim);
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('我摔倒了，没有啊').length, 0);
+});
+
+test('question followed by denial is not accepted as a fall', () => {
+  const claims = claimsOf('我摔倒了吗？没有');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim);
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('我摔倒了吗？没有').length, 0);
+});
+
+test('real occurrence remains occurred', () => {
+  const claims = claimsOf('我今天真的摔倒了');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'occurred');
+  assert.equal(accepted('我今天真的摔倒了').length, 1);
+});
+
 test('hypothetical health question is never treated as an occurrence', () => {
   const claims = claimsOf('如果晚上胸闷怎么办');
   assert.equal(claims.length, 1);
@@ -90,13 +122,6 @@ test('not sure beats explicit occurrence in medication', () => {
   assert.equal(claims.length, 1);
   assert.equal(claims[0]?.status, 'uncertain', '"好像忘了吃药" 是 uncertain，不能记成 medicationMissed+occurred');
   assert.equal(accepted('我好像忘了吃药').length, 0);
-});
-
-test('real occurrence remains occurred', () => {
-  const claims = claimsOf('我今天真的摔倒了');
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0]?.status, 'occurred');
-  assert.equal(accepted('我今天真的摔倒了').length, 1);
 });
 
 test('negated family event never becomes self event', () => {
