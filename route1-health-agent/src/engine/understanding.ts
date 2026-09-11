@@ -193,16 +193,19 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
     hasToday &&
     hasYesterday &&
     /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
-  const healthEventLanguage =
-    /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|血氧|spo2|SPO2|SpO2|心率|体重|气短|憋气|血糖)/;
-  const yesterdayComparison =
+
+  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
+  if (
     hasYesterday &&
     !hasToday &&
     /(比|相比|比起|比上|跟.{0,4}比)/.test(clause) &&
-    healthEventLanguage.test(clause);
-
-  if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
-  if (yesterdayComparison || hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+    /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|血氧|spo2|SPO2|SpO2|心率|体重|气短|憋气|血糖)/.test(
+      clause,
+    )
+  ) {
+    return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+  }
+  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
 
   return { scope: 'today', eventDate: today };
 }
