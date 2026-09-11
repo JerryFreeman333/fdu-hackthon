@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-route1:
@@ -48,43 +48,6 @@ jobs:
           cache-dependency-path: route1-health-agent/package-lock.json
       - name: Install locked dependencies
         run: npm ci
-      - name: Apply issue 2 negated-discomfort patch
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          understanding = Path('src/engine/understanding.ts')
-          text = understanding.read_text()
-          marker = '// ISSUE2_NEGATED_DISCOMFORT_PATCH_DONE'
-          if marker not in text:
-              old = "    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(\n      clause,\n    )"
-              new = "    /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡|不舒服|难受)/.test(\n      clause,\n    )"
-              if old not in text:
-                  raise SystemExit('issue2 target not found in understanding.ts')
-              text = text.replace(old, new, 1)
-              text = text.replace('function isPureSelfReassurance', marker + '\n\nfunction isPureSelfReassurance', 1)
-              understanding.write_text(text)
-
-          tests = Path('tests/user-diagnostic.test.ts')
-          test_text = tests.read_text()
-          test_marker = 'negated discomfort is not accepted'
-          if test_marker not in test_text:
-              anchor = "  await runCase('pure numeric measurement remains recordable', () => {"
-              block = "  await runCase('negated discomfort is not accepted', () => {\n    const input = understandElderInput('我没有不舒服', TODAY);\n    assert(input.claims[0]?.tags.includes('pain'), 'discomfort should still be recognized as the pain tag');\n    assert(input.claims[0]?.status === 'negated', 'negated discomfort should be negated');\n    assert(acceptedSelfClaims(input).length === 0, 'negated discomfort must not be accepted');\n\n    const selfInput = understandElderInput('我自己没有不舒服', TODAY);\n    assert(selfInput.claims[0]?.status === 'negated', 'explicit self wording should also be negated');\n  });\n\n  await runCase('actual discomfort remains occurred', () => {\n    const input = understandElderInput('我今天有点不舒服', TODAY);\n    assert(input.claims[0]?.tags.includes('pain'), 'actual discomfort should keep pain tag');\n    assert(input.claims[0]?.status === 'occurred', 'actual discomfort must remain occurred');\n    assert(acceptedSelfClaims(input).length === 1, 'actual discomfort should still be accepted');\n  });\n\n"
-              if anchor not in test_text:
-                  raise SystemExit('issue2 test insertion anchor not found')
-              test_text = test_text.replace(anchor, block + anchor, 1)
-              tests.write_text(test_text)
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet; then
-            exit 0
-          fi
-          git add src/engine/understanding.ts tests/user-diagnostic.test.ts
-          git commit -m "fix(route1): treat negated discomfort as negated fact [NEGATION_PATCH_DONE]"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
       - name: Check formatting
         run: npm run format:check
       - name: Check blackbox syntax
