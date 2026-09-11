@@ -38,7 +38,8 @@ export const bloodPressureSafetyRule: DetectionRule = {
   id: 'safety.blood_pressure.severe_reading',
   evaluate(context) {
     const peak = peakTodayBloodPressure(context);
-    const severe = (peak.systolic !== undefined && peak.systolic > 180) || (peak.diastolic !== undefined && peak.diastolic > 120);
+    const severe =
+      (peak.systolic !== undefined && peak.systolic > 180) || (peak.diastolic !== undefined && peak.diastolic > 120);
     if (!severe) return null;
 
     const today = context.records.find((r) => r.date === context.today);
@@ -80,7 +81,9 @@ export const bloodPressureSafetyRule: DetectionRule = {
       signalKeys: [
         'systolic',
         'diastolic',
-        ...(danger ? danger.tags.filter((tag) => tag === 'dyspnea' || tag === 'chestPain' || tag === 'neuroChange') : []),
+        ...(danger
+          ? danger.tags.filter((tag) => tag === 'dyspnea' || tag === 'chestPain' || tag === 'neuroChange')
+          : []),
       ],
       familyEligible: shareable,
     });
