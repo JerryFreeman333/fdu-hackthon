@@ -43,20 +43,19 @@ function splitClauses(text: string): string[] {
     .replace(
       /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
       '$1§NUM§',
-    );
+    )
+    .replace(/[,，](?=\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/g, '§KEEP§');
 
   const explicitSubjectStart =
     '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
-  const implicitBoundary = protectedNumericComma
-    .replace(
-      new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\s*(?=${explicitSubjectStart})`, 'g'),
-      '§CLAUSE§',
-    )
-    .replace(new RegExp(`([^。！？!?；;,，\n§])(?=${explicitSubjectStart})`, 'g'), '$1§CLAUSE§');
+  const implicitBoundary = protectedNumericComma.replace(
+    new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\\s*(?=${explicitSubjectStart})`, 'g'),
+    '§CLAUSE§',
+  );
 
   return implicitBoundary
     .split(/[。！？!?；;,，\n]+|§CLAUSE§+/)
-    .map((clause) => clause.replace(/§NUM§/g, ',').trim())
+    .map((clause) => clause.replace(/§NUM§/g, ',').replace(/§KEEP§/g, ',').trim())
     .filter(Boolean);
 }
 
@@ -195,6 +194,22 @@ export function understandElderInput(
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
 
+  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
+  const hasExplicitFamilyRefusal =
+    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(trimmed) ||
+    /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(trimmed) ||
+    /不想让.{0,3}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见|知道这件事)/.test(trimmed);
+  if (hasExplicitFamilyShare && hasExplicitFamilyRefusal) {
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion:
+        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      correction,
+      correctionTargetMessageId,
+    };
+  }
+
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
   let subjectsSeen = [...priorSubjects];
@@ -283,22 +298,6 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
-  const privacyIntents = splitClauses(trimmed)
-    .map((clause) => parsePrivacyIntent(clause))
-    .filter((intent) => intent !== 'none');
-  const uniquePrivacyIntents = [...new Set(privacyIntents)];
-  const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
-
-  if (hasMixedPrivacyIntent) {
-    return {
-      claims: [],
-      recallRequested,
-      clarificationQuestion:
-        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
-      correction,
-      correctionTargetMessageId,
-    };
-  }
 
   return {
     claims,
