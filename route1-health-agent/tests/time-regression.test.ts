@@ -27,7 +27,7 @@ test('vague multi-day wording does not invent an exact event date', () => {
   assert.equal(input.claims.length, 1);
   assert.equal(input.claims[0]?.timeScope, 'historical');
   assert.equal(input.claims[0]?.eventDate, null);
-  assert.equal(acceptedSelfClaims(input).length, 0, '没有精确日期时不应进入已确认本人事件流');
+  assert.equal(acceptedSelfClaims(input).length, 0);
 });
 
 test('current comparison with a health fact still stays on today', () => {

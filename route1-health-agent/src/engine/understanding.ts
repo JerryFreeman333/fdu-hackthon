@@ -175,6 +175,7 @@ function parseChineseDayCount(value: string): number | null {
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
+  if (/过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天/.test(clause)) return { scope: 'historical', eventDate: null };
   const daysAgo = clause.match(/(\d+|一|两|二|三|四|五|六|七|八|九|十)天前/);
   if (daysAgo?.[1]) {
     const days = parseChineseDayCount(daysAgo[1]);
