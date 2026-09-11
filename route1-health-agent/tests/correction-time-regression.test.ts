@@ -12,13 +12,14 @@ const priorYesterdayMessage: ChatMessage = {
   time: '2026-09-10T10:00:00.000Z',
 };
 
-test('correction points to the immediately previous elder turn and removes the corrected tag only', () => {
+test('correction points to the immediately previous elder turn and keeps the replacement fact occurred', () => {
   const input = understandElderInput('刚才说错了，不是胸闷，是喘', TODAY, [priorYesterdayMessage]);
 
   assert.equal(input.correction, true);
   assert.equal(input.correctionTargetMessageId, priorYesterdayMessage.id);
   assert.deepEqual(input.correctionTargetTags, ['dyspnea']);
   assert.equal(acceptedSelfClaims(input).length, 1);
+  assert.equal(acceptedSelfClaims(input)[0]?.status, 'occurred');
   assert.equal(acceptedSelfClaims(input)[0]?.tags.includes('dyspnea'), true);
 });
 

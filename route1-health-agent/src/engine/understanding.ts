@@ -201,7 +201,7 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
 }
 
 const EXPLICIT_TIME_PATTERN =
-  /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天前|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
+  /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|三|四|五|六|七|八|九|十)天前|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
 
 function hasExplicitTime(clause: string): boolean {
   return EXPLICIT_TIME_PATTERN.test(clause);
@@ -615,15 +615,17 @@ export function understandElderInput(
     lastHealthValue = hasHealthValue;
   }
 
-  for (const clause of splitClauses(trimmed)) {
-    const previous = [...claims]
-      .reverse()
-      .find(
-        (claim) =>
-          claim.subject === 'self' && claim.status === 'occurred' && (claim.tags.length > 0 || claim.hasHealthValue),
-      );
-    if (!previous) continue;
-    if (isStandaloneNegation(clause) || isImmediatePostposedDenial(clause, previous)) previous.status = 'negated';
+  if (!correction) {
+    for (const clause of splitClauses(trimmed)) {
+      const previous = [...claims]
+        .reverse()
+        .find(
+          (claim) =>
+            claim.subject === 'self' && claim.status === 'occurred' && (claim.tags.length > 0 || claim.hasHealthValue),
+        );
+      if (!previous) continue;
+      if (isStandaloneNegation(clause) || isImmediatePostposedDenial(clause, previous)) previous.status = 'negated';
+    }
   }
 
   const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown');
