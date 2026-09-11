@@ -47,7 +47,7 @@ function splitClauses(text: string): string[] {
     .replace(/[,，](?=\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/g, '§KEEP§');
 
   const explicitSubjectStart =
-    '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
+    '(?:我老公|我丈夫|老公|丈夫|爱人|老伴|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
   const implicitBoundary = protectedNumericComma.replace(
     new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\\s*(?=${explicitSubjectStart})`, 'g'),
     '§CLAUSE§',
@@ -78,7 +78,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'family_other';
+    return 'unknown';
   }
 
   return null;
@@ -87,7 +87,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
   // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
   const explicitlyMentionedSubjects = new Set<ElderSubject>();
-  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
+  if (/(我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) explicitlyMentionedSubjects.add('father');
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) explicitlyMentionedSubjects.add('mother');
   if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause))
@@ -98,7 +98,7 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
-  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
+  if (/(我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(clause)) return 'spouse';
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) return 'father';
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
   if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
@@ -116,7 +116,8 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
+  if (/(去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/.test(clause))
+    return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
 
   const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
@@ -167,9 +168,32 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     )
   )
     return 'negated';
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue || semanticSymptomLanguage))
-    return 'uncertain';
+  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause)) return 'uncertain';
   return 'occurred';
+}
+
+/**
+ * 只识别那种"我现在的确没不舒服"式的纯自安式表达。
+ * 一旦句子里带"也/当时/后来/然后/刚才/不过/但是/而且/如果"这类
+ * 与其它事件/假设/转折有关的连接线索，就不当作自安，
+ * 否则情感反应、历史事实、比较式改善都会被一起吞掉。
+ */
+function isPureSelfReassurance(clause: string): boolean {
+  const trimmed = clause.trim().replace(/[。！!，,]+$/, '');
+  if (/(?:也|当时|后来|然后|刚才|不过|但是|而且|并且|如果|万一|假如|要是|又)/.test(trimmed)) return false;
+  if (!/(^我|^本人|^我自己|现在|目前|今天)/.test(trimmed)) return false;
+  return /^(?:我|本人|我自己)?(?:现在|目前|今天)?(?:感觉|觉得|感到)?(?:没事|没什么|没什么事|没什么事情|还好|挺好|挺好的|好一些|好点了|好一点|好些)[了。！!,，]*$/.test(
+    trimmed,
+  );
+}
+
+/**
+ * "说错了/弄错了/不是我..." 之类是撤销信号，不是健康事实。
+ * 但只要它后面带了新主体或新症状，就交给正常解析流处理。
+ */
+function isPureCorrectionMarker(clause: string): boolean {
+  const trimmed = clause.trim().replace(/[。！!，,]+$/, '');
+  return /^(?:(?:刚才|刚刚|前面)?(?:说错了|弄错了|不对))|^(?:不是我(?:本人)?)$/.test(trimmed);
 }
 
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
@@ -191,7 +215,7 @@ export function understandElderInput(
   const correctionTargetMessageId = correction
     ? [...recentMessages].reverse().find((message) => message.role === 'elder')?.id
     : undefined;
-  const clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
+  let clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
@@ -279,13 +303,60 @@ export function understandElderInput(
       continue;
     }
 
-    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown' && status === 'occurred') {
+    if (isPureCorrectionMarker(clause)) {
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
+    if (
+      tags.length === 0 &&
+      !hasHealthValue &&
+      subject === 'self' &&
+      status === 'occurred' &&
+      isPureSelfReassurance(clause)
+    ) {
+      subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
+      continue;
+    }
+
+    // self + 无个人代词 + 无 tags/value + occurred 不是有意义事实。
+    // 例: "那个2025年付过" 不应接收为本人事实。
+    // 但 "我今天好多了" 有个人代词 + 时间状态应保留。
+    const hasFirstPerson = /(我|本人|我自己)/.test(clause);
+    if (
+      tags.length === 0 &&
+      !hasHealthValue &&
+      subject !== 'unknown' &&
+      status === 'occurred' &&
+      (subject !== 'self' || hasFirstPerson)
+    ) {
+      claims.push({
+        text: clause,
+        subject,
+        status,
+        timeScope: time.scope,
+        eventDate: time.eventDate,
+        tags,
+        hasHealthValue,
+      });
+      subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
+      continue;
+    }
+
+    // 最后推退口: 也要求 “self 不是真实事实” 时必须有个人代词。
+    if (subject === 'self' && tags.length === 0 && !hasHealthValue && !hasFirstPerson) {
+      // 仅跟踪 lastTags/lastHealthValue 使上下文继承能走通，但不推上事实流
+      subjectsSeen.push(subject);
+      lastTags = tags;
+      lastHealthValue = hasHealthValue;
+      continue;
+    }
     claims.push({
       text: clause,
       subject,
@@ -300,16 +371,25 @@ export function understandElderInput(
     lastHealthValue = hasHealthValue;
   }
 
-  const hasUnclearFamilyReference = claims.some(
-    (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
-  );
+  // 任何代词主体不明确都需要人工清请求明；
+  // 不取决于是否含有安全规则/有值。
+  const hasUnclearFamilyReference = claims.some((claim) => claim.subject === 'unknown');
 
+  // 输入中仅含人名、事件、时间词等语义素但不含任何可识别的健康信息：提示清请求明以避免黑盒。
+  const hasAnyHealthSignal =
+    /(血压|血氧|spo2|SPO2|SpO2|心跳|心率|血糖|跳|踩|痛|晕|发烧|睡|饮|仔子|心衰|肺|脑|不舒服|肚子|不舒)/.test(trimmed);
+  const isGibberish =
+    !hasAnyHealthSignal && !/(他|她|他们|她们)/.test(trimmed) && !/(中文数字|阿拉伯数字)/.test(trimmed);
+  if (claims.length === 0 && !clarificationQuestion && !recallRequested && trimmed.length > 0 && isGibberish) {
+    clarificationQuestion =
+      '我没有听清您说的是什么。您是该该心跳、血压、血糖、血氧，还是某个具体的不舒服？请用常见的话说出来。';
+  }
   return {
     claims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
-      ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
-      : undefined,
+      ? '\u60a8\u8bf4\u7684\u201c\u4ed6/\u5979\u201d\u53ef\u80fd\u662f\u5728\u8bf4\u60a8\u81ea\u5df1\uff0c\u4e5f\u53ef\u80fd\u662f\u5728\u8bf4\u5bb6\u4eba\u3002\u6211\u5148\u786e\u8ba4\u6e05\u695a\u662f\u6307\u8c01\uff0c\u518d\u51b3\u5b9a\u8981\u4e0d\u8981\u8bb0\u5f55\uff0c\u8fd9\u6837\u4e0d\u4f1a\u628a\u522b\u4eba\u7684\u60c5\u51b5\u8bb0\u5230\u60a8\u8fd9\u91cc\u3002'
+      : (clarificationQuestion ?? undefined),
     correction,
     correctionTargetMessageId,
   };

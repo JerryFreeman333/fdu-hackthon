@@ -113,6 +113,11 @@ export type SymptomTag =
   | 'moodLow'
   | 'fall'
   | 'bpHigh'
+  | 'spo2Low'
+  | 'hrHigh'
+  | 'hrLow'
+  | 'glucoseHigh'
+  | 'glucoseLow'
   | 'chestPain'
   | 'neuroChange';
 
@@ -129,6 +134,11 @@ export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   bpHigh: '血压偏高',
   chestPain: '胸痛',
   neuroChange: '突发神经系统异常',
+  spo2Low: '血氧偏低',
+  hrHigh: '心率偏快',
+  hrLow: '心率偏慢',
+  glucoseHigh: '血糖偏高',
+  glucoseLow: '血糖偏低',
 };
 
 export interface Observation {

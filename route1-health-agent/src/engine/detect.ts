@@ -7,7 +7,14 @@ import { getMetricSignal, hadTag } from './detection/signals';
 import { contextualRules } from './detection/rules/contextual';
 import { metricBaselineRules } from './detection/rules/metricBaseline';
 import { multiSignalRule } from './detection/fusion';
-import { bloodPressureSafetyRule, fallSafetyRule, redFlagSymptomRule } from './detection/safety';
+import {
+  bloodPressureSafetyRule,
+  fallSafetyRule,
+  glucoseSafetyRule,
+  heartRateSafetyRule,
+  redFlagSymptomRule,
+  spo2SafetyRule,
+} from './detection/safety';
 import type { DetectionConfig, DetectionContext, DetectionRule } from './detection/types';
 
 export interface DetectionOptions {
@@ -23,6 +30,9 @@ const RULES: DetectionRule[] = [
   ...contextualRules,
   multiSignalRule,
   bloodPressureSafetyRule,
+  spo2SafetyRule,
+  heartRateSafetyRule,
+  glucoseSafetyRule,
   redFlagSymptomRule,
   fallSafetyRule,
 ];

@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .test-build/
+src/engine/agent.ts.bak
+src/engine/agent.ts.bak2
+tests/*.png

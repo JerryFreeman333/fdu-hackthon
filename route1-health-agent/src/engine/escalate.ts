@@ -11,10 +11,14 @@ export interface FamilyNotification {
 
 export const FAMILY_LEVELS: Severity[] = ['alert', 'urgent'];
 
+/**
+ * 仅送今日 finding 给家属。历史 finding 由上层 UI 过滤不进入推送队列。
+ */
 export function collectFamilyNotifications(
   findings: Finding[],
   familySharing: FamilySharing,
   oneTimeSharedFindingIds: string[] = [],
+  today: string = '',
 ): FamilyNotification[] {
   const sharedIds = new Set(oneTimeSharedFindingIds);
   return findings
@@ -23,6 +27,7 @@ export function collectFamilyNotifications(
         FAMILY_LEVELS.includes(finding.severity) &&
         finding.familyMessage &&
         finding.familyEligible === true &&
+        (today === '' || finding.date === today) &&
         (familySharing === 'granted' || sharedIds.has(finding.id)),
     )
     .map((finding) => ({

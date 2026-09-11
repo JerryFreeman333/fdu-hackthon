@@ -84,8 +84,45 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下|过一次|过了|了)/, /摔倒/],
+    patterns: [/(摔|跌)(倒|了一跤|了一下|过|了)/, /摔倒/],
     replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
+  },
+  {
+    tag: 'spo2Low',
+    patterns: [
+      /血氧(?:也)?(?:掉到|偏低|不够|低(?:了|一点)?)/,
+      /(?:血氧|spo2|SPO2|SpO2|氧饱和度).{0,8}?(?:1[01]\d|[789]\d|[零〇一二两三四五六七八九]+)/,
+    ],
+    replies: ['血氧偏低，先坐下来保持手部温暖，按设备说明复测一次；如果还低或伴喘、嘴唇发紫，立即告诉我或找家人帮忙。'],
+  },
+  {
+    tag: 'hrHigh',
+    patterns: [
+      /(?:心跳|心率|脉搏|静息心率)[^。\n]{0,12}(?:快|高|偏快|太快)/,
+      /(?:心跳|心率)[^。\n]{0,8}?(?:1[2-9]\d|2\d\d|一百[二三四五六七八九零]|二百)/,
+    ],
+    replies: ['安静时心跳偏快，先停下来休息，按设备说明复测；如果还快或伴胸闷、头晕，告诉我或找家人。'],
+  },
+  {
+    tag: 'hrLow',
+    patterns: [/(?:心跳|心率|脉搏|静息心率)[^。\n]{0,12}(?:慢|低|偏慢|太慢)/],
+    replies: ['安静时心跳偏慢，先坐下来不要独自活动，按设备说明复测；如果还慢或伴头晕、黑朦，立即告诉我或找家人。'],
+  },
+  {
+    tag: 'glucoseHigh',
+    patterns: [
+      /(?:血糖|空腹血糖|餐后血糖)[^。\n]{0,12}(?:高|偏高|太高|飙|上去)/,
+      /(?:血糖|空腹血糖|餐后血糖).{0,8}?(?:1[5-9]|[2-3]\d|十[二三四五六七八九零]|二十|三十)/,
+    ],
+    replies: ['血糖偏高，先复测一次确认测量时间和是否空腹；持续偏高或伴口渴、乏力，告诉我或联系医生。'],
+  },
+  {
+    tag: 'glucoseLow',
+    patterns: [
+      /(?:血糖|空腹血糖)[^。\n]{0,12}(?:低|偏低|低血糖|掉到|太低)/,
+      /(?:血糖|空腹血糖).{0,8}?(?:[1-3]\.\d|[1-3]\b)/,
+    ],
+    replies: ['血糖偏低，按医生方案补糖，15 分钟内复测；如果出现意识变化、站不稳或出冷汗，立即告诉我或找家人。'],
   },
 ];
 
@@ -123,6 +160,21 @@ function buildBloodPressureReply(text: string): string | undefined {
   return undefined;
 }
 
+function buildValueAwareMetricReply(text: string, metric: 'spo2' | 'restingHr' | 'bloodGlucose'): string | undefined {
+  const value = extractHealthValues(text).find((v) => v.metric === metric)?.value;
+  if (value === undefined) return undefined;
+  if (metric === 'spo2') {
+    return `\u60a8\u521a\u624d\u8bf4\u7684\u8840\u6c27\u662f ${value} %\u3002\u5148\u5750\u7a33\u3001\u4fdd\u6301\u624b\u90e8\u6e29\u6696\uff0c\u6309\u8bbe\u5907\u8bf4\u660e\u590d\u6d4b\u4e00\u6b21\uff1b\u5982\u679c\u4ecd\u4f4e\u6216\u4f34\u5634\u5507\u53d1\u7d2b\u3001\u8bd5\u4e0d\u5230\u547c\u5438\uff0c\u7acb\u5373\u544a\u8bc9\u6211\u4eec\u6216\u627e\u5bb6\u4eba\u3002`;
+  }
+  if (metric === 'restingHr') {
+    return `\u60a8\u521a\u624d\u8bf4\u7684\u5fc3\u7387\u662f ${value} \u6b21/\u5206\u949f\u3002\u5148\u505c\u4e0b\u4f11\u606f\uff0c\u6309\u8bbe\u5907\u8bf4\u660e\u590d\u6d4b\uff1b\u5982\u679c\u4ecd\u5f02\u5e38\u6216\u4f34\u4e0d\u8212\u670d\uff0c\u7acb\u5373\u544a\u8bc9\u6211\u4eec\u6216\u627e\u5bb6\u4eba\u3002`;
+  }
+  if (metric === 'bloodGlucose') {
+    return `\u60a8\u521a\u624d\u8bf4\u7684\u8840\u7cd6\u662f ${value} mmol/L\u3002\u590d\u6d4b\u4e00\u6b21\u786e\u8ba4\u6d4b\u91cf\u65f6\u95f4\u548c\u662f\u5426\u7a7a\u8179\uff1b\u5982\u679c\u4ecd\u504f\u9ad8\u6216\u4f4e\u6216\u4f34\u4e0d\u8212\u670d\uff0c\u8bf7\u544a\u8bc9\u6211\u4eec\u6216\u8054\u7cfb\u533b\u751f\u3002`;
+  }
+  return undefined;
+}
+
 function buildRuleBasedReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -146,6 +198,18 @@ function buildRuleBasedReply(
   if (newTags.includes('bpHigh')) {
     const bloodPressureReply = buildBloodPressureReply(elderText);
     if (bloodPressureReply) return bloodPressureReply;
+  }
+  if (newTags.includes('spo2Low')) {
+    const r = buildValueAwareMetricReply(elderText, 'spo2');
+    if (r) return r;
+  }
+  if (newTags.includes('hrHigh') || newTags.includes('hrLow')) {
+    const r = buildValueAwareMetricReply(elderText, 'restingHr');
+    if (r) return r;
+  }
+  if (newTags.includes('glucoseHigh') || newTags.includes('glucoseLow')) {
+    const r = buildValueAwareMetricReply(elderText, 'bloodGlucose');
+    if (r) return r;
   }
 
   if (newTags.length === 0) {
@@ -268,9 +332,15 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
 const SYSTEM_PROMPT =
   '你是老人家庭健康助手。只解释已发现的变化和日常状态，不做疾病诊断。安全等级与是否需要升级由规则引擎决定。回答要短、温和、易听懂；有理由才追问。不要补写用户没有说过的症状、诱因、趋势或人物。';
 const UNSAFE_REPLY_PATTERNS = [
-  /(^|[。！？\s])(诊断为|确诊为|您可能患有|你可能患有|您得了|你得了)/,
-  /(就是|一定是|肯定是)(心衰|心脏病|脑卒中|中风|肺炎|感染)/,
-  /(^|[。！？\s])(请|建议|应该|需要|可以).{0,12}(自行)?(加倍|加量|减量|停药|换药|加药)/,
+  /(^|[。！？\s,，;；:])(?:诊断为|确诊为|您得了|你得了)(?![。！？\s]{0,10}报告|结果)/,
+  /(?:您?可能(?:患有|得了|是|存在|伴发|怀疑)|您?怀疑|估计是|看起来像|高度怀疑|不能排除|不排除|高度疑似|疑似|推断是|应该是|多半是|一般是|看起来是)/,
+  /(?:您?可能(?:是|得了|患有)?|您?怀疑|估计是|看起来像|不能排除|不排除|疑似|多半是|应该是|推断是)\s*(?:[肺心脑胃肝肠肾肢脊]部?)?(?:心衰|心脏病|心肌梗死|房颤|心律失常|脑卒中|中风|脑梗|脑出血|肺炎|感染|糖尿病|高血压|冠心病|胃炎|胃溃疡|肝炎|肾炎|贫血|甲亢|甲减|老年痴呆|帕金森|抑郁症|焦虑症|肿瘤|癌症|白血病|癌|脑栓塞|脑肿瘤|肺癌|肝癌|胃癌|肠癌|肾癌|糖尿病肾|肾衰)/,
+  /(?:就是|一定是|肯定是|一定得了|就是得了)\s*(?:[肺心脑胃肝肠肾肢脊]部?)?(?:心衰|心脏病|心肌梗死|房颤|心律失常|脑卒中|中风|脑梗|脑出血|肺炎|感染|糖尿病|高血压|冠心病|胃炎|胃溃疡|肝炎|肾炎|贫血|甲亢|甲减|老年痴呆|帕金森|抑郁症|焦虑症|肿瘤|癌症|白血病|癌|脑栓塞|脑肿瘤|肺癌|肝癌|胃癌|肠癌|肾癌|糖尿病肾|肾衰)/,
+  /(^|[。！？\s,，;；:])(?:请|建议|应该|需要|可以|最好|务必|必须).{0,15}(?:自行|自己)?(?:加倍|加量|减量|停药|停用|换药|加药|换用|暂停|改用|改服|换一种)/,
+  // 单独 「换一种药」 / 「停药试试」 / 「加量看看」
+  /(?:换一种药|停药试试|加量看看|换试试看|不吃这个药|自己换药|减少用量|换别的药|换种药)/,
+  /(?:^|[。！？\s,，;：:])(?:请|建议|应该|可以|最好)\s*(?:服用|吃|吃点)\s*(?:阿司匹林|波立维|立普妥|他汀|降压药|降糖药|胰岛素|止痛药|安眠药|抗生素|激素|中药|西药|药片|药丸)/,
+  /(?:^|[。！？\s,，;：:])(?:需要|建议|应该|最好|建议您)\s*(?:做|去做|跑一趟|查一下|检查一下)\s*(?:血常规|心电图|心脏彩超|心肌酶|肺部 CT|头部 CT|头部核磁|核磁共振|血糖|糖化|糖耐量|血压|血脂|冠脉造影|动态心电图|24 小时心电图|尿常规|便常规)/,
 ];
 const MAX_AGENT_REPLY_LENGTH = 500;
 const MAX_AGENT_INPUT_LENGTH = 1000;

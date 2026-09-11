@@ -112,7 +112,7 @@ export default function App() {
     [activeProfile, events, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds),
+    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
     [findings, familySharing, sharedFindingIds],
   );
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });

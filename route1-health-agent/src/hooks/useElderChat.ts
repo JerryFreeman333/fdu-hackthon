@@ -337,11 +337,35 @@ export function useElderChat({
         : canShare
           ? '按您现在的授权，家属可以看到必要的变化。'
           : '这部分只供您本人使用。';
-    const safetyTags = new Set(['fall', 'medicationMissed', 'chestPain', 'neuroChange', 'dizziness']);
+    const safetyTags = new Set([
+      'fall',
+      'medicationMissed',
+      'chestPain',
+      'neuroChange',
+      'dizziness',
+      'spo2Low',
+      'hrHigh',
+      'hrLow',
+      'glucoseHigh',
+      'glucoseLow',
+    ]);
     const hasSafetyGuidance = acceptedTags.some((tag) => safetyTags.has(tag));
-    const safetyNotice = acceptedTags.includes('fall')
-      ? '现在最重要的是先确认安全：先别急着起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。'
-      : '';
+    const SAFETY_NOTICES: Record<string, string> = {
+      fall: '现在最重要的是先确认安全：先别照急起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。',
+      spo2Low:
+        '现在最重要的是保持呼吸：先坐稳、保持手部温暖，按设备说明复测一次；如果仍低或伴嘴唇发紫、测不到呼吸，立即告诉我们或找家人。',
+      hrHigh:
+        '现在最重要的是先停下休息：走动起来都不要急，按设备说明复测；如果仍快或伴胸闷、头晕，立即告诉我们或找家人。',
+      hrLow: '现在最重要的是先坐下不要独自活动：按设备说明复测；如果仍慢或伴头晕、黑眉，立即告诉我们或找家人。',
+      glucoseHigh: '现在最重要的是保持调节：复测一次确认测量时间和是否空腹；持续偏高或伴口渴、意识变化，请联系医生。',
+      glucoseLow:
+        '现在最重要的是避免低血糖危险：按医生方案补糖，15 分钟内复测；如出现意识变化、站不稳或出冷汗，立即告诉我们或找家人。',
+    };
+    const safetyNotice =
+      acceptedTags
+        .map((tag) => SAFETY_NOTICES[tag])
+        .filter((notice): notice is string => Boolean(notice))
+        .join(' ') || '';
     const guidance = hasSafetyGuidance ? agentText : '';
     const selfSharingReceipt =
       canShare && recordSummary ? buildSelfSharingAcknowledgement(recordSummary, shareMode) : '';
