@@ -36,7 +36,6 @@ function subtractDays(today: string, days: number): string {
   return new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
 }
 
-/** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   const protectedNumericComma = text
     .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
@@ -67,8 +66,6 @@ function splitClauses(text: string): string[] {
 function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): ElderSubject | null {
   if (!/(他|她|他们|她们)/.test(clause)) return null;
 
-  // “我觉得/我看/我担心/我发现 + 他/她……”是典型的“我”作说话者、
-  // 但健康事实属于第三人称的口语结构，不能被“我”抢先归类成 self。
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
@@ -78,14 +75,13 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'family_other';
+    return 'unknown';
   }
 
   return null;
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
-  // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
   const explicitlyMentionedSubjects = new Set<ElderSubject>();
   if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
   if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) explicitlyMentionedSubjects.add('father');
@@ -95,7 +91,6 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   if (/(我自己|本人)/.test(clause)) explicitlyMentionedSubjects.add('self');
   if (explicitlyMentionedSubjects.size > 1) return 'unknown';
 
-  // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
   if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) return 'spouse';
@@ -106,7 +101,6 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const pronounSubject = inferPronounSubject(clause, priorSubjects);
   if (pronounSubject) return pronounSubject;
 
-  // 只在确认当前句没有第三人称指向后，才让“我”决定主体。
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
   const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
@@ -118,17 +112,14 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
   if (/(去年|上个月|以前|之前|多年前|小时候)/.test(clause)) return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
-
   const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
   const hasYesterday = /(昨天|昨日)/.test(clause);
   const currentComparison =
     hasToday &&
     hasYesterday &&
     /(比|像|不如|没有.{0,8}(像|那么|这么|那样)|好一点|好多了|好些了|轻一点|减轻|缓解|没那么)/.test(clause);
-
   if (currentComparison || (hasToday && !hasYesterday)) return { scope: 'today', eventDate: today };
   if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-
   return { scope: 'today', eventDate: today };
 }
 
@@ -137,7 +128,6 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
       clause,
     );
-
   if (
     /(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) &&
     (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
@@ -147,7 +137,6 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause))
     return 'occurred';
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
-
   const comparativeImprovement =
     /(今天|现在|目前)/.test(clause) &&
     /(没|没有|不再|不那么)/.test(clause) &&
@@ -160,7 +149,6 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     tags.length > 0
   )
     return 'occurred';
-
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡)/.test(
       clause,
@@ -172,12 +160,44 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   return 'occurred';
 }
 
+/**
+ * 跨轮主体记忆只允许继承“近期健康主体唯一 + 明确语义”这一最小安全条件。
+ * 最近几轮中只要出现两个不同的健康事实主体，就不再猜测当前“他/她”指谁。
+ * 未解析的历史代词不建立新的主体锚点；它也不会覆盖已经明确的主体。
+ * 同一轮内部使用与正常理解相同的主体连续性，避免无主语后续句被误判为本人。
+ */
 function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
-  return [...messages]
+  const elderMessages = [...messages]
     .reverse()
     .filter((message) => message.role === 'elder')
-    .slice(0, 4)
-    .flatMap((message) => splitClauses(message.text).map((clause) => subjectFromText(clause, [])));
+    .slice(0, 4);
+
+  const establishedSubjects: ElderSubject[] = [];
+  let hasHealthSemantic = false;
+  const healthSemanticPattern =
+    /(不舒服|走路不稳|行动不稳|摔|跌|喘|头晕|头昏|胸闷|胸痛|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
+
+  for (const message of elderMessages) {
+    const messageSubjects: ElderSubject[] = [];
+    for (const clause of splitClauses(message.text)) {
+      const parsed = parseElderInput(clause);
+      const hasHealthValue = extractHealthValues(clause).length > 0;
+      if (parsed.tags.length === 0 && !hasHealthValue && !healthSemanticPattern.test(clause)) continue;
+
+      hasHealthSemantic = true;
+      const subject = subjectFromText(clause, messageSubjects);
+      if (subject !== 'unknown' && !messageSubjects.includes(subject)) messageSubjects.push(subject);
+    }
+
+    for (const subject of messageSubjects) {
+      if (!establishedSubjects.includes(subject)) establishedSubjects.push(subject);
+    }
+  }
+
+  if (!hasHealthSemantic || establishedSubjects.length !== 1) return [];
+  const [subject] = establishedSubjects;
+  if (!subject || subject === 'self' || subject === 'unknown') return [];
+  return [subject];
 }
 
 export function understandElderInput(
@@ -194,7 +214,6 @@ export function understandElderInput(
   const clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
-
   if (recallRequested || clarificationQuestion) {
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
