@@ -32,6 +32,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add route1-health-agent/src/hooks/useElderChat.ts route1-health-agent/tests/self-correction-regression.test.ts
+          git add src/hooks/useElderChat.ts tests/self-correction-regression.test.ts
           git commit -m "style(route1): format self-correction patch"
           git push
