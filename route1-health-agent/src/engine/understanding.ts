@@ -200,6 +200,13 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   return { scope: 'today', eventDate: today };
 }
 
+const EXPLICIT_TIME_PATTERN =
+  /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天前|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
+
+function hasExplicitTime(clause: string): boolean {
+  return EXPLICIT_TIME_PATTERN.test(clause);
+}
+
 function isRhetoricalNegation(clause: string): boolean {
   const healthEventLanguage =
     /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
@@ -423,6 +430,7 @@ export function understandElderInput(
   let subjectsSeen = [...priorSubjects];
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
+  let lastTime: { scope: TimeScope; eventDate: string | null } | null = null;
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
@@ -462,9 +470,20 @@ export function understandElderInput(
     const hasHealthValue: boolean =
       hasExplicitHealthValue ||
       (tags.length > 0 && lastHealthValue && (isOmittedComparison || isOmittedParallelAction));
-    const time = timeFromText(clause, today);
+    const rawTime = timeFromText(clause, today);
+    const inheritsPreviousTime =
+      !hasExplicitTime(clause) &&
+      lastTime !== null &&
+      claims.length > 0 &&
+      claims[claims.length - 1]?.subject === subject &&
+      (explicitTags.length > 0 || hasExplicitHealthValue);
+    const time = inheritsPreviousTime ? lastTime : rawTime;
     const status = statusFromText(clause, tags, hasHealthValue);
     const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
+
+    if (!isPureCorrectionMarker(clause) && (explicitTags.length > 0 || hasExplicitHealthValue)) {
+      lastTime = time;
+    }
 
     if (coordinatedSubjects && hasAmbiguousMeasurementAssignment && !deathReported) {
       claims.push({
