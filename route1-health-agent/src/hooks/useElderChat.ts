@@ -1,10 +1,12 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
 import { METRICS } from '../types';
 import { TODAY } from '../data/demo';
 import { appendHealthEvents, measurementToEvent, observationToEvent, type HealthEvent } from '../pipeline/events';
-import { demoImageHealthParser, type DemoImageKind } from '../adapters/DemoImageHealthParser';
+import { selectImageParser } from '../adapters/parserSelector';
+import type { ParsedHealthData } from '../adapters/ImageHealthParser';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -385,23 +387,63 @@ export function useElderChat({
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
   }
 
+  const [pendingPhoto, setPendingPhoto] = useState<ParsedHealthData | null>(null);
+  const [pendingPhotoKind, setPendingPhotoKind] = useState<DemoImageKind | null>(null);
+  const [pendingPhotoError, setPendingPhotoError] = useState<string | null>(null);
+
   async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+    setPendingPhotoError(null);
     try {
       const capturedAt = localIsoTimestamp();
-      const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-      const parsed = await demoImageHealthParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
-      const measurements = parsed.measurements.map((item) => measurementToEvent({ ...item, visibility }));
-      if (measurements.length === 0) {
-        showToast('这张图片没有识别到可记录的健康数值。');
+      const { parser, mode } = selectImageParser();
+      const parsed = await parser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      if (parsed.measurements.length === 0 && parsed.labResults.length === 0) {
+        setPendingPhotoError('这张图片没有识别到可记录的健康数值，请换一张。');
         return;
       }
-      setEvents((current) => appendHealthEvents(current, measurements));
-      showToast(`已记录 ${measurements.length} 项图片中的健康数值。`);
+      setPendingPhoto(parsed);
+      setPendingPhotoKind(kind);
+      showToast(
+        mode === 'real-http'
+          ? '识别完成，请确认是否记录。'
+          : '示例识别完成，请确认是否记录。\n（演示模式，未走真实视觉模型）',
+      );
     } catch (error) {
       console.error(error);
-      showToast('图片解析失败，请稍后重试。');
+      const message = error instanceof Error ? error.message : '未知错误';
+      setPendingPhotoError(`图片解析失败：${message}`);
     }
   }
 
-  return { handleElderSend, handlePhotoImport, quickInputs: QUICK_INPUTS };
+  function commitPhotoImport() {
+    if (!pendingPhoto) return;
+    // visibility 与 family sharing 保持一致：granted -> 子女可见，否则私密。
+    // 真实数据走 HealthVisionProvider 时，ELDER 端通常不会带 visibility；这里按授权状态补一个标签。
+    const photoVisibility = familySharing === 'granted' ? 'family_ok' : 'private';
+    const events = [
+      ...pendingPhoto.measurements.map((m) =>
+        measurementToEvent({ ...m, visibility: photoVisibility }),
+      ),
+      ...pendingPhoto.labResults.map((l) =>
+        labResultToEvent({ ...l, visibility: photoVisibility }),
+      ),
+    ];
+    if (events.length === 0) {
+      setPendingPhoto(null);
+      setPendingPhotoKind(null);
+      return;
+    }
+    setEvents((current) => appendHealthEvents(current, events));
+    showToast(`已记录 ${events.length} 项健康数值。`);
+    setPendingPhoto(null);
+    setPendingPhotoKind(null);
+  }
+
+  function cancelPhotoImport() {
+    setPendingPhoto(null);
+    setPendingPhotoKind(null);
+    setPendingPhotoError(null);
+  }
+
+  return { handleElderSend, handlePhotoImport, commitPhotoImport, cancelPhotoImport, pendingPhoto, pendingPhotoKind, pendingPhotoError, quickInputs: QUICK_INPUTS };
 }

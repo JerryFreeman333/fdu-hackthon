@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, Finding } from '../types';
+import { METRICS } from '../types';
+import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
@@ -9,6 +11,11 @@ interface ElderHomeProps {
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
   onPhotoImport: (file: Blob, kind: DemoImageKind) => void | Promise<void>;
+  onCommitPhoto: () => void;
+  onCancelPhoto: () => void;
+  pendingPhoto: ParsedHealthData | null;
+  pendingPhotoKind: DemoImageKind | null;
+  pendingPhotoError: string | null;
   quickInputs: string[];
   tasks: CareTask[];
   findings: Finding[];
@@ -25,6 +32,11 @@ export default function ElderHome({
   chat,
   onSend,
   onPhotoImport,
+  onCommitPhoto,
+  onCancelPhoto,
+  pendingPhoto,
+  pendingPhotoKind,
+  pendingPhotoError,
   quickInputs,
   tasks,
   findings,
@@ -162,6 +174,61 @@ export default function ElderHome({
           />
         </div>
       </section>
+
+      {pendingPhotoError && (
+        <section className="card photo-confirm-card photo-confirm-error">
+          <p>{pendingPhotoError}</p>
+          <button className="btn-secondary" onClick={onCancelPhoto}>
+            好
+          </button>
+        </section>
+      )}
+
+      {pendingPhoto && (
+        <section className="card photo-confirm-card">
+          <div className="section-head">
+            <div>
+              <h3>📷 我看到了这些，对吗？</h3>
+              <span className="muted">
+                {pendingPhotoKind === 'bloodPressure' ? '血压计照片' : pendingPhotoKind === 'weight' ? '体重秤照片' : '体检报告照片'}
+                { }— 确认后会写入健康记录。
+              </span>
+            </div>
+          </div>
+          <ul className="photo-confirm-list">
+            {pendingPhoto.measurements.map((m) => {
+              const meta = METRICS[m.metric];
+              const conf = typeof m.confidence === 'number' ? ` · 识别可信度 ${Math.round(m.confidence * 100)}%` : '';
+              return (
+                <li key={m.id}>
+                  <b>{meta?.label ?? m.metric}</b>
+                  <span>: {m.value.toFixed(meta?.decimals ?? 1)} {meta?.unit ?? m.unit}{conf}</span>
+                </li>
+              );
+            })}
+            {pendingPhoto.labResults.map((lab) => {
+              const range = lab.referenceRange
+                ? ` · 参考 ${lab.referenceRange.low ?? '?'}–${lab.referenceRange.high ?? '?'} ${lab.unit}`
+                : '';
+              return (
+                <li key={lab.id}>
+                  <b>{lab.name}</b>
+                  <span>: {lab.value} {lab.unit}{range}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {pendingPhoto.rawText && <p className="muted photo-confirm-raw">{pendingPhoto.rawText}</p>}
+          <div className="photo-confirm-actions">
+            <button className="btn-primary" onClick={onCommitPhoto}>
+              是的，记录下来
+            </button>
+            <button className="btn-secondary" onClick={onCancelPhoto}>
+              不是，重新拍
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="card data-source-card">
         <div className="section-head">

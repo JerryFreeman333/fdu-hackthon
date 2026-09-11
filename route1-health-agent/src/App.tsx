@@ -116,7 +116,16 @@ export default function App() {
     [findings, familySharing, sharedFindingIds],
   );
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
-  const { handleElderSend, handlePhotoImport, quickInputs } = useElderChat({
+  const {
+    handleElderSend,
+    handlePhotoImport,
+    commitPhotoImport,
+    cancelPhotoImport,
+    pendingPhoto,
+    pendingPhotoKind,
+    pendingPhotoError,
+    quickInputs,
+  } = useElderChat({
     familySharing,
     events,
     chat,
@@ -241,6 +250,11 @@ export default function App() {
             chat={chat}
             onSend={handleElderSend}
             onPhotoImport={handlePhotoImport}
+            onCommitPhoto={commitPhotoImport}
+            onCancelPhoto={cancelPhotoImport}
+            pendingPhoto={pendingPhoto}
+            pendingPhotoKind={pendingPhotoKind}
+            pendingPhotoError={pendingPhotoError}
             quickInputs={quickInputs}
             tasks={tasks}
             findings={findings}
