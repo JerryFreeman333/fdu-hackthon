@@ -10,7 +10,7 @@ import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
-export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
+export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain' | 'near_miss';
 export type TimeScope = 'today' | 'yesterday' | 'lastNight' | 'historical' | 'unknown';
 
 export interface StructuredClaim {
@@ -38,7 +38,7 @@ function subtractDays(today: string, days: number): string {
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   return text
-    .split(/[。！？!?；;，,\n]+/)
+    .split(/[。！？!?；;，,\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -102,20 +102,27 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
 }
 
 function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
-  if (/(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
+  const semanticSymptomLanguage =
+    /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
+      clause,
+    );
+
+  if (
+    /(如果|假如|万一|要是|怎么预防|怎么办才不会)/.test(clause) &&
+    (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
+  ) {
     return 'hypothetical';
   }
 
-  // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏，
-  // 虽然表面有否定词，但业务事件本身是“漏服药物”而不是“没有漏服”。
+  if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
+
+  // “没吃药/没服药/忘了吃药”表达的是已经发生的用药遗漏。
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) {
     return 'occurred';
   }
 
-  // “没睡好”含有口语否定词，但它表达的是已经发生的睡眠问题。
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
-  // 比较/缓解结构不是“完全没有症状”。
   const comparativeImprovement =
     /(今天|现在|目前)/.test(clause) &&
     /(没|没有|不再|不那么)/.test(clause) &&
@@ -137,7 +144,10 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   ) {
     return 'negated';
   }
-  if (/(可能|好像|似乎|不太确定|不清楚)/.test(clause) && (tags.length > 0 || hasHealthValue)) {
+  if (
+    /(可能|好像|似乎|不太确定|不清楚)/.test(clause) &&
+    (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
+  ) {
     return 'uncertain';
   }
   return 'occurred';
@@ -231,7 +241,7 @@ export function understandElderInput(
       continue;
     }
 
-    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown') {
+    if (tags.length === 0 && !hasHealthValue && subject !== 'unknown' && status === 'occurred') {
       subjectsSeen.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;

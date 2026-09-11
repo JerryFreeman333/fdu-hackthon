@@ -10,7 +10,7 @@ export type PrivacyScope = 'private' | 'family_ok';
 export type FamilyShareMode = 'private' | 'persistent' | 'one_time';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'dismissed';
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
-export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain';
+export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain' | 'near_miss';
 
 export interface FamilyLink {
   id: string;
