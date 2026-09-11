@@ -49,7 +49,7 @@ function splitClauses(text: string): string[] {
   const protectedNumericComma = text
     .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
     .replace(
-      /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
+      /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
       '$1§NUM§',
     )
     .replace(
@@ -146,7 +146,8 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
 
 /** “谁说我摔了”“哪有我胸痛”这类句式是在反驳前述事实，不是在报告事实。 */
 function isRhetoricalNegation(clause: string): boolean {
-  const healthEventLanguage = /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
+  const healthEventLanguage =
+    /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
   return (
     healthEventLanguage.test(clause) &&
     /(?:谁说|谁讲|哪有|哪里有|哪能有|才没有|根本没有|我(?:根本)?没有|我没(?:有)?|并没有)/.test(clause)
@@ -452,7 +453,12 @@ export function understandElderInput(
     if (!isStandaloneNegation(clause)) continue;
     const previous = [...claims]
       .reverse()
-      .find((claim) => claim.subject === 'self' && claim.status === 'occurred' && (claim.tags.length > 0 || claim.hasHealthValue));
+      .find(
+        (claim) =>
+          claim.subject === 'self' &&
+          claim.status === 'occurred' &&
+          (claim.tags.length > 0 || claim.hasHealthValue),
+      );
     if (previous) previous.status = 'negated';
   }
 
@@ -473,7 +479,7 @@ export function understandElderInput(
     claims,
     recallRequested,
     clarificationQuestion: hasUnclearFamilyReference
-      ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
+      ? '\u60a8\u8bf4\u7684\u201c\u4ed6/\u5979\u201d\u53ef\u80fd\u662f\u5728\u8bf4\u60a8\u81ea\u5df1\uff0c\u4e5f\u53ef\u80fd\u662f\u5728\u8bf4\u5bb6\u4eba\u3002\u6211\u5148\u786e\u8ba4\u6e05\u695a\u662f\u6307\u8c01\uff0c\u518d\u51b3\u5b9a\u8981\u4e0d\u8981\u8bb0\u5f55\uff0c\u8fd9\u6837\u4e0d\u4f1a\u628a\u522b\u4eba\u7684\u60c5\u51b5\u8bb0\u5230\u60a8\u8fd9\u91cc\u3002'
       : clarificationQuestion ?? undefined,
     correction,
     correctionTargetMessageId,
