@@ -20,10 +20,6 @@ function explicitDate(clause: string, today: string): ResolvedTime | null {
   return { scope: 'historical', eventDate: date };
 }
 
-/**
- * 保守规则：只有明确落在今天/昨天等日期的表达才给出 eventDate；
- * “几天前 / 上周”无法精确定位到某一天时保留 scope，但 eventDate 为 null。
- */
 export function resolveTime(clause: string, today: string): ResolvedTime {
   const explicit = explicitDate(clause, today);
   if (explicit) return explicit;
@@ -36,11 +32,19 @@ export function resolveTime(clause: string, today: string): ResolvedTime {
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) {
     return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
   }
-  if (/(昨天|昨日)/.test(clause)) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
-  if (/(几天前|前几天|这几天以前)/.test(clause)) return { scope: 'daysAgo', eventDate: null };
-  if (/(今天|刚才|刚刚|现在|目前|此刻|今天早上|今天上午|今天下午|今天晚上)/.test(clause)) {
+
+  const hasToday = /(?:今天|刚才|刚刚|现在|目前|此刻|今天早上|今天上午|今天下午|今天晚上)/.test(clause);
+  const hasYesterday = /(?:昨天|昨日)/.test(clause);
+  if (
+    hasToday &&
+    hasYesterday &&
+    /(?:比|像|没有.{0,8}(像|那么|这么|那样)|好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(clause)
+  ) {
     return { scope: 'today', eventDate: today };
   }
+  if (hasToday) return { scope: 'today', eventDate: today };
+  if (hasYesterday) return { scope: 'yesterday', eventDate: subtractDays(today, 1) };
+  if (/(几天前|前几天|这几天以前)/.test(clause)) return { scope: 'daysAgo', eventDate: null };
   if (/(早上|上午|下午|傍晚|晚上|中午)/.test(clause)) return { scope: 'today', eventDate: today };
 
   return { scope: 'unknown', eventDate: null };
