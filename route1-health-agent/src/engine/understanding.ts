@@ -39,14 +39,28 @@ function subtractDays(today: string, days: number): string {
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
 function splitClauses(text: string): string[] {
   const protectedNumericComma = text
-    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§')
+    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
     .replace(
       /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
-      '$1§',
-    );
-  return protectedNumericComma
-    .split(/[。！？!?；;,，\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
-    .map((clause) => clause.replace(/§/g, ',').trim())
+      '$1§NUM§',
+    )
+    .replace(/[,，](?=\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/g, '§KEEP§');
+
+  const explicitSubjectStart =
+    '(?:我老公|我丈夫|老公|丈夫|爱人|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|我自己|本人|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人|他|她|他们|她们)';
+  const implicitBoundary = protectedNumericComma.replace(
+    new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\\s*(?=${explicitSubjectStart})`, 'g'),
+    '§CLAUSE§',
+  );
+
+  return implicitBoundary
+    .split(/[。！？!?；;,，\n]+|§CLAUSE§+/)
+    .map((clause) =>
+      clause
+        .replace(/§NUM§/g, ',')
+        .replace(/§KEEP§/g, ',')
+        .trim(),
+    )
     .filter(Boolean);
 }
 
@@ -71,6 +85,16 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
 }
 
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
+  const explicitlyMentionedSubjects = new Set<ElderSubject>();
+  if (/(我老公|我丈夫|老公|丈夫|爱人)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
+  if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) explicitlyMentionedSubjects.add('father');
+  if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) explicitlyMentionedSubjects.add('mother');
+  if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause))
+    explicitlyMentionedSubjects.add('family_other');
+  if (/(我自己|本人)/.test(clause)) explicitlyMentionedSubjects.add('self');
+  if (explicitlyMentionedSubjects.size > 1) return 'unknown';
+
   // 在“告诉女儿我……”这类句子里，女儿是分享接收人，不是健康事实主体。
   if (/(?:告诉|通知|跟|让).{0,4}(?:女儿|儿子|孩子|家人).{0,6}(?:我|我的|我自己|本人)/.test(clause)) return 'self';
 
@@ -175,6 +199,24 @@ export function understandElderInput(
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
 
+  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
+  const hasExplicitFamilyRefusal =
+    /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
+      trimmed,
+    ) ||
+    /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(trimmed) ||
+    /不想让.{0,3}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见|知道这件事)/.test(trimmed);
+  if (hasExplicitFamilyShare && hasExplicitFamilyRefusal && parsePrivacyIntent(trimmed) === 'private') {
+    return {
+      claims: [],
+      recallRequested,
+      clarificationQuestion:
+        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
+      correction,
+      correctionTargetMessageId,
+    };
+  }
+
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
   let subjectsSeen = [...priorSubjects];
@@ -221,8 +263,6 @@ export function understandElderInput(
       continue;
     }
 
-    // 无健康标签但已经明确指向家属的分句不能被静默吞掉：它可能为后一个省略主语的
-    // “摔了一下/喘起来了”建立人物上下文。它不会因为没有 tags 而进入本人健康记录。
     if (tags.length === 0 && !hasHealthValue && subject !== 'self' && subject !== 'unknown') {
       claims.push({
         text: clause,
@@ -263,22 +303,6 @@ export function understandElderInput(
   const hasUnclearFamilyReference = claims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   );
-  const privacyIntents = splitClauses(trimmed)
-    .map((clause) => parsePrivacyIntent(clause))
-    .filter((intent) => intent !== 'none');
-  const uniquePrivacyIntents = [...new Set(privacyIntents)];
-  const hasMixedPrivacyIntent = uniquePrivacyIntents.length > 1;
-
-  if (hasMixedPrivacyIntent) {
-    return {
-      claims: [],
-      recallRequested,
-      clarificationQuestion:
-        '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
-      correction,
-      correctionTargetMessageId,
-    };
-  }
 
   return {
     claims,
