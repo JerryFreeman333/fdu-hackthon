@@ -34,10 +34,12 @@ export interface StructuredElderInput {
 
 const FAMILY_TOKEN_PATTERN =
   /(?:我爸|我妈|我父亲|我母亲|我老公|我丈夫|我爱人|我老伴|我儿子|我女儿|我哥哥|我弟弟|我姐姐|我妹妹|我爷爷|我奶奶|我外公|我外婆|我家人|我家里人)/;
+const FAMILY_FOLLOWUP_PREFIXES = /(?:后来|然后|今天|刚才|现在|这次|同时|而且|并且)/;
 const SELF_PATTERNS = [
   /(?:我自己|我本人|本人)/,
   /我的(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
   /(?:^|[，。；、,;\s])我(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
+  /(?:后来|然后|今天|刚才|现在|这次|同时|而且|并且)我(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
 ];
 const SPOUSE_PATTERNS = [/(?:我老公|我丈夫|老公|丈夫|爱人|老伴)/];
 const FATHER_PATTERNS = [/(?:我爸|我父亲|爸爸|父亲)/];
@@ -104,7 +106,10 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   const omittedFamilyFollowUp =
     uniqueFamily.length === 1 &&
     !hasExplicitSelf(clause) &&
-    /(?:今天|现在|目前|后来|然后|也|还|同样|好多了|好一点|好些了|没那么|减轻|缓解)/.test(clause);
+    FAMILY_FOLLOWUP_PREFIXES.test(clause) ||
+    (uniqueFamily.length === 1 &&
+      !hasExplicitSelf(clause) &&
+      /(?:也|还|同样|好多了|好一点|好些了|没那么|减轻|缓解)/.test(clause));
   if (omittedFamilyFollowUp) return uniqueFamily[0];
 
   if (hasExplicitSelf(clause) || !THIRD_PERSON_PRONOUN.test(clause)) return 'self';
@@ -146,6 +151,7 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
     if (!improvement) return 'negated';
   }
 
+  if (hasHealthClaim && PERCEPTION_FRAME.test(clause)) return 'uncertain';
   if (hasHealthClaim && /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/.test(clause))
     return 'uncertain';
 
@@ -264,17 +270,15 @@ export function understandElderInput(
     }
 
     if (tags.length === 0 && !hasHealthValue && primarySubject !== 'unknown') {
-      if (status !== 'occurred') {
-        claims.push({
-          text: clause,
-          subject: primarySubject,
-          status,
-          timeScope: time.scope,
-          eventDate: time.eventDate,
-          tags,
-          hasHealthValue,
-        });
-      }
+      claims.push({
+        text: clause,
+        subject: primarySubject,
+        status,
+        timeScope: time.scope,
+        eventDate: time.eventDate,
+        tags,
+        hasHealthValue,
+      });
       subjectsSeen.push(primarySubject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
@@ -306,7 +310,7 @@ export function understandElderInput(
       previous.eventDate === claim.eventDate &&
       previous.outcome === undefined &&
       claim.outcome === undefined &&
-      /(?:没|没有|未|也|还|同样|并且|而且)/.test(claim.text)
+      /^(?:也|还|同样|并且|而且|并没|并没有|没|没有|未)/.test(claim.text.trim())
     ) {
       mergedClaims[mergedClaims.length - 1] = {
         ...previous,
