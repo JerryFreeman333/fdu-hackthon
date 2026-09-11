@@ -52,6 +52,7 @@ vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${chunk}`));
 
 let browser;
 let tempDir;
+let exitCode = 0;
 try {
   await waitForServer(baseURL);
   browser = await chromium.launch({
@@ -153,9 +154,13 @@ try {
 
   const failed = results.filter((item) => !item.ok);
   console.log(`\nBLACKBOX SUMMARY: ${results.length - failed.length}/${results.length} passed`);
-  if (failed.length) process.exitCode = 1;
+  exitCode = failed.length ? 1 : 0;
+} catch (error) {
+  console.error('BLACKBOX HARNESS ERROR', error);
+  exitCode = 2;
 } finally {
-  if (browser) await browser.close();
-  if (tempDir) await rm(tempDir, { recursive: true, force: true });
+  if (browser) await browser.close().catch(() => {});
+  if (tempDir) await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   vite.kill('SIGKILL');
+  setTimeout(() => process.exit(exitCode), 100);
 }
