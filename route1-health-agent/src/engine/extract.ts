@@ -35,6 +35,7 @@ function parseChineseNumber(input: string): number | null {
 
   let total = 0;
   let current = 0;
+  let hasHundredOrThousand = false;
   for (const ch of input) {
     if (ch === '十') {
       total += (current || 1) * 10;
@@ -42,18 +43,22 @@ function parseChineseNumber(input: string): number | null {
     } else if (ch === '百') {
       total += (current || 1) * 100;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch === '千') {
       total += (current || 1) * 1000;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch === '万') {
       total = (total + current) * 10000;
       current = 0;
+      hasHundredOrThousand = true;
     } else if (ch in DIGITS) {
       current = DIGITS[ch];
     } else {
       return null;
     }
   }
+  if (hasHundredOrThousand && current > 0 && !input.includes('十')) return total + current * 10;
   return total + current;
 }
 
@@ -109,17 +114,24 @@ const RULES: Rule[] = [
 ];
 
 function extractBloodPressure(text: string): ExtractedValue[] {
-  const pairPattern = new RegExp(
-    String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`,
-  );
-  const match = text.match(pairPattern);
-  if (!match) return [];
-  const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
-  const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));
+  const highLow = text.match(new RegExp(String.raw`高压\s*(${NUMBER}).{0,4}?低压\s*(${NUMBER})`));
+  const lowHigh = text.match(new RegExp(String.raw`低压\s*(${NUMBER}).{0,4}?高压\s*(${NUMBER})`));
+  const pair = text.match(new RegExp(String.raw`(?:血压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`));
+  const selected = highLow
+    ? { systolic: highLow[1], diastolic: highLow[2], sourceText: highLow[0] }
+    : lowHigh
+      ? { systolic: lowHigh[2], diastolic: lowHigh[1], sourceText: lowHigh[0] }
+      : pair
+        ? { systolic: pair[1], diastolic: pair[2], sourceText: pair[0] }
+        : null;
+  if (!selected) return [];
+
+  const systolic = parseChineseNumber(selected.systolic.replace(/\s/g, ''));
+  const diastolic = parseChineseNumber(selected.diastolic.replace(/\s/g, ''));
   if (systolic === null || diastolic === null) return [];
   return [
-    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: match[0] },
-    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: match[0] },
+    { metric: 'systolic', value: systolic, unit: 'mmHg', sourceText: selected.sourceText },
+    { metric: 'diastolic', value: diastolic, unit: 'mmHg', sourceText: selected.sourceText },
   ];
 }
 
@@ -130,9 +142,7 @@ export function extractHealthValues(text: string): ExtractedValue[] {
       const match = text.match(pattern);
       if (!match) continue;
       const value = parseValue(match[1].replace(/\s/g, ''));
-      if (Number.isFinite(value)) {
-        results.push({ metric: rule.metric, value, unit: rule.unit, sourceText: match[0] });
-      }
+      if (Number.isFinite(value)) results.push({ metric: rule.metric, value, unit: rule.unit, sourceText: match[0] });
       break;
     }
   }
