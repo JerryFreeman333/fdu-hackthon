@@ -10,9 +10,9 @@ export function hadTag(
   days: number,
 ): Observation | null {
   return (
-    observations.find(
-      (o) => o.tags.includes(tag) && diffDays(o.date, endDate) >= 0 && diffDays(o.date, endDate) < days,
-    ) ?? null
+    observations
+      .filter((o) => o.tags.includes(tag) && diffDays(o.date, endDate) >= 0 && diffDays(o.date, endDate) < days)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
   );
 }
 
@@ -49,7 +49,7 @@ export function getMetricSignal(
     baselineSd: baseline.sd,
     baselineN: baseline.n,
     badRatio: badDelta / Math.abs(baseline.mean),
-    sigma: deviationSigma(recent, baseline, METRICS[metric].higherIsBad),
+    sigma: deviationSigma(recent, baseline, METRICS[metric].higherIsBad, metric),
   };
 }
 

@@ -7,7 +7,14 @@ import { getMetricSignal, hadTag } from './detection/signals';
 import { contextualRules } from './detection/rules/contextual';
 import { metricBaselineRules } from './detection/rules/metricBaseline';
 import { multiSignalRule } from './detection/fusion';
-import { bloodPressureSafetyRule, fallSafetyRule, redFlagSymptomRule } from './detection/safety';
+import {
+  bloodPressureSafetyRule,
+  fallSafetyRule,
+  glucoseSafetyRule,
+  heartRateSafetyRule,
+  redFlagSymptomRule,
+  spo2SafetyRule,
+} from './detection/safety';
 import type { DetectionConfig, DetectionContext, DetectionRule } from './detection/types';
 
 export interface DetectionOptions {
@@ -23,6 +30,9 @@ const RULES: DetectionRule[] = [
   ...contextualRules,
   multiSignalRule,
   bloodPressureSafetyRule,
+  spo2SafetyRule,
+  heartRateSafetyRule,
+  glucoseSafetyRule,
   redFlagSymptomRule,
   fallSafetyRule,
 ];
@@ -61,20 +71,6 @@ function dedupeFindings(findings: Finding[]): Finding[] {
   return [...byId.values()];
 }
 
-function applyObservationPrivacy(findings: Finding[], observations: DetectionContext['observations']): Finding[] {
-  const privateTags = new Set<SymptomTag>();
-  for (const observation of observations) {
-    if (observation.visibility === 'private') {
-      for (const tag of observation.tags) privateTags.add(tag);
-    }
-  }
-  if (privateTags.size === 0) return findings;
-  return findings.map((finding) => {
-    const protectedSignals = (finding.signalKeys ?? []).some((key) => privateTags.has(key as SymptomTag));
-    return protectedSignals ? { ...finding, familyEligible: false } : finding;
-  });
-}
-
 export function runDetection(events: HealthEvent[], today: string, options: DetectionOptions = {}): Finding[] {
   const config: DetectionConfig = { ...DEFAULT_CONFIG, ...options };
   const materialized = materializeHealthData(events);
@@ -97,9 +93,9 @@ export function runDetection(events: HealthEvent[], today: string, options: Dete
     else if (result) findings.push(result);
   }
 
-  const privacyAware = applyObservationPrivacy(dedupeFindings(findings), materialized.observations);
+  const dedupedFindings = dedupeFindings(findings);
   const order = { urgent: 0, alert: 1, watch: 2, info: 3 } as const;
-  return privacyAware.sort((a, b) => {
+  return dedupedFindings.sort((a, b) => {
     const severityDelta = order[a.severity] - order[b.severity];
     if (severityDelta !== 0) return severityDelta;
     return (b.score ?? 0) - (a.score ?? 0);

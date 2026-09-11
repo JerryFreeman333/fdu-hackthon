@@ -1,0 +1,134 @@
+{
+  "meta": {
+    "note": "demoPos 用于合成演示场景；realPos/realPoints 用于真实模型人工空间标定，null 表示尚未标定",
+    "levels": { "high": "高风险", "medium": "中风险", "low": "低风险" },
+    "datasetVersion": 1,
+    "capturedAt": "2026-09-09T00:00:00Z",
+    "provenance": "demo",
+    "scaleConfidence": 0.85
+  },
+  "hazards": [
+    {
+      "id": "rug-curl",
+      "title": "地毯翘边",
+      "level": "high",
+      "location": "卧室通往走廊的地毯一角",
+      "risk": "夜间起夜、步态不稳时极易被绊倒",
+      "advice": "更换防滑底地毯，或用双面胶/压条固定翘起边缘",
+      "demoPos": [-0.6, 0.06, 0.2],
+      "realPos": null
+    },
+    {
+      "id": "cable-cross",
+      "title": "电线横穿通道",
+      "level": "high",
+      "location": "客厅到厨房的必经通道",
+      "risk": "行走时挂脚绊倒，夜间光线差更危险",
+      "advice": "沿墙布线并用线槽固定，或移除横穿的插线板",
+      "demoPos": [1.7, 0.05, -0.9],
+      "realPos": null
+    },
+    {
+      "id": "step-no-rail",
+      "title": "门槛台阶无扶手",
+      "level": "high",
+      "location": "走廊与卫生间之间的高差台阶",
+      "risk": "上下台阶失去支撑，摔倒后可能撞到硬物",
+      "advice": "安装双侧扶手 + 夜间感应地脚灯，台阶边缘贴防滑警示条",
+      "demoPos": [0.9, 0.3, -1.9],
+      "realPos": null
+    },
+    {
+      "id": "bathroom-slip",
+      "title": "卫生间门口湿滑",
+      "level": "medium",
+      "location": "卫生间出入口",
+      "risk": "水渍残留导致滑倒，老人骨折风险高",
+      "advice": "铺设吸水防滑垫，门口放置换鞋凳",
+      "demoPos": [2.1, 0.04, -2.6],
+      "realPos": null
+    },
+    {
+      "id": "corridor-dark",
+      "title": "走廊照明不足",
+      "level": "medium",
+      "location": "卧室到卫生间走廊中段",
+      "risk": "夜间看不清地面高差与障碍物",
+      "advice": "加装人体感应夜灯（起夜路径全程覆盖）",
+      "demoPos": [0.2, 1.6, -1.2],
+      "realPos": null
+    },
+    {
+      "id": "table-corner",
+      "title": "茶几尖角",
+      "level": "medium",
+      "location": "客厅沙发旁茶几",
+      "risk": "转身、起坐时磕碰，跌倒时二次撞击",
+      "advice": "加装圆角防撞条，或更换圆角家具",
+      "demoPos": [2.6, 0.42, 0.4],
+      "realPos": null
+    },
+    {
+      "id": "path-blocked",
+      "title": "通道杂物堆放",
+      "level": "medium",
+      "location": "客厅通往大门的通道",
+      "risk": "有效通道变窄，紧急情况（如火灾）时影响撤离",
+      "advice": "清理主通道，保持宽度 ≥ 80cm",
+      "demoPos": [2.9, 0.25, 2.0],
+      "realPos": null
+    }
+  ],
+  "paths": [
+    {
+      "id": "night-toilet",
+      "title": "夜间起夜动线（床 → 卫生间）",
+      "mode": "night",
+      "demoPoints": [[-3.2, 0, -1.2], [-2.2, 0, -0.6], [-0.6, 0, 0.2], [0.5, 0, -0.8], [0.9, 0, -1.9], [2.1, 0, -2.6]],
+      "hazardIds": ["rug-curl", "step-no-rail", "corridor-dark", "bathroom-slip"],
+      "realPoints": null
+    },
+    {
+      "id": "day-kitchen",
+      "title": "日间活动动线（卧室 → 厨房）",
+      "mode": "day",
+      "demoPoints": [[-3.2, 0, -1.2], [-1.6, 0, 0.6], [0.6, 0, 0.8], [1.7, 0, -0.9], [3.0, 0, -1.6]],
+      "hazardIds": ["cable-cross", "rug-curl"],
+      "realPoints": null
+    },
+    {
+      "id": "escape",
+      "title": "紧急逃生动线（客厅 → 大门）",
+      "mode": "day",
+      "demoPoints": [[1.2, 0, 0.2], [2.9, 0, 2.0], [3.6, 0, 3.0]],
+      "hazardIds": ["path-blocked"],
+      "realPoints": null
+    }
+  ],
+  "items": [
+    {
+      "id": "glasses",
+      "title": "老花镜",
+      "location": "卧室床头柜上",
+      "say": "您的老花镜在卧室床头柜上，从床边伸手就能拿到。",
+      "demoPos": [-4.0, 0.55, -1.3],
+      "realPos": null
+    },
+    {
+      "id": "medicine",
+      "title": "降压药",
+      "location": "卧室床头柜抽屉",
+      "say": "降压药放在卧室床头柜的抽屉里，记得按医嘱每天早上服用。",
+      "demoPos": [-3.9, 0.55, -0.9],
+      "realPos": null
+    },
+    {
+      "id": "keys",
+      "title": "钥匙",
+      "location": "客厅茶几上",
+      "say": "钥匙在客厅茶几上，出门前拿好。",
+      "demoPos": [2.6, 0.45, 0.55],
+      "realPos": null
+    }
+  ]
+}

@@ -52,6 +52,8 @@ export function computeBaseline(
   if (values.length < minPoints) return null;
 
   const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  // Population SD is intentional here: a rolling window describes the observed personal distribution,
+  // not an estimator for an unseen population. Zero-variance windows are handled in deviationSigma.
   const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
   return { mean, sd: Math.sqrt(variance), n: values.length };
 }
@@ -70,11 +72,25 @@ export function recentMean(records: DayRecord[], metric: MetricKey, endDate: str
 }
 
 /**
- * 变差方向上的偏离程度，单位：基线标准差的倍数。
- * 返回正数表示"变差了"，越大越反常；null 表示没有可用基线。
+ * Zero-variance baselines still contain useful information. Use a small metric-specific tolerance
+ * instead of silently returning no signal when the observed personal baseline is perfectly stable.
+ * These values are intentionally conservative demo tolerances, not clinical diagnostic thresholds.
  */
-export function deviationSigma(value: number, baseline: Baseline, higherIsBad: boolean): number | null {
-  if (baseline.sd < 1e-9) return null;
-  const raw = (value - baseline.mean) / baseline.sd;
+const MIN_SD: Partial<Record<MetricKey, number>> = {
+  steps: 250,
+  walkSpeed: 0.05,
+  sleepHours: 0.25,
+  nightWakes: 0.5,
+  restingHr: 3,
+  weight: 0.5,
+  spo2: 1,
+  systolic: 5,
+  diastolic: 3,
+  bloodGlucose: 0.5,
+};
+
+export function deviationSigma(value: number, baseline: Baseline, higherIsBad: boolean, metric?: MetricKey): number {
+  const sd = Math.max(baseline.sd, metric ? (MIN_SD[metric] ?? 1) : 1e-9);
+  const raw = (value - baseline.mean) / sd;
   return higherIsBad ? raw : -raw;
 }

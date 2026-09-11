@@ -15,3 +15,14 @@ Thumbs.db
 # 本地环境
 .env
 .env.local
+
+# Route 2 本地采集/重建数据（绝不进入 Git）
+route2-home-3d/backend/.data/
+route2-home-3d/pipeline/data/*/input/
+route2-home-3d/pipeline/data/*/db.db
+route2-home-3d/pipeline/data/*/sparse/
+route2-home-3d/pipeline/data/*/distilled/
+route2-home-3d/pipeline/data/*/sparse_txt/
+route2-home-3d/pipeline/data/*/semantic/colmap_txt/
+route2-home-3d/pipeline/data/*/web/
+route2-home-3d/pipeline/external/

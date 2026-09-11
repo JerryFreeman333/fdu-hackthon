@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "type": "person-home-risk-projection",
+  "status": "non-diagnostic",
+  "privacyScope": "family_ok",
+  "risks": [
+    {
+      "id": "person-home-night-route",
+      "level": "elevated",
+      "kind": "night-route",
+      "title": "夜间活动增加且夜间视力较差",
+      "evidence": ["Person Twin: reduced night vision", "Home Twin: route lighting still needs review"],
+      "action": "建议复核夜间照明。"
+    }
+  ]
+}

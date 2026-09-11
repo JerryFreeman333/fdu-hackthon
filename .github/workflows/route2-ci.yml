@@ -1,0 +1,74 @@
+name: route2-home-3d-ci
+
+on:
+  push:
+    branches:
+      - main
+      - 'route2/**'
+      - 'route2-*'
+    paths:
+      - 'route2-home-3d/**'
+      - '.github/workflows/route2-ci.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'route2-home-3d/**'
+      - '.github/workflows/route2-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: route2-home-3d-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-route2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: route2-home-3d/web
+
+    steps:
+      - name: Checkout revision under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route2-home-3d/web/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run data contract tests
+        run: npm test
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Route 2 backend dependencies
+        working-directory: route2-home-3d
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Compile semantic and backend Python
+        working-directory: route2-home-3d
+        run: python -m py_compile pipeline/semantic/topology.py pipeline/semantic/detect_and_localize.py pipeline/semantic/walkability.py pipeline/semantic/surface_costmap.py pipeline/semantic/personalized_surface_route.py pipeline/semantic/person_home_risk.py pipeline/semantic/person_home_action_plan.py pipeline/semantic/rescan_action_merge.py backend/app.py backend/capture.py backend/processor.py backend/test_rescan_backend.py
+
+      - name: Run spatial, person-home and backend tests
+        working-directory: route2-home-3d
+        run: python -m unittest discover -s pipeline/semantic -p 'test_*.py' && python -m unittest discover -s backend -p 'test_*.py'
+
+      - name: Typecheck and production build
+        run: npm run build
+
+      - name: Verify generated bundle exists
+        run: test -f dist/index.html

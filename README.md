@@ -24,6 +24,22 @@ npm run dev
 
 详细说明见 [route1-health-agent/README.md](route1-health-agent/README.md)。
 
+## 当前进展：路线二原型（高斯泼溅建模，可运行）
+
+`route2-home-3d/` —— 居家安全 3D 建模：手机拍摄家庭 → Gaussian Splatting 重建 → AI 分析危险点、活动动线、找东西。
+
+- **Web 演示端（现在就能跑）**：Three.js 加载高斯模型，内置合成演示场景兜底——危险点标注（点击查看风险等级/整改建议）、动线分析（夜间起夜/日间/逃生三条路线 + 危险段红色高亮 + 自动夜间模式）、找东西（相机飞行定位物品并语音指引）
+- **训练管线（一键脚本）**：视频抽帧 → COLMAP 相机标定（自动下载）→ 官方 gaussian-splatting 训练（已适配 8GB 显存）→ 导出 Web，全程 PowerShell 脚本自动化
+- 手机拍摄指南见 [route2-home-3d/docs/capture-guide.md](route2-home-3d/docs/capture-guide.md)
+
+```bash
+cd route2-home-3d/web
+npm install
+npm run dev
+```
+
+详细说明见 [route2-home-3d/README.md](route2-home-3d/README.md)。
+
 ## 共同原则
 
 不做"万能养老平台"；不说 AI 能诊断疾病；重点是**发现变化**和**帮助行动**；老人使用要简单（拍照、说话、自动同步）；不过度监控，只有需要时才通知家属。

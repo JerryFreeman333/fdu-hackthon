@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "purpose": "Route 2 core semantic targets for Home Twin object detection",
+  "targets": [
+    { "category": "bed", "label": "床", "prompts": ["床", "单人床", "双人床"] },
+    { "category": "door", "label": "门/出入口", "prompts": ["门", "房门", "卫生间门"] },
+    { "category": "rug", "label": "地毯", "prompts": ["地毯", "小地毯", "地垫"] },
+    { "category": "cable", "label": "地面电线", "prompts": ["电线", "电源线", "插线板电线"] },
+    { "category": "threshold", "label": "门槛/台阶", "prompts": ["门槛", "台阶", "高差"] },
+    { "category": "toilet", "label": "卫生间/马桶区域", "prompts": ["卫生间", "厕所", "马桶"] }
+  ]
+}

@@ -1,15 +1,16 @@
-import type { DayRecord, Finding, Observation } from '../types';
+import type { CareTask, DayRecord, Finding, Observation } from '../types';
 import { buildWeeklyReport } from '../engine/report';
 
 interface ReportViewProps {
   records: DayRecord[];
   observations: Observation[];
   findings: Finding[];
+  tasks?: CareTask[];
   today: string;
 }
 
-export default function ReportView({ records, observations, findings, today }: ReportViewProps) {
-  const report = buildWeeklyReport(records, observations, findings, today);
+export default function ReportView({ records, observations, findings, tasks = [], today }: ReportViewProps) {
+  const report = buildWeeklyReport(records, observations, findings, today, tasks);
 
   return (
     <div className="report-view">

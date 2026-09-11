@@ -1,4 +1,4 @@
-/** 路线一领域模型：老人、健康事件、发现与 Agent。 */
+/** 路线一领域模型：老人、健康事件、家庭事件、发现与 Agent。 */
 
 export type DataSource = 'demo' | 'device' | 'photo' | 'manual' | 'import' | 'chat';
 export type UserRole = 'elder' | 'family';
@@ -7,7 +7,10 @@ export type NightVisionStatus = 'normal' | 'reduced' | 'unknown';
 export type CognitionStatus = 'stable' | 'mild_change' | 'unknown';
 export type MobilityStatus = 'independent' | 'uses_cane' | 'needs_support' | 'unknown';
 export type PrivacyScope = 'private' | 'family_ok';
+export type FamilyShareMode = 'private' | 'persistent' | 'one_time';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'dismissed';
+export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
+export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain' | 'near_miss';
 
 export interface FamilyLink {
   id: string;
@@ -77,6 +80,7 @@ export interface HealthMeasurement {
   unit: string;
   source: DataSource;
   confidence?: number;
+  visibility?: PrivacyScope;
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -94,6 +98,7 @@ export interface LabResult {
   unit: string;
   source: DataSource;
   confidence?: number;
+  visibility?: PrivacyScope;
   referenceRange?: { low?: number; high?: number };
 }
 
@@ -108,6 +113,11 @@ export type SymptomTag =
   | 'moodLow'
   | 'fall'
   | 'bpHigh'
+  | 'spo2Low'
+  | 'hrHigh'
+  | 'hrLow'
+  | 'glucoseHigh'
+  | 'glucoseLow'
   | 'chestPain'
   | 'neuroChange';
 
@@ -124,6 +134,11 @@ export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   bpHigh: '血压偏高',
   chestPain: '胸痛',
   neuroChange: '突发神经系统异常',
+  spo2Low: '血氧偏低',
+  hrHigh: '心率偏快',
+  hrLow: '心率偏慢',
+  glucoseHigh: '血糖偏高',
+  glucoseLow: '血糖偏低',
 };
 
 export interface Observation {
@@ -135,6 +150,22 @@ export interface Observation {
   visibility?: PrivacyScope;
   measurements?: HealthMeasurement[];
   labResults?: LabResult[];
+  metadata?: Record<string, string | number | boolean>;
+}
+
+/** 家庭成员事实账本：独立于老人的 HealthEvent，不参与老人基线/检测。 */
+export interface FamilyHealthEvent {
+  id: string;
+  timestamp: string;
+  source: DataSource;
+  subject: Exclude<ElderSubject, 'self' | 'unknown'>;
+  text: string;
+  tags: SymptomTag[];
+  hasHealthValue: boolean;
+  status: ClaimStatus;
+  visibility: PrivacyScope;
+  shareMode: FamilyShareMode;
+  sourceMessageId?: string;
 }
 
 export type Severity = 'info' | 'watch' | 'alert' | 'urgent';
@@ -168,6 +199,8 @@ export interface ElderProfile {
   conditions: string[];
   medications: string[];
   familyContact: string;
+  familyPhone: string;
+  communityDoctorPhone?: string;
   mobility: MobilityStatus;
   usesCane: boolean;
   nightVision: NightVisionStatus;
