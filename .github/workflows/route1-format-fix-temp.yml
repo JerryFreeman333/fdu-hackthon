@@ -1,0 +1,33 @@
+name: route1-format-fix-temp
+on:
+  push:
+    branches: [route1/final-green]
+permissions:
+  contents: write
+jobs:
+  format-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: route1/final-green
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+      - run: npm ci
+      - run: npx --yes prettier@3.5.3 --write src/engine/extract.ts
+      - shell: bash
+        run: |
+          if git diff --quiet -- src/engine/extract.ts; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/engine/extract.ts
+          git commit -m "style(route1): format legacy BP API"
+          git push origin HEAD:route1/final-green
