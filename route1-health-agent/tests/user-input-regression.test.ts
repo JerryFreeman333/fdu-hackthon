@@ -29,6 +29,45 @@ runCase('口语化“我看他……”不会丢掉跌倒事实', () => {
   assert(acceptedSelfClaims(input).length === 0, '家属跌倒不能进入老人本人档案');
 });
 
+runCase('二手转述中的家属血压也不能进入本人健康事件流', () => {
+  const phrases = ['我看到我爸血压180/110', '我老伴血压180，110', '我觉得他血压180/110'];
+  for (const phrase of phrases) {
+    const input = understandElderInput(phrase, TODAY);
+    assert(
+      input.claims.some((claim) => claim.subject !== 'self' && claim.hasHealthValue),
+      `${phrase}: 应保留家属血压事实`,
+    );
+    assert(acceptedSelfClaims(input).length === 0, `${phrase}: 家属血压不能进入本人健康事件流`);
+  }
+});
+
+runCase('非健康家属语境不会继承上一条健康标签', () => {
+  const input = understandElderInput(
+    '我今天头晕，昨晚没睡好，早上药忘了吃，我爸摔了一下，女儿也没在家，我现在其实没什么事',
+    TODAY,
+  );
+  const fatherClaims = input.claims.filter((claim) => claim.subject === 'father');
+  const contextOnlyFamily = input.claims.filter(
+    (claim) => claim.subject === 'family_other' && claim.tags.length === 0 && !claim.hasHealthValue,
+  );
+  const selfClaims = acceptedSelfClaims(input);
+  assert(selfClaims.length === 3, '本人三条健康事实仍应独立保留');
+  assert(fatherClaims.length === 1, '父亲跌倒应保留为一条家属健康事实');
+  assert(contextOnlyFamily.length === 1, '女儿不在家应保留为家属语境，而不是健康事实');
+  assert(!selfClaims.some((claim) => claim.tags.includes('fall')), '父亲跌倒不能污染本人健康事实');
+});
+
+runCase('直接的“女儿也没在家”不能继承前一条健康标签', () => {
+  const input = understandElderInput('我爸摔了一下，女儿也没在家', TODAY);
+  assert(input.claims.length === 2, '父亲跌倒与女儿不在家应拆成两条事实');
+  assert(input.claims[0].subject === 'father', '第一条应属于父亲');
+  assert(input.claims[0].tags.includes('fall'), '第一条应保留跌倒标签');
+  assert(input.claims[1].subject === 'family_other', '第二条应属于家属语境');
+  assert(input.claims[1].tags.length === 0, '第二条不得继承跌倒标签');
+  assert(!input.claims[1].hasHealthValue, '第二条不得生成健康数值');
+  assert(acceptedSelfClaims(input).length === 0, '两条都不能进入本人健康事件流');
+});
+
 runCase('“今天没有像昨天那样喘得厉害了”保留为今天的持续症状', () => {
   const input = understandElderInput('今天没有像昨天那样喘得厉害了', TODAY);
   assert(input.claims.length === 1, '比较式症状应形成一条 claim');

@@ -4,6 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
+// Postposed-denial rollback regression gate: denial must not leave an emergency self event behind.
 // Final CI verification marker: final clean user push gate 2.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
@@ -27,6 +28,66 @@ test('negation with natural elder wording stays negated', () => {
   assert.equal(claims.length, 1);
   assert.equal(claims[0]?.status, 'negated');
   assert.equal(accepted('今天倒是没喘，也没胸闷').length, 0);
+});
+
+test('rhetorical denial cannot become an actual fall', () => {
+  const claims = claimsOf('谁说我摔倒了，我没有');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim, '必须保留跌倒语义供解释层判断，但不能丢失这条反驳');
+  assert.equal(fallClaim?.subject, 'self');
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('谁说我摔倒了，我没有').length, 0);
+});
+
+test('postposed denial cancels the immediately preceding self event', () => {
+  const claims = claimsOf('我摔倒了，没有啊');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim);
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('我摔倒了，没有啊').length, 0);
+});
+
+test('discourse-marked standalone denial cancels the preceding self event', () => {
+  const inputs = ['我摔倒了，其实没有', '我摔倒了，不过没有', '我摔倒了，但是没有啊'];
+  for (const text of inputs) {
+    const claims = claimsOf(text);
+    const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+    assert.ok(fallClaim, `${text}: 应保留跌倒语义`);
+    assert.equal(fallClaim?.status, 'negated', `${text}: 否定应回滚前面的跌倒`);
+    assert.equal(accepted(text).length, 0);
+  }
+});
+
+test('explicit repeated denial cancels the immediately preceding self event', () => {
+  const claims = claimsOf('我摔倒了，不过没摔');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim);
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('我摔倒了，不过没摔').length, 0);
+});
+
+test('resolution wording is not mistaken for postposed denial', () => {
+  const text = '我胸闷，后来没有了';
+  const claims = claimsOf(text);
+  const chestClaim = claims.find((claim) => claim.tags.includes('dyspnea') || claim.tags.includes('chestPain'));
+  assert.ok(chestClaim, '应保留原始胸部症状事件');
+  assert.equal(chestClaim?.status, 'occurred');
+  assert.equal(accepted(text).length, 1);
+});
+
+test('question followed by denial is not accepted as a fall', () => {
+  const claims = claimsOf('我摔倒了吗？没有');
+  const fallClaim = claims.find((claim) => claim.tags.includes('fall'));
+  assert.ok(fallClaim);
+  assert.equal(fallClaim?.status, 'negated');
+  assert.equal(accepted('我摔倒了吗？没有').length, 0);
+});
+
+test('real occurrence remains occurred', () => {
+  const claims = claimsOf('我今天真的摔倒了');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.status, 'occurred');
+  assert.equal(accepted('我今天真的摔倒了').length, 1);
 });
 
 test('hypothetical health question is never treated as an occurrence', () => {
@@ -90,13 +151,6 @@ test('not sure beats explicit occurrence in medication', () => {
   assert.equal(claims.length, 1);
   assert.equal(claims[0]?.status, 'uncertain', '"好像忘了吃药" 是 uncertain，不能记成 medicationMissed+occurred');
   assert.equal(accepted('我好像忘了吃药').length, 0);
-});
-
-test('real occurrence remains occurred', () => {
-  const claims = claimsOf('我今天真的摔倒了');
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0]?.status, 'occurred');
-  assert.equal(accepted('我今天真的摔倒了').length, 1);
 });
 
 test('negated family event never becomes self event', () => {
