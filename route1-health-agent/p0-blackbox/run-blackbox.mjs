@@ -261,12 +261,12 @@ async function casePhotoDemoImport(browser) {
         'base64',
       ),
     });
-    await page.locator('button', { hasText: '确认记录' }).waitFor();
+    await page.locator('button', { hasText: '是的，记录下来' }).waitFor();
     assert(
-      (await bodyText(page)).includes('确认识别结果'),
+      (await bodyText(page)).includes('我看到了这些'),
       'parsed photo confirmation card is missing',
     );
-    await page.locator('button', { hasText: '确认记录' }).click();
+    await page.locator('button', { hasText: '是的，记录下来' }).click();
     await page.waitForTimeout(300);
     assert(
       (await bodyText(page)).includes('已记录 2 项'),

@@ -16,7 +16,9 @@ function finding(overrides: Partial<Finding> & Pick<Finding, 'id' | 'severity'>)
     title: '测试发现',
     detail: '测试详情',
     evidence: ['证据一'],
-    // main 的家属门控是 fail-closed：familyEligible 必须显式为 true 才会派发。
+    // 测试默认构造可共享的 finding。collectFamilyNotifications 要求
+    // familyEligible 显式为 true 才能进通知队列；不默认会全部被漏掉。
+    // 显式拒绝共享的测试自己传 familyEligible: false。
     familyEligible: true,
     ...overrides,
   };

@@ -1,18 +1,21 @@
 import { useRef, useState } from 'react';
 import type { CareTask, ChatMessage, ElderProfile, FamilyLink, Finding } from '../types';
 import { METRICS } from '../types';
+import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
-import type { PendingPhotoImport } from '../adapters/ImageHealthParser';
 import ChatView from './ChatView';
 
 interface ElderHomeProps {
   profile: ElderProfile;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
-  onPhotoImport: (file: Blob, kind: DemoImageKind) => Promise<PendingPhotoImport | null>;
-  onConfirmPhotoRecord: (pending: PendingPhotoImport) => void;
-  photoParserMode: 'demo' | 'real-http';
+  onPhotoImport: (file: Blob, kind: DemoImageKind) => void | Promise<void>;
+  onCommitPhoto: () => void;
+  onCancelPhoto: () => void;
+  pendingPhoto: ParsedHealthData | null;
+  pendingPhotoKind: DemoImageKind | null;
+  pendingPhotoError: string | null;
   quickInputs: string[];
   tasks: CareTask[];
   findings: Finding[];
@@ -22,6 +25,7 @@ interface ElderHomeProps {
   onKeepFamilyPrivate: () => void;
   onRevokeFamilyShare: () => void;
   onGenerateInvite: () => void;
+  syncStatus?: import('../hooks/useCrossDeviceSync').CrossDeviceStatus;
 }
 
 export default function ElderHome({
@@ -29,8 +33,11 @@ export default function ElderHome({
   chat,
   onSend,
   onPhotoImport,
-  onConfirmPhotoRecord,
-  photoParserMode,
+  onCommitPhoto,
+  onCancelPhoto,
+  pendingPhoto,
+  pendingPhotoKind,
+  pendingPhotoError,
   quickInputs,
   tasks,
   findings,
@@ -40,13 +47,13 @@ export default function ElderHome({
   onKeepFamilyPrivate,
   onRevokeFamilyShare,
   onGenerateInvite,
+  syncStatus,
 }: ElderHomeProps) {
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
     profile.familySharing === 'ask' && findings.some((f) => f.severity === 'alert' || f.severity === 'urgent');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoKind, setPhotoKind] = useState<DemoImageKind>('bloodPressure');
-  const [pendingPhoto, setPendingPhoto] = useState<PendingPhotoImport | null>(null);
 
   function choosePhoto() {
     fileInputRef.current?.click();
@@ -59,8 +66,7 @@ export default function ElderHome({
 
   async function handlePhotoChange(file: File | undefined) {
     if (!file) return;
-    const pending = await onPhotoImport(file, photoKind);
-    if (pending) setPendingPhoto(pending);
+    await onPhotoImport(file, photoKind);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -145,11 +151,7 @@ export default function ElderHome({
         <div className="section-head">
           <div>
             <h3>记录一下血压、体重或报告</h3>
-            <span className="muted">
-              {photoParserMode === 'real-http'
-                ? '照片将发送到已配置的视觉服务解析；识别结果需经您确认后才会记录。'
-                : '这是 Demo，照片不会被真的读出内容；在下方确认后才会写入明确标注的示例数据。'}
-            </span>
+            <span className="muted">这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。</span>
           </div>
         </div>
         <div className="chat-input-row">
@@ -175,47 +177,93 @@ export default function ElderHome({
         </div>
       </section>
 
+      {pendingPhotoError && (
+        <section className="card photo-confirm-card photo-confirm-error">
+          <p>{pendingPhotoError}</p>
+          <button className="btn-secondary" onClick={onCancelPhoto}>
+            好
+          </button>
+        </section>
+      )}
+
       {pendingPhoto && (
-        <section className="card photo-card">
+        <section className="card photo-confirm-card">
           <div className="section-head">
             <div>
-              <h3>确认识别结果</h3>
+              <h3>📷 我看到了这些，对吗？</h3>
               <span className="muted">
-                {pendingPhoto.provider === 'demo' ? '示例数据（Demo parser）' : `识别服务：${pendingPhoto.provider}`}
-                {' · '}置信度 {Math.round(pendingPhoto.overallConfidence * 100)}%
+                {pendingPhotoKind === 'bloodPressure'
+                  ? '血压计照片'
+                  : pendingPhotoKind === 'weight'
+                    ? '体重秤照片'
+                    : '体检报告照片'}
+                {}— 确认后会写入健康记录。
               </span>
             </div>
           </div>
-          <ul className="pending-photo-list">
-            {pendingPhoto.measurements.map((item) => (
-              <li key={item.id}>
-                {METRICS[item.metric]?.label ?? item.metric}：{item.value} {item.unit}
-              </li>
-            ))}
-            {pendingPhoto.labResults.map((lab) => (
-              <li key={lab.id}>
-                {lab.name}：{lab.value} {lab.unit}
-              </li>
-            ))}
+          <ul className="photo-confirm-list">
+            {pendingPhoto.measurements.map((m) => {
+              const meta = METRICS[m.metric];
+              const conf = typeof m.confidence === 'number' ? ` · 识别可信度 ${Math.round(m.confidence * 100)}%` : '';
+              return (
+                <li key={m.id}>
+                  <b>{meta?.label ?? m.metric}</b>
+                  <span>
+                    : {m.value.toFixed(meta?.decimals ?? 1)} {meta?.unit ?? m.unit}
+                    {conf}
+                  </span>
+                </li>
+              );
+            })}
+            {pendingPhoto.labResults.map((lab) => {
+              const range = lab.referenceRange
+                ? ` · 参考 ${lab.referenceRange.low ?? '?'}–${lab.referenceRange.high ?? '?'} ${lab.unit}`
+                : '';
+              return (
+                <li key={lab.id}>
+                  <b>{lab.name}</b>
+                  <span>
+                    : {lab.value} {lab.unit}
+                    {range}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
-          {pendingPhoto.warnings.length > 0 && <p className="muted">识别提示：{pendingPhoto.warnings.join('；')}</p>}
-          <div className="chat-input-row">
-            <button
-              className="btn-primary"
-              onClick={() => {
-                onConfirmPhotoRecord(pendingPhoto);
-                setPendingPhoto(null);
-              }}
-            >
-              确认记录
+          {pendingPhoto.rawText && <p className="muted photo-confirm-raw">{pendingPhoto.rawText}</p>}
+          <div className="photo-confirm-actions">
+            <button className="btn-primary" onClick={onCommitPhoto}>
+              是的，记录下来
             </button>
-            <button className="btn-secondary" onClick={() => setPendingPhoto(null)}>
-              不要了
+            <button className="btn-secondary" onClick={onCancelPhoto}>
+              不是，重新拍
             </button>
           </div>
         </section>
       )}
 
+      <section className="card data-source-card">
+        <div className="section-head">
+          <div>
+            <h3>数据从哪儿来</h3>
+            <span className="muted">这两条路都进入同一个个人基线和变化检测。</span>
+          </div>
+        </div>
+        <ul className="data-source-list">
+          <li>
+            <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
+            <span className="muted">— 来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）</span>
+          </li>
+          <li>
+            <b>📷 血压 / 体重 / 血糖 / 体检报告</b>
+            <span className="muted">— 来自拍照识别或手动录入</span>
+          </li>
+          <li>
+            <b>💬 主诉（"累了"、"喘"、"睡不好"）</b>
+            <span className="muted">— 来自聊天</span>
+          </li>
+        </ul>
+      </section>
       <section className="card privacy-card">
         <div className="section-head">
           <div>
@@ -235,9 +283,19 @@ export default function ElderHome({
             )}
           </>
         ) : familyLink ? (
-          <p>
-            请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
-          </p>
+          <>
+            <p>
+              请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
+            </p>
+            {syncStatus && (
+              <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
+                {syncStatus.mode === 'cross-device' && '✅ 家属端已通过 P2P 连入，跨设备实时协同。'}
+                {syncStatus.mode === 'connecting' && '⏳ 等待家属端在另一台设备输入邀请码…'}
+                {syncStatus.mode === 'failed' && `⚠️ 跨设备连接失败：${syncStatus.detail}。当前仅同浏览器协同。`}
+                {syncStatus.mode === 'local-only' && '当前仅同浏览器 tab 协同。'}
+              </p>
+            )}
+          </>
         ) : (
           <button className="btn-primary" onClick={onGenerateInvite}>
             生成家属邀请码

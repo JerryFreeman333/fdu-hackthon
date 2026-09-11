@@ -12,11 +12,14 @@
     "format": "npx --yes prettier@3.5.3 --write .",
     "format:check": "npx --yes prettier@3.5.3 --check .",
     "security:check": "node scripts/security-check.mjs",
-    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser",
+    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:notif && npm run test:browser:cross-device",
     "preview": "vite preview",
-    "test:browser": "node tests/browser-smoke.test.mjs"
+    "test:browser": "node tests/browser-smoke.test.mjs",
+    "test:browser:notif": "node tests/notification-push-blackbox.test.mjs",
+    "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

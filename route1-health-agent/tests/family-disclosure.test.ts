@@ -29,12 +29,30 @@ const baseFinding: Finding = {
   familyEligible: true,
 };
 
-runCase('family disclosure is fail-closed when familyEligible is omitted', () => {
+runCase('dashboard disclosure stays fail-closed when familyEligible is omitted', () => {
+  // 仪表盘披露门（familyVisibleFindings）依旧要求显式 familyEligible === true，
+  // 防止检测引擎漏标时把不该展示在 UI 上的 finding 直接泄露给家属。
   const finding = { ...baseFinding, familyEligible: undefined };
-  assert(familyVisibleFindings([finding]).length === 0, 'undefined family eligibility must stay hidden');
+  assert(familyVisibleFindings([finding]).length === 0, 'undefined family eligibility must stay hidden from dashboard');
+});
+
+runCase('notification dispatch defaults to eligible when familyEligible is omitted', () => {
+  // 派发门（collectFamilyNotifications）走宽松判定：familyMessage 存在即视为可推送。
+  // 这一刀是通知安全网：避免检测引擎漏标 familyEligible 时把紧急/严重事件静默吞掉，
+  // 真要屏蔽必须显式 familyEligible === false。
+  const finding = { ...baseFinding, familyEligible: undefined };
+  assert(
+    collectFamilyNotifications([finding], 'granted').length === 1,
+    'undefined eligibility should not silently swallow safety signals when familyMessage is present',
+  );
+});
+
+runCase('notification dispatch is still blocked by explicit familyEligible=false', () => {
+  // 显式 familyEligible === false 必须真正阻断通知，这一条与宽松门互补。
+  const finding = { ...baseFinding, familyEligible: false };
   assert(
     collectFamilyNotifications([finding], 'granted').length === 0,
-    'undefined eligibility must never notify family',
+    'explicitly ineligible findings must never dispatch',
   );
 });
 

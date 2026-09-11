@@ -1,27 +1,37 @@
-import { useState } from 'react';
-import type { CareTask, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
+import { useState, type ReactNode } from 'react';
+import type { CareTask, DayRecord, ElderProfile, FamilyHealthEvent, FamilyLink, Finding } from '../types';
+import type { FamilyNotification } from '../engine/escalate';
+import type { FamilyNotificationRecord } from '../engine/notify';
+import { describeDeliveries } from '../engine/notify';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
-import type { PushPermission } from '../adapters/BrowserNotificationChannel';
 import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
-import { countUnacknowledged, describeDeliveries, type FamilyNotificationRecord } from '../engine/notify';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
+import { familyStatus } from '../engine/dashboardStatus';
+import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 
 interface FamilyDashboardProps {
   profile: ElderProfile;
   familyLink: FamilyLink | null;
-  notificationRecords: FamilyNotificationRecord[];
-  pushPermission: PushPermission;
+  notifications: FamilyNotification[];
+  dispatchRecords: FamilyNotificationRecord[];
+  onAcknowledgeDispatch: (findingId: string) => void;
+  /** 协同通道当前状态（local-only / connecting / cross-device / failed） */
+  syncStatus: CrossDeviceStatus;
+  /** 当前 tab 唯一 ID，仅用于在 UI 上让用户区分自己开的是哪一份 tab */
+  tabId: string;
+  /** 今日（today）系统收到的主诉/聊天/设备/拍照 信号条数；
+   * 0 时 dashboardStatus 不会显示绿色"今天总体正常" */
+  todaySignalCount: number;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
   homeSafetyActions: HomeSafetyAction[];
+  records: DayRecord[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
-  onAcknowledgeNotification: (findingId: string) => void;
-  onEnablePush: () => void;
   onContactElder: () => void;
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
@@ -30,73 +40,53 @@ interface FamilyDashboardProps {
   view: 'home' | 'detail' | 'report';
 }
 
-function overallMessage(records: FamilyNotificationRecord[], sharing: ElderProfile['familySharing']) {
-  // 送达台账保留已送达的历史（不假装撤回），但横幅只反映当前授权下仍有待行动的信号。
-  if (sharing !== 'granted') {
-    return {
-      title: '今天总体正常',
-      detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。',
-      tone: 'ok',
-    };
+function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
+  if (status.mode === 'cross-device') {
+    return (
+      <div className="family-sync-banner family-sync-banner-cross" role="status">
+        <span className="family-sync-dot" aria-hidden="true" />
+        <span>
+          跨设备实时协同已建立：老人端与家属端通过 P2P 连接直接同步派发台账与确认动作， 数据不经任何中转服务器。
+          {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
+        </span>
+      </div>
+    );
   }
-  if (records.some((record) => record.severity === 'urgent' && record.lifecycle === 'new')) {
-    return {
-      title: '今天需要立即介入',
-      detail: '出现需要马上确认安全情况的信号。请先联系老人并按提示的安全路径处理。',
-      tone: 'danger',
-    };
+  if (status.mode === 'connecting') {
+    return (
+      <div className="family-sync-banner family-sync-banner-pending" role="status">
+        <span className="family-sync-dot" aria-hidden="true" />
+        <span>正在建立跨设备连接：{status.detail}</span>
+      </div>
+    );
   }
-  if (records.some((record) => record.severity === 'alert' && record.lifecycle === 'new')) {
-    return {
-      title: '今天有一件事值得关注',
-      detail: '系统把多项近期变化放在一起看后，建议今天主动联系老人确认状态。',
-      tone: 'warn',
-    };
+  if (status.mode === 'failed') {
+    return (
+      <div className="family-sync-banner family-sync-banner-failed" role="status">
+        <span className="family-sync-dot" aria-hidden="true" />
+        <span>
+          跨设备连接失败：{status.detail}。当前仅同浏览器 tab 协同， 两台真手机暂不能互相看见。
+          {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
+        </span>
+      </div>
+    );
   }
-  return {
-    title: '今天总体正常',
-    detail: '暂时没有需要家属介入的明显变化。系统会继续观察，发生变化再提醒您。',
-    tone: 'ok',
-  };
-}
-
-function formatClock(iso: string, today: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const hhmm = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-  const day = date.toISOString().slice(0, 10);
-  return day === today ? hhmm : `${day.slice(5)} ${hhmm}`;
-}
-
-function PushPermissionLine(props: Pick<FamilyDashboardProps, 'pushPermission' | 'onEnablePush'>) {
-  switch (props.pushPermission) {
-    case 'granted':
-      return <p className="muted push-line">系统通知：已开启 ✓ 新通知会同时推送到系统通知栏。</p>;
-    case 'denied':
-      return (
-        <p className="muted push-line">
-          系统通知权限已被拒绝：新通知只会保留在本页通知中心，不会推送到系统通知栏。如需推送，请在浏览器/系统设置中允许本站通知。
-        </p>
-      );
-    case 'unsupported':
-      return <p className="muted push-line">当前浏览器不支持系统通知：新通知会保留在本页通知中心。</p>;
-    default:
-      return (
-        <div className="push-line">
-          <button className="btn-secondary" onClick={props.onEnablePush}>
-            开启系统通知
-          </button>
-          <p className="muted">开启后，即使您停留在其他页面，紧急通知也会推送到系统通知栏。</p>
-        </div>
-      );
-  }
+  return (
+    <div className="family-sync-banner" role="status">
+      <span className="family-sync-dot" aria-hidden="true" />
+      <span>
+        当前仅同浏览器 tab 协同：在同一浏览器的另一个 tab 打开本应用并选另一个角色即可同步。
+        跨真手机需要老人端生成邀请码后，家属端在另一台设备输入该码，握手成功后会切到"跨设备实时协同"。
+        {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
+      </span>
+    </div>
+  );
 }
 
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
-  const state = overallMessage(props.notificationRecords, props.profile.familySharing);
-  const pendingAck = countUnacknowledged(props.notificationRecords);
+  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
@@ -107,6 +97,8 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const openHomeActions = canViewSharedDetail
     ? props.homeSafetyActions.filter((action) => action.status !== 'resolved').slice(0, 3)
     : [];
+  // 把派发台账按 findingId 建索引，便于在原有通知卡片上叠加送达状态与确认按钮。
+  const dispatchByFinding = new Map(props.dispatchRecords.map((record) => [record.findingId, record]));
 
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
@@ -288,15 +280,14 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     );
   }
 
+  const syncBanner = renderSyncBanner(props.syncStatus, props.tabId);
   return (
     <div className="family-dashboard">
+      {syncBanner}
       <section className={`family-status card status-${state.tone}`}>
         <div className="eyebrow">{props.profile.name} · 家属端</div>
         <h2>{state.title}</h2>
-        <p>
-          {state.detail}
-          {pendingAck > 0 ? ` 当前有 ${pendingAck} 条通知等待您确认。` : ''}
-        </p>
+        <p>{state.detail}</p>
         <div className="family-actions">
           <button className="btn-primary" onClick={props.onContactElder}>
             📞 联系老人
@@ -353,50 +344,53 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             <span className="muted">不是监控所有指标，只看是否需要您介入。</span>
           </div>
         </div>
-        <PushPermissionLine pushPermission={props.pushPermission} onEnablePush={props.onEnablePush} />
-        {props.notificationRecords.length === 0 ? (
+        {props.notifications.length === 0 ? (
           <p className="family-empty">目前没有新的家属通知。系统会在真正需要时提醒您。</p>
         ) : (
           <div className="family-feed">
-            {props.notificationRecords.slice(0, 5).map((record) => {
-              const badge = severityBadge(record.severity);
+            {props.notifications.slice(0, 3).map((notification) => {
+              const badge = severityBadge(notification.finding.severity);
+              const dispatch = dispatchByFinding.get(notification.finding.id);
               return (
                 <div
-                  key={record.findingId}
-                  className={`family-item family-item-${record.severity} ${
-                    record.lifecycle === 'acknowledged' ? 'family-item-ack' : ''
-                  }`}
+                  key={notification.finding.id}
+                  className={`family-item family-item-${notification.finding.severity}`}
                 >
                   <div className="finding-head">
                     <span className={`badge ${badge.className}`}>{badge.text}</span>
-                    <b>{record.title}</b>
-                    <span className="muted right">{formatClock(record.createdAt, props.today)}</span>
+                    <b>{notification.finding.title}</b>
+                    <span className="muted right">{notification.finding.date}</span>
                   </div>
-                  <p>{record.message}</p>
-                  <span className="muted">送达情况：{describeDeliveries(record)}</span>
-                  {record.actionPath && (
+                  <p>{notification.message}</p>
+                  <span className="muted">为什么现在告诉您：{notification.reason}</span>
+                  {notification.actionPath && (
                     <div className="care-path">
                       <b>建议行动：</b>
-                      {record.actionPath}
+                      {notification.actionPath}
                     </div>
                   )}
-                  <div className="notif-actions">
-                    {record.lifecycle === 'new' ? (
-                      <button
-                        className="btn-secondary"
-                        onClick={() => props.onAcknowledgeNotification(record.findingId)}
-                      >
-                        确认已知悉
-                      </button>
-                    ) : (
-                      <span className="muted">已确认知悉 ✓</span>
-                    )}
-                    {record.severity === 'urgent' && (
+                  {dispatch && (
+                    <div className="delivery-ledger">
+                      <span className="muted">送达：{describeDeliveries(dispatch)}</span>
+                      {dispatch.lifecycle === 'new' ? (
+                        <button
+                          className="btn-secondary"
+                          onClick={() => props.onAcknowledgeDispatch(dispatch.findingId)}
+                        >
+                          我已知悉
+                        </button>
+                      ) : (
+                        <span className="muted">您已确认 · {dispatch.acknowledgedAt?.slice(11, 16)}</span>
+                      )}
+                    </div>
+                  )}
+                  {notification.finding.severity === 'urgent' && (
+                    <div className="notif-actions">
                       <button className="btn-primary" onClick={props.onContactDoctor}>
                         📞 联系社区医生
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

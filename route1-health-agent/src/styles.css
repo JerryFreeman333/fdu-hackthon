@@ -306,6 +306,10 @@ button {
   border: 2px solid var(--danger);
   background: #fff6f4;
 }
+.family-status.status-unknown {
+  border: 2px solid #6b7a8a;
+  background: #f3f5f7;
+}
 .family-actions,
 .family-secondary-nav,
 .family-back {
@@ -389,6 +393,88 @@ button {
 .family-empty {
   color: var(--ink-soft);
   padding: 10px 0;
+}
+.family-sync-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: #eef5f0;
+  border: 1px solid #c6dccb;
+  font-size: 13px;
+  color: #2c4a32;
+}
+.family-sync-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #2c8a3e;
+  box-shadow: 0 0 0 4px rgba(44, 138, 62, 0.18);
+}
+.family-sync-banner-elder {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #f3f5f7;
+  border: 1px solid #d8dde2;
+  color: #4a5258;
+}
+.family-sync-banner-elder-cross-device {
+  background: #eaf4ee;
+  border-color: #9bc4a6;
+  color: #1e3a26;
+}
+.family-sync-banner-elder-connecting {
+  background: #fff7e8;
+  border-color: #e8c896;
+  color: #6b4a13;
+}
+.family-sync-banner-elder-failed {
+  background: #fcecea;
+  border-color: #e0a89f;
+  color: #7a2a1e;
+}
+.family-sync-banner-cross {
+  background: #eaf4ee;
+  border-color: #9bc4a6;
+  color: #1e3a26;
+}
+.family-sync-banner-cross .family-sync-dot {
+  background: #2c8a3e;
+  box-shadow: 0 0 0 4px rgba(44, 138, 62, 0.18);
+}
+.family-sync-banner-pending {
+  background: #fff7e8;
+  border-color: #e8c896;
+  color: #6b4a13;
+}
+.family-sync-banner-pending .family-sync-dot {
+  background: #d99327;
+  box-shadow: 0 0 0 4px rgba(217, 147, 39, 0.18);
+}
+.family-sync-banner-failed {
+  background: #fcecea;
+  border-color: #e0a89f;
+  color: #7a2a1e;
+}
+.family-sync-banner-failed .family-sync-dot {
+  background: #c94a3a;
+  box-shadow: 0 0 0 4px rgba(201, 74, 58, 0.18);
+}
+.delivery-ledger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
 }
 
 /* ---------- detail / findings ---------- */

@@ -11,24 +11,17 @@ import {
   mergeHealthEvents,
   type HealthEvent,
 } from './pipeline/events';
+import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import type { FamilyNotification } from './engine/escalate';
-import {
-  acknowledgeNotification,
-  dispatchFamilyNotifications,
-  type DeliveryOutcome,
-  type FamilyNotificationRecord,
-} from './engine/notify';
-import {
-  pushPermission,
-  requestPushPermission,
-  sendBrowserPush,
-  type PushPermission,
-} from './adapters/BrowserNotificationChannel';
+import { collectFamilyNotifications } from './engine/escalate';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { healthRecordStore } from './store/LocalHealthRecordStore';
+import { useNotificationDispatch } from './hooks/useNotificationDispatch';
+import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
+import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
+import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
 import ElderHome from './components/ElderHome';
 import FamilyDashboard from './components/FamilyDashboard';
 import ProfileView from './components/ProfileView';
@@ -81,9 +74,6 @@ export default function App() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
   const [toast, setToast] = useState<string | null>(null);
-  // 送达台账只存在于会话内存：通知里含健康内容，与绑定/授权一致不落 localStorage。
-  const [notificationRecords, setNotificationRecords] = useState<FamilyNotificationRecord[]>([]);
-  const [pushPermissionState, setPushPermissionState] = useState<PushPermission>(() => pushPermission());
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
@@ -108,7 +98,11 @@ export default function App() {
 
   const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
   const healthData = useMemo(() => materializeHealthData(events), [events]);
-  const { records, observations } = healthData;
+  const { records, observations, measurements } = healthData;
+  const familyRecords = useMemo(
+    () => measurementsToDayRecords(measurements.filter((measurement) => measurement.visibility !== 'private')),
+    [measurements],
+  );
   const visibleFamilyFacts = useMemo(
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
@@ -118,8 +112,84 @@ export default function App() {
     () => buildAgentContext(activeProfile, events, TODAY, findings),
     [activeProfile, events, findings],
   );
+  const familyNotifs = useMemo(
+    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
+    [findings, familySharing, sharedFindingIds],
+  );
+  // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
+  // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
+  const todaySignalCount = useMemo(
+    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(TODAY)).length,
+    [events],
+  );
+  // 派发引擎只关心"是否真的送出去了"，UI 列表继续走 familyNotifs；
+  // 二者共享 collectFamilyNotifications 的判定，但派发有台账和确认闭环。
+  // 跨设备协同：仅当家里某个角色端存在可用邀请码时才打开 PeerJS；
+  // 角色端未选择或邀请码还没生成时退化为仅同浏览器 tab 协同。
+  const sync = useCrossDeviceSync({
+    role,
+    peerId: familyLink?.inviteCode ?? null,
+    endpoint: role === 'elder' ? 'host' : role === 'family' ? 'guest' : 'none',
+  });
+  const {
+    records: dispatchRecords,
+    acknowledge: acknowledgeDispatch,
+    mergeRecord,
+    mergeAcknowledge,
+  } = useNotificationDispatch({
+    findings,
+    familySharing,
+    familyLink,
+  });
+
+  // 把本地派发台账的变更广播给其它 tab，让"老人端"和"家属端"在同一浏览器内
+  // 互相能看到对方的动作。这是真跨设备同步上线前最诚实的演示形态：
+  // 至少不是切同一个 useState。
+  useEffect(() => {
+    const unsubscribe = sync.subscribe((envelope: CrossTabMessageEnvelope) => {
+      if (envelope.type === 'dispatch.acknowledge') {
+        const payload = envelope.payload as { findingId: string };
+        mergeAcknowledge(payload.findingId);
+      } else if (envelope.type === 'dispatch.append') {
+        const record = envelope.payload as import('./engine/notify').FamilyNotificationRecord;
+        mergeRecord(record);
+      }
+    });
+    return unsubscribe;
+  }, [sync, mergeAcknowledge, mergeRecord]);
+
+  // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
+  const handleAcknowledge = useCallback(
+    (findingId: string) => {
+      acknowledgeDispatch(findingId);
+      sync.broadcast('dispatch.acknowledge', { findingId });
+    },
+    [acknowledgeDispatch, sync],
+  );
+
+  // 把本地新派发的台账广播给其它 tab：另一 tab 的 findings 签名未变，
+  // 不会重跑派发引擎，所以不会重复触发系统通知，只接收并合并台账。
+  const lastBroadcastRecordIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(dispatchRecords.map((record) => record.findingId));
+    for (const record of dispatchRecords) {
+      if (!lastBroadcastRecordIdsRef.current.has(record.findingId)) {
+        sync.broadcast('dispatch.append', record);
+      }
+    }
+    lastBroadcastRecordIdsRef.current = currentIds;
+  }, [dispatchRecords, sync]);
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
-  const { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs, photoParserMode } = useElderChat({
+  const {
+    handleElderSend,
+    handlePhotoImport,
+    commitPhotoImport,
+    cancelPhotoImport,
+    pendingPhoto,
+    pendingPhotoKind,
+    pendingPhotoError,
+    quickInputs,
+  } = useElderChat({
     familySharing,
     events,
     chat,
@@ -129,7 +199,7 @@ export default function App() {
     setFamilyEvents,
     setChat,
     showToast,
-    onMedicationMissed: ensureMedicationCheck,
+    onMedicationMissed: () => ensureMedicationCheck(profile.medications),
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
@@ -145,6 +215,11 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    // 开应用就生成今天的"💊 今天的药"任务；老人不用等 chat 触发。
+    ensureMedicationCheck(profile.medications);
+  }, [profile.medications, ensureMedicationCheck]);
 
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
@@ -163,34 +238,17 @@ export default function App() {
     promptFamilyShare();
   }, [familySharing, findings, promptFamilyShare]);
 
-  useEffect(() => {
-    if (familyLink?.status !== 'active') return;
-    let cancelled = false;
-    const elderLabel = `${activeProfile.name}的健康提醒`;
-    const deliver = (notification: FamilyNotification): DeliveryOutcome[] => [
-      sendBrowserPush(notification.finding.id, elderLabel, notification.message),
-    ];
-    void dispatchFamilyNotifications(
-      findings,
-      familySharing,
-      true,
-      notificationRecords,
-      new Date().toISOString(),
-      deliver,
-      sharedFindingIds,
-    ).then((result) => {
-      if (cancelled || result.dispatchedCount === 0) return;
-      setNotificationRecords(result.records);
-      showToast(`已向家属端派发 ${result.dispatchedCount} 条通知，送达情况见家属端通知中心。`);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [findings, familySharing, familyLink, notificationRecords, sharedFindingIds, activeProfile.name, showToast]);
-
   function selectRole(nextRole: UserRole) {
     setRole(nextRole);
   }
+
+  // 家属首次进入 dashboard 时主动请求系统通知权限，
+  // 这一刀是“行动闭环”离开页面的入口；用户拒接也能继续用，仅送达状态会标记为 unavailable。
+  useEffect(() => {
+    if (role !== 'family') return;
+    if (pushPermission() !== 'default') return;
+    void requestPushPermission();
+  }, [role]);
 
   function resetRole() {
     setRole(null);
@@ -223,21 +281,6 @@ export default function App() {
     window.location.href = `tel:${phone}`;
   }
 
-  function acknowledgeNotificationById(findingId: string) {
-    setNotificationRecords((current) => acknowledgeNotification(current, findingId, new Date().toISOString()));
-    showToast('已确认。对应的处理事项在下方“帮老人把事情做完”。');
-  }
-
-  async function enableSystemPush() {
-    const next = await requestPushPermission();
-    setPushPermissionState(next);
-    showToast(
-      next === 'granted'
-        ? '系统通知已开启，之后的家属通知会同时推送到系统通知栏。'
-        : '系统通知未开启，家属通知会保留在家属端通知中心，不会丢失。',
-    );
-  }
-
   if (!role) return <RoleGate onSelect={selectRole} />;
 
   if (role === 'elder') {
@@ -268,8 +311,11 @@ export default function App() {
             chat={chat}
             onSend={handleElderSend}
             onPhotoImport={handlePhotoImport}
-            onConfirmPhotoRecord={confirmPhotoRecord}
-            photoParserMode={photoParserMode}
+            onCommitPhoto={commitPhotoImport}
+            onCancelPhoto={cancelPhotoImport}
+            pendingPhoto={pendingPhoto}
+            pendingPhotoKind={pendingPhotoKind}
+            pendingPhotoError={pendingPhotoError}
             quickInputs={quickInputs}
             tasks={tasks}
             findings={findings}
@@ -279,6 +325,7 @@ export default function App() {
             onKeepFamilyPrivate={keepFamilyPrivate}
             onRevokeFamilyShare={revokeFamilyShare}
             onGenerateInvite={generateInvite}
+            syncStatus={sync.status}
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
@@ -312,30 +359,32 @@ export default function App() {
         <FamilyDashboard
           profile={activeProfile}
           familyLink={familyLink}
-          notificationRecords={notificationRecords}
-          pushPermission={pushPermissionState}
+          notifications={familyNotifs}
+          dispatchRecords={dispatchRecords}
+          onAcknowledgeDispatch={handleAcknowledge}
           findings={findings}
           familyEvents={visibleFamilyFacts}
           tasks={tasks}
           homeSafetyActions={homeSafetyActions}
+          records={familyRecords}
           today={TODAY}
           onTaskStatus={handleTaskStatus}
           onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
-          onAcknowledgeNotification={acknowledgeNotificationById}
-          onEnablePush={() => void enableSystemPush()}
           onContactElder={contactElder}
           onContactDoctor={contactDoctor}
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}
           view={familyView}
+          syncStatus={sync.status}
+          tabId={sync.tabId}
+          todaySignalCount={todaySignalCount}
         />
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口默认使用明确标注的 Demo parser，可经
-        VITE_HEALTH_VISION_ENDPOINT 接入真实视觉服务，识别结果经确认后才会记录；LLM 可通过服务端 Endpoint
-        接入，浏览器端不保存厂商 API key。
+        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
+        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
       </footer>
     </div>
   );

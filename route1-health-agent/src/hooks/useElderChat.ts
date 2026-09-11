@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding, HealthMeasurement } from '../types';
+import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding } from '../types';
 import { METRICS } from '../types';
 import { formatLocalDate, TODAY } from '../data/demo';
 import {
@@ -10,9 +10,9 @@ import {
   observationToEvent,
   type HealthEvent,
 } from '../pipeline/events';
-import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
-import type { PendingPhotoImport } from '../adapters/ImageHealthParser';
 import { selectImageParser } from '../adapters/parserSelector';
+import type { ParsedHealthData } from '../adapters/ImageHealthParser';
+import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import {
   createHttpLlmAdapter,
   generateAgentReply,
@@ -44,13 +44,6 @@ const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
   ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
   : ruleBasedAdapter;
-// Vite 只在浏览器构建里内联 import.meta.env；端点在调用侧读出后经 endpointOverride
-// 注入 parserSelector，测试构建（CommonJS）因此不需要碰 import.meta。
-const imageParserSelection = selectImageParser({
-  endpointOverride: import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim() || undefined,
-});
-const imageParser = imageParserSelection.parser;
-const photoParserMode = imageParserSelection.mode;
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
@@ -246,7 +239,13 @@ export function useElderChat({
       setFamilyEvents((current) => removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId));
     }
     const dropCorrected = (current: HealthEvent[]) =>
-      corrected ? removeCorrectedChatHealthEvents(current, understanding.correctionTargetMessageId) : current;
+      corrected
+        ? removeCorrectedChatHealthEvents(
+            current,
+            understanding.correctionTargetMessageId,
+            understanding.correctionTargetTags,
+          )
+        : current;
 
     const receivedAt = localIsoTimestamp();
 
@@ -312,6 +311,10 @@ export function useElderChat({
           source: 'chat',
           text: claim.text,
           tags: claim.tags,
+          // 显式把 status 传下去，让 safety.* 规则能用 hadOccurredObservation
+          // 跳过"用户说没/假设/差点/不确定"的事件。shouldPersistClaim 已经
+          // 保证 status==='occurred'，这里写出来是给入口和检测层之间的契约。
+          status: claim.status,
           visibility,
           metadata: {
             sourceMessageId: elderMessage.id,
@@ -426,48 +429,70 @@ export function useElderChat({
     if (acceptedTags.includes('medicationMissed')) onMedicationMissed(receivedAt);
   }
 
-  async function handlePhotoImport(file: Blob, kind: DemoImageKind): Promise<PendingPhotoImport | null> {
+  const [pendingPhoto, setPendingPhoto] = useState<ParsedHealthData | null>(null);
+  const [pendingPhotoKind, setPendingPhotoKind] = useState<DemoImageKind | null>(null);
+  const [pendingPhotoError, setPendingPhotoError] = useState<string | null>(null);
+
+  async function handlePhotoImport(file: Blob, kind: DemoImageKind) {
+    setPendingPhotoError(null);
     try {
       const capturedAt = localIsoTimestamp();
-      const parsed = await imageParser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
+      const { parser, mode } = selectImageParser({
+        endpointOverride: import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim() || undefined,
+      });
+      const parsed = await parser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
       if (parsed.measurements.length === 0 && parsed.labResults.length === 0) {
-        showToast('这张图片没有识别到可记录的健康数值。');
-        return null;
+        setPendingPhotoError('这张图片没有识别到可记录的健康数值，请换一张。');
+        return;
       }
-      // 只解析、不入库：ImageHealthParser 的契约是识别结果经用户确认后才进入事件流。
-      return {
-        draftId: `photo-draft-${Date.now()}`,
-        detectedKind: parsed.parseMeta?.detectedKind ?? kind,
-        capturedAt,
-        measurements: parsed.measurements,
-        labResults: parsed.labResults,
-        tags: parsed.tags,
-        rawText: parsed.rawText,
-        provider: parsed.parseMeta?.provider ?? 'demo',
-        overallConfidence: parsed.parseMeta?.overallConfidence ?? 0.6,
-        warnings: parsed.parseMeta?.warnings ?? [],
-        image: file,
-      };
+      setPendingPhoto(parsed);
+      setPendingPhotoKind(kind);
+      showToast(
+        mode === 'real-http'
+          ? '识别完成，请确认是否记录。'
+          : '示例识别完成，请确认是否记录。\n（演示模式，未走真实视觉模型）',
+      );
     } catch (error) {
       console.error(error);
-      showToast('图片解析失败，请稍后重试。');
-      return null;
+      const message = error instanceof Error ? error.message : '未知错误';
+      setPendingPhotoError(`图片解析失败：${message}`);
     }
   }
 
-  function confirmPhotoRecord(pending: PendingPhotoImport) {
-    const visibility: HealthMeasurement['visibility'] = familySharing === 'granted' ? 'family_ok' : 'private';
-    const incoming = [
-      ...pending.measurements.map((item) => measurementToEvent({ ...item, visibility })),
-      ...pending.labResults.map((lab) => labResultToEvent({ ...lab, visibility })),
+  function commitPhotoImport() {
+    if (!pendingPhoto) return;
+    // visibility 与 family sharing 保持一致：granted -> 子女可见，否则私密。
+    // 真实数据走 HealthVisionProvider 时，ELDER 端通常不会带 visibility；这里按授权状态补一个标签。
+    const photoVisibility = familySharing === 'granted' ? 'family_ok' : 'private';
+    const events = [
+      ...pendingPhoto.measurements.map((m) => measurementToEvent({ ...m, visibility: photoVisibility })),
+      ...pendingPhoto.labResults.map((l) => labResultToEvent({ ...l, visibility: photoVisibility })),
     ];
-    if (incoming.length === 0) {
-      showToast('这次识别没有可记录的数值。');
+    if (events.length === 0) {
+      setPendingPhoto(null);
+      setPendingPhotoKind(null);
       return;
     }
-    setEvents((current) => appendHealthEvents(current, incoming));
-    showToast(`已记录 ${incoming.length} 项照片中的数值（${visibility === 'family_ok' ? '家属可见' : '仅本人'}）。`);
+    setEvents((current) => appendHealthEvents(current, events));
+    showToast(`已记录 ${events.length} 项健康数值。`);
+    setPendingPhoto(null);
+    setPendingPhotoKind(null);
   }
 
-  return { handleElderSend, handlePhotoImport, confirmPhotoRecord, quickInputs: QUICK_INPUTS, photoParserMode };
+  function cancelPhotoImport() {
+    setPendingPhoto(null);
+    setPendingPhotoKind(null);
+    setPendingPhotoError(null);
+  }
+
+  return {
+    handleElderSend,
+    handlePhotoImport,
+    commitPhotoImport,
+    cancelPhotoImport,
+    pendingPhoto,
+    pendingPhotoKind,
+    pendingPhotoError,
+    quickInputs: QUICK_INPUTS,
+  };
 }

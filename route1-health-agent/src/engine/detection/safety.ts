@@ -1,6 +1,6 @@
 import type { Observation } from '../../types';
 import { addFinding } from './helpers';
-import { hadTag } from './signals';
+import { hadOccurredObservation } from './signals';
 import type { DetectionContext, DetectionRule } from './types';
 
 function tagText(observation: Observation): string {
@@ -45,9 +45,9 @@ export const bloodPressureSafetyRule: DetectionRule = {
     const today = context.records.find((r) => r.date === context.today);
     const systolic = today?.metrics.systolic;
     const diastolic = today?.metrics.diastolic;
-    const dyspnea = hadTag(context.observations, 'dyspnea', context.today, 1);
-    const chestPain = hadTag(context.observations, 'chestPain', context.today, 1);
-    const neuroChange = hadTag(context.observations, 'neuroChange', context.today, 1);
+    const dyspnea = hadOccurredObservation(context.observations, 'dyspnea', context.today, 1);
+    const chestPain = hadOccurredObservation(context.observations, 'chestPain', context.today, 1);
+    const neuroChange = hadOccurredObservation(context.observations, 'neuroChange', context.today, 1);
     const danger = dyspnea ?? chestPain ?? neuroChange;
     const urgent = danger !== null;
     const shareableSymptoms = familyEligible(dyspnea, chestPain, neuroChange);
@@ -99,8 +99,8 @@ export const redFlagSymptomRule: DetectionRule = {
     const severeBp = (systolic !== undefined && systolic > 180) || (diastolic !== undefined && diastolic > 120);
     if (severeBp) return null;
 
-    const chestPain = hadTag(context.observations, 'chestPain', context.today, 1);
-    const neuroChange = hadTag(context.observations, 'neuroChange', context.today, 1);
+    const chestPain = hadOccurredObservation(context.observations, 'chestPain', context.today, 1);
+    const neuroChange = hadOccurredObservation(context.observations, 'neuroChange', context.today, 1);
     if (!chestPain && !neuroChange) return null;
     const shareable = familyEligible(chestPain, neuroChange);
     const keys = [...(chestPain ? ['chestPain'] : []), ...(neuroChange ? ['neuroChange'] : [])];
@@ -158,7 +158,7 @@ export const spo2SafetyRule: DetectionRule = {
     const urgent = lowest < 88;
     const alert = lowest < 92;
     if (!alert) return null;
-    const dyspnea = hadTag(context.observations, 'dyspnea', context.today, 1);
+    const dyspnea = hadOccurredObservation(context.observations, 'dyspnea', context.today, 1);
     const shareable =
       familyEligibleMeasurements(context, 'spo2') && (dyspnea ? dyspnea.visibility !== 'private' : true);
     return addFinding(context.findings, {
@@ -201,8 +201,8 @@ export const heartRateSafetyRule: DetectionRule = {
     const bradyExtreme = slowest <= 40;
     const bradyAlert = slowest <= 50;
     if (!(tachyAlert || bradyAlert)) return null;
-    const chestPain = hadTag(context.observations, 'chestPain', context.today, 1);
-    const dizziness = hadTag(context.observations, 'dizziness', context.today, 1);
+    const chestPain = hadOccurredObservation(context.observations, 'chestPain', context.today, 1);
+    const dizziness = hadOccurredObservation(context.observations, 'dizziness', context.today, 1);
     const danger = chestPain ?? dizziness;
     const urgent = tachyExtreme || bradyExtreme || danger !== null;
     const shareable = familyEligibleMeasurements(context, 'restingHr') && (!danger || danger.visibility !== 'private');
@@ -334,7 +334,7 @@ export const glucoseSafetyRule: DetectionRule = {
 export const fallSafetyRule: DetectionRule = {
   id: 'safety.fall',
   evaluate(context) {
-    const fall = hadTag(context.observations, 'fall', context.today, 1);
+    const fall = hadOccurredObservation(context.observations, 'fall', context.today, 1);
     if (!fall) return null;
     const shareable = fall.visibility !== 'private';
     return addFinding(context.findings, {
