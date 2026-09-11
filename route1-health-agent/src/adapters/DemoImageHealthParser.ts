@@ -4,9 +4,18 @@ import type { MetricKey } from '../types';
 export type DemoImageKind = 'bloodPressure' | 'weight' | 'report';
 
 /**
- * Demo-only image parser. It intentionally does not inspect pixels or pretend to perform OCR.
- * The selected image kind maps to deterministic sample data so the ImageHealthParser seam is exercised end to end.
- * Privacy is assigned by the caller, not by the parser.
+ * Demo fallback image parser.
+ *
+ * 设计意图：
+ *   - 当 VITE_HEALTH_VISION_ENDPOINT 未配置时，App 自动切到这个 parser，
+ *     老人/演示者仍能完成"拍照 → 写示例数据"的完整链路，便于讲产品故事。
+ *   - 它**不读取**图像像素，也不假装 OCR。返回的固定示例值仅用于演示目的，
+ *     并通过 metadata.demoParser: true 标记。
+ *   - 真实视觉解析必须走 RealImageHealthParser + HealthVisionProvider。
+ *
+ * 隐私：
+ *   - parser 不访问 image Blob 内容；
+ *   - 调用方负责把 visibility 写入最终 HealthMeasurement。
  */
 export class DemoImageHealthParser implements ImageHealthParser {
   async parse(_image: Blob, context?: ImageParseContext & { kind?: DemoImageKind }): Promise<ParsedHealthData> {
