@@ -113,7 +113,8 @@ function buildRuleBasedReply(
   context?: AgentContext,
 ): string {
   const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
+    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
 
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
@@ -264,7 +265,14 @@ export function createHttpLlmAdapter(endpoint: string): LlmAdapter {
   };
 }
 
-export const QUICK_INPUTS = ['最近腿有点没劲', '最近走路有点喘', '这两天睡不好', '我有点头晕', '药忘记吃了', '刚才摔了一跤'];
+export const QUICK_INPUTS = [
+  '最近腿有点没劲',
+  '最近走路有点喘',
+  '这两天睡不好',
+  '我有点头晕',
+  '药忘记吃了',
+  '刚才摔了一跤',
+];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
