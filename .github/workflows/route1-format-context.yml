@@ -1,0 +1,37 @@
+name: route1-format-context
+
+on:
+  push:
+    branches:
+      - route1-context-memory
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: route1-context-memory
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Format Route 1 files
+        working-directory: route1-health-agent
+        run: npx --yes prettier@3.5.3 --write src/engine/understanding.ts tests/context-memory-regression.test.ts
+      - name: Commit formatted files
+        run: |
+          if git diff --quiet -- route1-health-agent/src/engine/understanding.ts route1-health-agent/tests/context-memory-regression.test.ts; then
+            echo "Already formatted"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add route1-health-agent/src/engine/understanding.ts route1-health-agent/tests/context-memory-regression.test.ts
+          git commit -m "style(route1): format context memory changes"
+          git push origin HEAD:route1-context-memory
