@@ -16,6 +16,7 @@ function localIsoTimestamp(): string {
 }
 
 function createInviteCode(): string {
+  // Demo 级别的 4 位数字邀请码：仅用于单设备演示绑定，真实产品必须由服务端签发高熵授权。
   const random =
     typeof crypto !== 'undefined' && 'getRandomValues' in crypto
       ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
