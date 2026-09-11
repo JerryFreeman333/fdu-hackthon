@@ -5,10 +5,7 @@ import { understandElderInput } from '../src/engine/understanding';
 const TODAY = '2026-09-10';
 
 test('splits unpunctuated multi-person speech before assigning claims', () => {
-  const result = understandElderInput(
-    '我爸最近有点喘然后我老公昨天摔了一跤另外我自己刚才有点胸闷',
-    TODAY,
-  );
+  const result = understandElderInput('我爸最近有点喘然后我老公昨天摔了一跤另外我自己刚才有点胸闷', TODAY);
 
   assert.equal(result.clarificationQuestion, undefined);
   assert.deepEqual(

@@ -52,10 +52,7 @@ function splitClauses(text: string): string[] {
       new RegExp(`(?:然后|接着|另外|此外|同时|不过|但是|而且|还有)\s*(?=${explicitSubjectStart})`, 'g'),
       '§CLAUSE§',
     )
-    .replace(
-      new RegExp(`([^。！？!?；;,，\n§])(?=${explicitSubjectStart})`, 'g'),
-      '$1§CLAUSE§',
-    );
+    .replace(new RegExp(`([^。！？!?；;,，\n§])(?=${explicitSubjectStart})`, 'g'), '$1§CLAUSE§');
 
   return implicitBoundary
     .split(/[。！？!?；;,，\n]+|§CLAUSE§+/)
