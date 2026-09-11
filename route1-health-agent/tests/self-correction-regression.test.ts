@@ -22,7 +22,12 @@ function observation(id: string, sourceMessageId: string, text: string, tags: Ob
   };
 }
 
-function measurement(id: string, sourceMessageId: string, metric: HealthMeasurement['metric'], value: number): HealthMeasurement {
+function measurement(
+  id: string,
+  sourceMessageId: string,
+  metric: HealthMeasurement['metric'],
+  value: number,
+): HealthMeasurement {
   return {
     id,
     timestamp: `${TODAY}T10:00:00`,
@@ -60,11 +65,7 @@ test('correction removes only facts owned by the corrected message, not same-tag
   const next = removeCorrectedChatHealthEvents(events, 'elder-002');
   const ids = next.map((event) => event.id);
 
-  assert.deepEqual(ids, [
-    'observation:obs-older',
-    'measurement:hr-older',
-    'observation:obs-demo',
-  ]);
+  assert.deepEqual(ids, ['observation:obs-older', 'measurement:hr-older', 'observation:obs-demo']);
 });
 
 test('correction removes all derived facts from the corrected turn together', () => {
@@ -109,7 +110,10 @@ test('family correction uses exact source message provenance instead of subject 
   ];
 
   const next = removeCorrectedFamilyEvents(familyEvents, 'elder-002');
-  assert.deepEqual(next.map((event) => event.id), ['family-older']);
+  assert.deepEqual(
+    next.map((event) => event.id),
+    ['family-older'],
+  );
 });
 
 test('missing provenance fails closed and deletes nothing', () => {

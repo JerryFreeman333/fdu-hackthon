@@ -202,9 +202,7 @@ export function useElderChat({
     let nextBaseEvents = events;
     if (understanding.correction && understanding.correctionTargetMessageId) {
       nextBaseEvents = removeCorrectedChatHealthEvents(nextBaseEvents, understanding.correctionTargetMessageId);
-      setFamilyEvents((current) =>
-        removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId),
-      );
+      setFamilyEvents((current) => removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId));
     }
 
     const receivedAt = localIsoTimestamp();
@@ -253,11 +251,7 @@ export function useElderChat({
 
     if (acceptedClaims.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [
-        ...current,
-        elderMessage,
-        msg('agent', finalFamilyText, now, persisted),
-      ]);
+      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       setEvents(nextBaseEvents);
       return;
@@ -308,11 +302,7 @@ export function useElderChat({
 
     if (incomingEvents.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [
-        ...current,
-        elderMessage,
-        msg('agent', finalFamilyText, now, persisted),
-      ]);
+      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       setEvents(nextBaseEvents);
       return;
@@ -364,11 +354,7 @@ export function useElderChat({
       sharingReceipt,
     ].filter(Boolean);
     const finalAgentText = receiptParts.join('\n');
-    setChat((current) => [
-      ...current,
-      elderMessage,
-      msg('agent', finalAgentText, now, persisted),
-    ]);
+    setChat((current) => [...current, elderMessage, msg('agent', finalAgentText, now, persisted)]);
 
     showToast(finalAgentText.replace(/\n/g, ' '));
 
