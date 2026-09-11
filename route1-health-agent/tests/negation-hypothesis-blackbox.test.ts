@@ -4,6 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
+// CI verification marker: this commit intentionally does not change runtime behavior.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
