@@ -106,6 +106,7 @@ export type SymptomTag =
   | 'fatigue'
   | 'dyspnea'
   | 'poorSleep'
+  | 'nocturia'
   | 'edema'
   | 'dizziness'
   | 'medicationMissed'
@@ -120,6 +121,7 @@ export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   fatigue: '疲劳乏力',
   dyspnea: '活动后气喘',
   poorSleep: '睡眠变差',
+  nocturia: '夜尿增多',
   edema: '水肿',
   dizziness: '头晕',
   medicationMissed: '漏服药物',
@@ -192,4 +194,4 @@ export interface ElderProfile {
   nightVision: NightVisionStatus;
   cognition: CognitionStatus;
   familySharing: FamilySharing;
-}
+} 
