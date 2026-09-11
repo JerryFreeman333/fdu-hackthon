@@ -39,10 +39,11 @@ test('does not carry an older subject through a newer unrelated health turn', ()
 
 test('refuses to inherit when the previous turn established multiple family subjects', () => {
   const history = [elder('m1', '我爸有点喘，我妈也有点头晕'), agent('a1', '我先分别记下。')];
-  const result = understandElderInput('他现在更难受了', TODAY, history);
+  const result = understandElderInput('他现在也喘得更厉害了', TODAY, history);
 
   assert.match(result.clarificationQuestion ?? '', /指谁|确认清楚/);
   assert.equal(result.claims[0]?.subject, 'unknown');
+  assert.deepEqual(result.claims[0]?.tags, ['dyspnea']);
 });
 
 test('does not create a family anchor from a non-health contextual sentence', () => {
