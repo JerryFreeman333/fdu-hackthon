@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "blackbox": "node run-blackbox.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}
