@@ -4,7 +4,7 @@ import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
 import { splitNaturalLanguageTexts } from './naturalLanguage';
-import { resolveTime, type TimeScope } from './time';
+import { resolveTime, type ResolvedTime, type TimeScope } from './time';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'near_miss' | 'uncertain';
@@ -40,12 +40,13 @@ const SELF_EXPLICIT = [
   /(?:^|[，。；、,;\s])我(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
   /(?:后来|然后|今天|刚才|现在|这次|同时|而且|并且)我(?!爸|妈|父亲|母亲|老公|丈夫|爱人|老伴|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家人|家里人)/,
 ];
+const COORDINATION = /(?:和|跟|以及|都|分别|各自|也)/;
 const PERCEPTION = /(?:觉得|看他|看她|看见|看到|发现|听见|听到|说他|说她|说他们|说她们)/;
 const UNCERTAIN_WORDS = /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/;
 const HYPOTHETICAL_WORDS = /(?:如果|假如|假设|万一|要是|倘若|会不会|怎么预防|怎么办才不会|有没有可能)/;
-const NEGATION_WORDS =
-  /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
+const NEGATION_WORDS = /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
 const NEAR_MISS_WORDS = /(?:差点|差一点|险些|险些就|几乎要|差点就)/;
+const TIME_WORDS = /(?:20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}|今天|刚才|刚刚|现在|目前|此刻|早上|上午|中午|下午|傍晚|晚上|昨晚|昨天|昨日|前天|几天前|前几天|上周|上个星期|上礼拜|去年|前年|以前|之前|多年前|小时候|年轻的时候|很久以前)/;
 
 function explicitFamilySubjects(text: string): ElderSubject[] {
   return [...new Set(FAMILY_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([subject]) => subject))];
@@ -62,7 +63,7 @@ function uniqueFamily(subjects: ElderSubject[]): ElderSubject[] {
   return [...new Set(subjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
 }
 
-function inferSubject(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject {
+function inferPrimarySubject(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
   if (family.length > 1) return 'unknown';
@@ -84,6 +85,14 @@ function inferSubject(text: string, priorSubjects: ElderSubject[], seenSubjects:
   return 'self';
 }
 
+function subjectCandidates(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject[] {
+  const family = explicitFamilySubjects(text);
+  const self = hasExplicitSelf(text);
+  if (family.length > 0 && self && COORDINATION.test(text)) return ['self', ...family];
+  if (family.length > 1 && COORDINATION.test(text)) return family;
+  return [inferPrimarySubject(text, priorSubjects, seenSubjects)];
+}
+
 function statusFromText(text: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
   const hasHealthClaim = tags.length > 0 || hasHealthValue;
   if (hasHealthClaim && NEAR_MISS_WORDS.test(text)) return 'near_miss';
@@ -98,6 +107,7 @@ function statusFromText(text: string, tags: SymptomTag[], hasHealthValue: boolea
   }
 
   if (hasHealthClaim && (PERCEPTION.test(text) || UNCERTAIN_WORDS.test(text))) return 'uncertain';
+  if (PERCEPTION.test(text) || UNCERTAIN_WORDS.test(text)) return 'uncertain';
   return 'occurred';
 }
 
@@ -121,6 +131,37 @@ function isPureReassurance(text: string, tags: SymptomTag[], hasHealthValue: boo
   );
 }
 
+function hasTimeMarker(text: string): boolean {
+  return TIME_WORDS.test(text);
+}
+
+function mergeAdjacentClaims(claims: StructuredClaim[]): StructuredClaim[] {
+  const merged: StructuredClaim[] = [];
+  for (const claim of claims) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous &&
+      previous.subject === claim.subject &&
+      previous.status === claim.status &&
+      previous.timeScope === claim.timeScope &&
+      previous.eventDate === claim.eventDate &&
+      previous.outcome === undefined &&
+      claim.outcome === undefined &&
+      /^(?:也|还|同样|并且|而且|没|没有|未|并没|并没有)/.test(claim.text.trim())
+    ) {
+      merged[merged.length - 1] = {
+        ...previous,
+        text: `${previous.text}，${claim.text}`,
+        tags: [...new Set([...previous.tags, ...claim.tags])],
+        hasHealthValue: previous.hasHealthValue || claim.hasHealthValue,
+      };
+    } else {
+      merged.push(claim);
+    }
+  }
+  return merged;
+}
+
 export function understandElderInput(
   text: string,
   today: string,
@@ -141,13 +182,13 @@ export function understandElderInput(
   let seenSubjects = [...priorSubjects];
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
+  let lastTime: ResolvedTime | null = null;
 
   for (const unit of splitNaturalLanguageTexts(trimmed)) {
     const parsed = parseElderInput(unit);
     const explicitTags = parsed.tags;
-    const explicitValues = extractHealthValues(unit);
-    const explicitHealthValue = explicitValues.length > 0;
-    const subject = inferSubject(unit, priorSubjects, seenSubjects);
+    const explicitHealthValue = extractHealthValues(unit).length > 0;
+    const candidates = subjectCandidates(unit, priorSubjects, seenSubjects);
 
     const omittedComparison =
       explicitTags.length === 0 &&
@@ -155,50 +196,50 @@ export function understandElderInput(
       /(?:好多了|好一点|好些了|轻一点|减轻|缓解|没那么)/.test(unit) &&
       lastTags.length > 0;
     const omittedParallel = explicitTags.length === 0 && /^(?:我|我自己|本人)也/.test(unit) && lastTags.length > 0;
-
     const tags = explicitTags.length > 0 ? explicitTags : omittedComparison || omittedParallel ? lastTags : [];
-    const hasHealthValue: boolean =
-      explicitHealthValue || (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
-    const time = resolveTime(unit, today);
+    const hasHealthValue: boolean = explicitHealthValue ||
+      (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
+
+    const parsedTime = resolveTime(unit, today);
+    const time = !hasTimeMarker(unit) && lastTime !== null ? lastTime : parsedTime;
+    if (hasTimeMarker(unit) || lastTime === null || parsedTime.scope !== 'unknown') lastTime = parsedTime;
+
     const status = statusFromText(unit, tags, hasHealthValue);
     const deathReported = /(?:去世|过世|死了|死亡|没了)/.test(unit);
-
     if (isPureReassurance(unit, tags, hasHealthValue)) continue;
 
-    if (deathReported) {
-      claims.push({
-        text: unit,
-        subject,
-        status: 'uncertain',
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-        outcome: 'death_reported',
-      });
-    } else if (
-      subject === 'unknown' ||
-      tags.length > 0 ||
-      hasHealthValue ||
-      subject !== 'self' ||
-      status !== 'occurred'
-    ) {
-      claims.push({
-        text: unit,
-        subject,
-        status,
-        timeScope: time.scope,
-        eventDate: time.eventDate,
-        tags,
-        hasHealthValue,
-      });
+    const claimsForUnit = candidates.map((subject) => ({
+      text: unit,
+      subject,
+      status: deathReported ? 'uncertain' : status,
+      timeScope: time.scope,
+      eventDate: time.eventDate,
+      tags,
+      hasHealthValue,
+      ...(deathReported ? { outcome: 'death_reported' as const } : {}),
+    }));
+
+    for (const claim of claimsForUnit) {
+      if (
+        claim.outcome === 'death_reported' ||
+        claim.subject === 'unknown' ||
+        claim.tags.length > 0 ||
+        claim.hasHealthValue ||
+        claim.subject !== 'self' ||
+        claim.status !== 'occurred'
+      ) {
+        claims.push(claim);
+      }
     }
 
-    if (subject !== 'self' && subject !== 'unknown') seenSubjects.push(subject);
+    for (const subject of candidates) {
+      if (subject !== 'self' && subject !== 'unknown') seenSubjects.push(subject);
+    }
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
 
+  const mergedClaims = mergeAdjacentClaims(claims);
   const privacyIntents = splitNaturalLanguageTexts(trimmed)
     .map((unit) => parsePrivacyIntent(unit))
     .filter((intent) => intent !== 'none');
@@ -213,13 +254,13 @@ export function understandElderInput(
     };
   }
 
-  const clarification = claims.some(
+  const clarification = mergedClaims.some(
     (claim) => claim.subject === 'unknown' && (claim.tags.length > 0 || claim.hasHealthValue),
   )
-    ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录。'
+    ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
     : undefined;
 
-  return { claims, recallRequested, clarificationQuestion: clarification, correction };
+  return { claims: mergedClaims, recallRequested, clarificationQuestion: clarification, correction };
 }
 
 export function acceptedSelfClaims(input: StructuredElderInput): StructuredClaim[] {
