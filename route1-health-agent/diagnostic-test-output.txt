@@ -7,73 +7,51 @@ TAP version 13
 # Subtest: .test-build/tests/blood-pressure-adversarial-blackbox.test.js
 ok 1 - .test-build/tests/blood-pressure-adversarial-blackbox.test.js
   ---
-  duration_ms: 90.492757
+  duration_ms: 60.486632
   type: 'test'
   ...
 # PASS: care tasks are session-only and legacy persistence is purged
 # Subtest: .test-build/tests/care-tasks-session-only.test.js
 ok 2 - .test-build/tests/care-tasks-session-only.test.js
   ---
-  duration_ms: 50.446438
+  duration_ms: 25.841913
   type: 'test'
   ...
 # Subtest: inherits the unique family subject from the immediately previous health turn
 ok 3 - inherits the unique family subject from the immediately previous health turn
   ---
-  duration_ms: 11.578386
+  duration_ms: 7.832712
   type: 'test'
   ...
 # Subtest: does not carry an older subject through a newer unrelated health turn
 ok 4 - does not carry an older subject through a newer unrelated health turn
   ---
-  duration_ms: 1.231234
+  duration_ms: 1.183881
   type: 'test'
   ...
 # Subtest: refuses to inherit when the previous turn established multiple family subjects
 ok 5 - refuses to inherit when the previous turn established multiple family subjects
   ---
-  duration_ms: 0.42027
+  duration_ms: 0.468855
   type: 'test'
   ...
 # Subtest: does not create a family anchor from a non-health contextual sentence
 ok 6 - does not create a family anchor from a non-health contextual sentence
   ---
-  duration_ms: 0.671673
+  duration_ms: 0.492631
   type: 'test'
   ...
 # Subtest: a self-only previous turn cannot become a family pronoun anchor
 ok 7 - a self-only previous turn cannot become a family pronoun anchor
   ---
-  duration_ms: 0.608804
+  duration_ms: 0.468885
   type: 'test'
   ...
 # Subtest: preserves subject continuity inside a previous multi-clause family turn
-not ok 8 - preserves subject continuity inside a previous multi-clause family turn
+ok 8 - preserves subject continuity inside a previous multi-clause family turn
   ---
-  duration_ms: 2.43706
+  duration_ms: 1.150281
   type: 'test'
-  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/context-memory-regression.test.js:55:25'
-  failureType: 'testCodeFailure'
-  error: |-
-    Expected values to be strictly equal:
-    + actual - expected
-    
-    + 'unknown'
-    - 'father'
-    
-  code: 'ERR_ASSERTION'
-  name: 'AssertionError'
-  expected: 'father'
-  actual: 'unknown'
-  operator: 'strictEqual'
-  stack: |-
-    TestContext.<anonymous> (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/context-memory-regression.test.js:58:22)
-    Test.runInAsyncScope (node:async_hooks:214:14)
-    Test.run (node:internal/test_runner/test:1047:25)
-    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
-    Test.postRun (node:internal/test_runner/test:1173:19)
-    Test.run (node:internal/test_runner/test:1101:12)
-    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
   ...
 # PASS: demo event stream produces multisignal alert
 # PASS: identical event stream produces stable findings
@@ -92,55 +70,37 @@ not ok 8 - preserves subject continuity inside a previous multi-clause family tu
 # Subtest: .test-build/tests/detection.test.js
 ok 4 - .test-build/tests/detection.test.js
   ---
-  duration_ms: 108.476922
+  duration_ms: 57.880153
   type: 'test'
   ...
 # Subtest: elder chat turn ordering
     # Subtest: commits N+2 while rejecting a delayed N+1 response
     ok 1 - commits N+2 while rejecting a delayed N+1 response
       ---
-      duration_ms: 41.636315
+      duration_ms: 42.859713
       type: 'test'
       ...
     # Subtest: keeps an already latest turn committable
     ok 2 - keeps an already latest turn committable
       ---
-      duration_ms: 0.47358
+      duration_ms: 0.362916
       type: 'test'
       ...
     1..2
 ok 10 - elder chat turn ordering
   ---
-  duration_ms: 44.516337
+  duration_ms: 44.284295
   type: 'suite'
   ...
-# FAIL: ambiguous family clarification protects the elder record
-# /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:16
-#         throw error;
-#         ^
-# Error: ambiguous pronoun must remain unknown
-#     at assert (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:7:15)
-#     at /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:25:5
-#     at runCase (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:11:9)
-#     at Object.<anonymous> (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:20:1)
-#     at Module._compile (node:internal/modules/cjs/loader:1781:14)
-#     at Object..js (node:internal/modules/cjs/loader:1913:10)
-#     at Module.load (node:internal/modules/cjs/loader:1505:32)
-#     at Function._load (node:internal/modules/cjs/loader:1309:12)
-#     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-#     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
-# Node.js v22.23.2
+# PASS: ambiguous family clarification protects the elder record
+# PASS: pure reassurance is not written as a new symptom
+# PASS: repeating the same chat health fact does not duplicate the health timeline
+# PASS: a meaningful update is not swallowed by chat dedupe
 # Subtest: .test-build/tests/elder-next-layer-blackbox.test.js
-not ok 6 - .test-build/tests/elder-next-layer-blackbox.test.js
+ok 6 - .test-build/tests/elder-next-layer-blackbox.test.js
   ---
-  duration_ms: 55.501308
+  duration_ms: 46.658781
   type: 'test'
-  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/elder-next-layer-blackbox.test.js:1:1'
-  failureType: 'testCodeFailure'
-  exitCode: 1
-  signal: ~
-  error: 'test failed'
-  code: 'ERR_TEST_FAILURE'
   ...
 # PASS: overloaded speech keeps self facts separate from family facts and context
 # PASS: overloaded safety reply preserves more than one immediately useful action
@@ -148,7 +108,7 @@ not ok 6 - .test-build/tests/elder-next-layer-blackbox.test.js
 # Subtest: .test-build/tests/elder-overload-blackbox.test.js
 ok 7 - .test-build/tests/elder-overload-blackbox.test.js
   ---
-  duration_ms: 66.213133
+  duration_ms: 34.015332
   type: 'test'
   ...
 # PASS: conflicting share and refusal fails closed
@@ -166,7 +126,7 @@ ok 7 - .test-build/tests/elder-overload-blackbox.test.js
 # Subtest: .test-build/tests/elder-privacy-adversarial.test.js
 ok 8 - .test-build/tests/elder-privacy-adversarial.test.js
   ---
-  duration_ms: 53.950001
+  duration_ms: 38.164939
   type: 'test'
   ...
 # PASS: recipient is inferred conservatively from explicit kinship words
@@ -177,7 +137,7 @@ ok 8 - .test-build/tests/elder-privacy-adversarial.test.js
 # Subtest: .test-build/tests/elder-sharing-audit-blackbox.test.js
 ok 9 - .test-build/tests/elder-sharing-audit-blackbox.test.js
   ---
-  duration_ms: 47.653359
+  duration_ms: 22.803462
   type: 'test'
   ...
 # PASS: family disclosure is fail-closed when familyEligible is omitted
@@ -192,7 +152,7 @@ ok 9 - .test-build/tests/elder-sharing-audit-blackbox.test.js
 # Subtest: .test-build/tests/family-disclosure.test.js
 ok 10 - .test-build/tests/family-disclosure.test.js
   ---
-  duration_ms: 50.204945
+  duration_ms: 39.882684
   type: 'test'
   ...
 # PASS: family fact is persisted independently from elder health events
@@ -204,174 +164,193 @@ ok 10 - .test-build/tests/family-disclosure.test.js
 # Subtest: .test-build/tests/family-ledger-regression.test.js
 ok 11 - .test-build/tests/family-ledger-regression.test.js
   ---
-  duration_ms: 69.536069
+  duration_ms: 51.921053
   type: 'test'
   ...
 # Subtest: family session isolation
     # Subtest: consumes only the explicitly claimed one-time grants
     ok 1 - consumes only the explicitly claimed one-time grants
       ---
-      duration_ms: 1.992494
+      duration_ms: 1.078903
       type: 'test'
       ...
     # Subtest: starts a new session without previously persisted grants
     ok 2 - starts a new session without previously persisted grants
       ---
-      duration_ms: 0.226396
+      duration_ms: 0.108363
       type: 'test'
       ...
     1..2
 ok 17 - family session isolation
   ---
-  duration_ms: 3.592261
+  duration_ms: 1.956203
   type: 'suite'
   ...
-# PASS: final Route 1 audit smoke
+# /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/final-audit-smoke.test.js:7
+#         throw new Error(message);
+#         ^
+# Error: third-person concern must not become self
+#     at assert (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/final-audit-smoke.test.js:7:15)
+#     at Object.<anonymous> (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/final-audit-smoke.test.js:24:1)
+#     at Module._compile (node:internal/modules/cjs/loader:1781:14)
+#     at Object..js (node:internal/modules/cjs/loader:1913:10)
+#     at Module.load (node:internal/modules/cjs/loader:1505:32)
+#     at Function._load (node:internal/modules/cjs/loader:1309:12)
+#     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+#     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+#     at node:internal/main/run_main_module:36:49
+# Node.js v22.23.2
 # Subtest: .test-build/tests/final-audit-smoke.test.js
-ok 13 - .test-build/tests/final-audit-smoke.test.js
+not ok 13 - .test-build/tests/final-audit-smoke.test.js
   ---
-  duration_ms: 52.463861
+  duration_ms: 35.215003
   type: 'test'
+  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/final-audit-smoke.test.js:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
   ...
 # Subtest: health record session isolation
     # Subtest: keeps saved health data available only through the in-memory store
     ok 1 - keeps saved health data available only through the in-memory store
       ---
-      duration_ms: 1.859674
+      duration_ms: 0.974265
       type: 'test'
       ...
     # Subtest: clears all session health data explicitly
     ok 2 - clears all session health data explicitly
       ---
-      duration_ms: 1.189535
+      duration_ms: 0.685261
       type: 'test'
       ...
     # Subtest: does not depend on browser persistence APIs
     ok 3 - does not depend on browser persistence APIs
       ---
-      duration_ms: 0.399891
+      duration_ms: 0.318199
       type: 'test'
       ...
     1..3
 ok 19 - health record session isolation
   ---
-  duration_ms: 5.415767
+  duration_ms: 3.093583
   type: 'suite'
   ...
 # Subtest: family home safety authorization
     # Subtest: shows home safety actions only when family sharing is explicitly granted
     ok 1 - shows home safety actions only when family sharing is explicitly granted
       ---
-      duration_ms: 1.882277
+      duration_ms: 1.431403
       type: 'test'
       ...
     # Subtest: revocation immediately removes previously visible home safety actions
     ok 2 - revocation immediately removes previously visible home safety actions
       ---
-      duration_ms: 0.252635
+      duration_ms: 0.203386
       type: 'test'
       ...
     1..2
 ok 20 - family home safety authorization
   ---
-  duration_ms: 3.600455
+  duration_ms: 2.731679
   type: 'suite'
   ...
 # Subtest: home safety actions are treated as fresh session state
 ok 21 - home safety actions are treated as fresh session state
   ---
-  duration_ms: 1.234149
+  duration_ms: 1.129499
   type: 'test'
   ...
 # Subtest: legacy home safety persistence key is not part of the app state contract
 ok 22 - legacy home safety persistence key is not part of the app state contract
   ---
-  duration_ms: 0.200758
+  duration_ms: 0.228965
   type: 'test'
   ...
 # Subtest: splits unpunctuated multi-person speech before assigning claims
 ok 23 - splits unpunctuated multi-person speech before assigning claims
   ---
-  duration_ms: 13.5068
+  duration_ms: 6.499847
   type: 'test'
   ...
 # Subtest: keeps separate family facts instead of inheriting the first family subject
 ok 24 - keeps separate family facts instead of inheriting the first family subject
   ---
-  duration_ms: 0.934977
+  duration_ms: 0.508195
   type: 'test'
   ...
 # Subtest: clarifies a pronoun when multiple family subjects are active
 ok 25 - clarifies a pronoun when multiple family subjects are active
   ---
-  duration_ms: 1.03746
+  duration_ms: 0.553503
   type: 'test'
   ...
 # Subtest: does not choose one person when a single clause explicitly names multiple people
 ok 26 - does not choose one person when a single clause explicitly names multiple people
   ---
-  duration_ms: 0.679116
+  duration_ms: 0.360832
   type: 'test'
   ...
 # Subtest: keeps a self claim separate from a nearby family claim
 ok 27 - keeps a self claim separate from a nearby family claim
   ---
-  duration_ms: 0.712529
+  duration_ms: 0.366751
   type: 'test'
   ...
 # Subtest: explicit negation is not accepted as a self health fact
 ok 28 - explicit negation is not accepted as a self health fact
   ---
-  duration_ms: 12.993766
+  duration_ms: 8.095708
   type: 'test'
   ...
 # Subtest: negation with natural elder wording stays negated
 ok 29 - negation with natural elder wording stays negated
   ---
-  duration_ms: 0.647857
+  duration_ms: 0.424508
   type: 'test'
   ...
 # Subtest: hypothetical health question is never treated as an occurrence
 ok 30 - hypothetical health question is never treated as an occurrence
   ---
-  duration_ms: 0.545835
+  duration_ms: 0.427773
   type: 'test'
   ...
 # Subtest: possible symptom wording remains uncertain rather than occurred
 ok 31 - possible symptom wording remains uncertain rather than occurred
   ---
-  duration_ms: 0.701668
+  duration_ms: 0.536507
   type: 'test'
   ...
 # Subtest: near miss is not recorded as an actual accident
 ok 32 - near miss is not recorded as an actual accident
   ---
-  duration_ms: 0.566694
+  duration_ms: 0.44501
   type: 'test'
   ...
 # Subtest: family near miss is also excluded from the self fact stream
 ok 33 - family near miss is also excluded from the self fact stream
   ---
-  duration_ms: 0.694906
+  duration_ms: 0.487404
   type: 'test'
   ...
 # Subtest: real occurrence remains occurred
 ok 34 - real occurrence remains occurred
   ---
-  duration_ms: 1.786898
+  duration_ms: 1.394377
   type: 'test'
   ...
 # Subtest: negated family event never becomes self event
 ok 35 - negated family event never becomes self event
   ---
-  duration_ms: 0.371178
+  duration_ms: 0.242184
   type: 'test'
   ...
 # PASS: Arabic and Chinese numeral extraction regression suite
 # Subtest: .test-build/tests/numeric-extraction.test.js
 ok 19 - .test-build/tests/numeric-extraction.test.js
   ---
-  duration_ms: 47.459796
+  duration_ms: 38.011089
   type: 'test'
   ...
 # PASS: demo TODAY is generated at runtime (2026-09-11)
@@ -379,82 +358,82 @@ ok 19 - .test-build/tests/numeric-extraction.test.js
 # Subtest: .test-build/tests/phase1-hardening.test.js
 ok 20 - .test-build/tests/phase1-hardening.test.js
   ---
-  duration_ms: 134.771018
+  duration_ms: 87.462617
   type: 'test'
   ...
 # Subtest: private and no-record prompts stay on the local safety adapter path
 ok 38 - private and no-record prompts stay on the local safety adapter path
   ---
-  duration_ms: 10.350128
+  duration_ms: 3.03121
   type: 'test'
   ...
 # PASS: private observation privacy is scoped to its own finding evidence
 # Subtest: .test-build/tests/privacy-time-window-regression.test.js
 ok 22 - .test-build/tests/privacy-time-window-regression.test.js
   ---
-  duration_ms: 60.375005
+  duration_ms: 46.267298
   type: 'test'
   ...
 # Subtest: correction targets the immediately previous elder turn
 ok 40 - correction targets the immediately previous elder turn
   ---
-  duration_ms: 9.732367
+  duration_ms: 6.55462
   type: 'test'
   ...
 # Subtest: correction removes only facts owned by the corrected message, not same-tag facts
 ok 41 - correction removes only facts owned by the corrected message, not same-tag facts
   ---
-  duration_ms: 1.277671
+  duration_ms: 0.87072
   type: 'test'
   ...
 # Subtest: correction removes all derived facts from the corrected turn together
 ok 42 - correction removes all derived facts from the corrected turn together
   ---
-  duration_ms: 0.251482
+  duration_ms: 0.158088
   type: 'test'
   ...
 # Subtest: family correction uses exact source message provenance instead of subject + tag matching
 ok 43 - family correction uses exact source message provenance instead of subject + tag matching
   ---
-  duration_ms: 0.302098
+  duration_ms: 0.211858
   type: 'test'
   ...
 # Subtest: missing provenance fails closed and deletes nothing
 ok 44 - missing provenance fails closed and deletes nothing
   ---
-  duration_ms: 0.271059
+  duration_ms: 0.145559
   type: 'test'
   ...
 # Subtest: sharing audit session-only privacy
     # Subtest: records history inside the current session without browser persistence
     ok 1 - records history inside the current session without browser persistence
       ---
-      duration_ms: 2.281517
+      duration_ms: 1.484753
       type: 'test'
       ...
     # Subtest: does not restore an old persisted audit record
     ok 2 - does not restore an old persisted audit record
       ---
-      duration_ms: 0.499879
+      duration_ms: 0.368764
       type: 'test'
       ...
     # Subtest: keeps historical sharing answers available during the same session
     ok 3 - keeps historical sharing answers available during the same session
       ---
-      duration_ms: 0.3352
+      duration_ms: 0.244087
       type: 'test'
       ...
     1..3
 ok 45 - sharing audit session-only privacy
   ---
-  duration_ms: 4.978134
+  duration_ms: 5.680685
   type: 'suite'
   ...
 # PASS: contact_family task path and photo privacy regression coverage
 # Subtest: .test-build/tests/task-regression.test.js
 ok 25 - .test-build/tests/task-regression.test.js
   ---
-  duration_ms: 66.801591
+  duration_ms: 37.841503
   type: 'test'
   ...
 # PASS: spouse fall does not become elder fact
@@ -463,32 +442,44 @@ ok 25 - .test-build/tests/task-regression.test.js
 # PASS: historical fall is not rewritten as today
 # PASS: mixed self and spouse sentence is split by person
 # PASS: death report is not treated as ordinary fall
-# Error: pronoun should remain ambiguous
-#     at assert (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-diagnostic.test.js:8:15)
-#     at /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-diagnostic.test.js:57:9
-#     at async main (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-diagnostic.test.js:51:5)
+# PASS: prior pronoun stays ambiguous when multiple family members exist
+# PASS: pure numeric measurement remains recordable
+# PASS: circle count is not converted to steps
+# PASS: last night is assigned to the prior calendar date
+# PASS: fatigue reply does not invent activity decline
+# PASS: voice-facing parser still exposes raw wording
 # Subtest: .test-build/tests/user-diagnostic.test.js
-not ok 26 - .test-build/tests/user-diagnostic.test.js
+ok 26 - .test-build/tests/user-diagnostic.test.js
   ---
-  duration_ms: 67.007056
+  duration_ms: 48.312204
   type: 'test'
-  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-diagnostic.test.js:1:1'
+  ...
+# /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:7
+#         throw new Error(message);
+#         ^
+# Error: “他”应优先于开头的“我”确定主体
+#     at assert (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:7:15)
+#     at /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:17:5
+#     at runCase (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:11:5)
+#     at Object.<anonymous> (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:14:1)
+#     at Module._compile (node:internal/modules/cjs/loader:1781:14)
+#     at Object..js (node:internal/modules/cjs/loader:1913:10)
+#     at Module.load (node:internal/modules/cjs/loader:1505:32)
+#     at Function._load (node:internal/modules/cjs/loader:1309:12)
+#     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+#     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+# Node.js v22.23.2
+# Subtest: .test-build/tests/user-input-regression.test.js
+not ok 27 - .test-build/tests/user-input-regression.test.js
+  ---
+  duration_ms: 36.678915
+  type: 'test'
+  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-input-regression.test.js:1:1'
   failureType: 'testCodeFailure'
   exitCode: 1
   signal: ~
   error: 'test failed'
   code: 'ERR_TEST_FAILURE'
-  ...
-# PASS: 口语化“我觉得他……”不会归到本人
-# PASS: 口语化“我看他……”不会丢掉跌倒事实
-# PASS: “今天没有像昨天那样喘得厉害了”保留为今天的持续症状
-# PASS: “我爸……，我也……”拆成两条独立事实
-# PASS: 撤销共享后历史一次性 finding 不再触发家属通知
-# Subtest: .test-build/tests/user-input-regression.test.js
-ok 27 - .test-build/tests/user-input-regression.test.js
-  ---
-  duration_ms: 63.253362
-  type: 'test'
   ...
 # PASS: family-only response names the person and echoes the fact
 # PASS: mixed family and self input still acknowledges the family fact
@@ -497,41 +488,30 @@ ok 27 - .test-build/tests/user-input-regression.test.js
 # PASS: self one-time sharing receipt names the exact shared facts
 # PASS: self persistent sharing receipt names the exact shared facts
 # PASS: private self-sharing receipt stays empty
-# FAIL: ambiguous family pronoun asks rather than silently guessing
-# /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:18
-#         throw error;
-#         ^
-# Error: ambiguous pronoun must remain unknown
-#     at assert (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:9:15)
-#     at /home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:67:5
-#     at runCase (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:13:9)
-#     at Object.<anonymous> (/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:62:1)
-#     at Module._compile (node:internal/modules/cjs/loader:1781:14)
-#     at Object..js (node:internal/modules/cjs/loader:1913:10)
-#     at Module.load (node:internal/modules/cjs/loader:1505:32)
-#     at Function._load (node:internal/modules/cjs/loader:1309:12)
-#     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-#     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
-# Node.js v22.23.2
+# PASS: ambiguous family pronoun asks rather than silently guessing
+# PASS: current improvement does not sound like a denial of the symptom
+# PASS: user can state two people in one breath
+# PASS: user can correct the person without losing the distinction
+# PASS: natural-language privacy refusal is understood
+# PASS: no-record request stays stronger than family sharing
+# PASS: persistent consent can be revoked without preserving future visibility
+# PASS: one-time sharing works even after persistent consent is revoked
+# PASS: one-time sharing does not mutate the persistent decision
+# PASS: revoking persistent sharing hides previously persistent events from the family view
+# PASS: clearing one-time share ids stops future access and re-grant does not resurrect them
 # Subtest: .test-build/tests/user-ux-blackbox.test.js
-not ok 28 - .test-build/tests/user-ux-blackbox.test.js
+ok 28 - .test-build/tests/user-ux-blackbox.test.js
   ---
-  duration_ms: 65.184623
+  duration_ms: 37.08079
   type: 'test'
-  location: '/home/runner/work/fdu-hackthon/fdu-hackthon/route1-health-agent/.test-build/tests/user-ux-blackbox.test.js:1:1'
-  failureType: 'testCodeFailure'
-  exitCode: 1
-  signal: ~
-  error: 'test failed'
-  code: 'ERR_TEST_FAILURE'
   ...
 1..49
 # tests 56
 # suites 5
-# pass 52
-# fail 4
+# pass 54
+# fail 2
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 746.497705
+# duration_ms 476.874421
 TEST_EXIT_CODE=1
