@@ -51,7 +51,7 @@ function splitClauses(text: string): string[] {
   const hasCoordinatedMeasurementLead = coordinatedMeasurementLeadPattern.test(text);
   const coordinatedMeasurementCommaPattern = /[,，](?=\s*(?:一个|另一个|一人|另一个人|分别|各自))/g;
   const protectedNumericComma = text
-    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二三四五六七八九十百]+)/g, '$1§NUM§')
+    .replace(/([0-9零〇一二两三四五六七八九十百]+)\s*[,，]\s*(?=[0-9零〇一二两三四五六七八九十百]+)/g, '$1§NUM§')
     .replace(
       /((?:高压|低压|收缩压|舒张压)\s*(?:[0-9零〇一二两三四五六七八九十百]+))\s*[,，]\s*(?=(?:高压|低压|收缩压|舒张压))/g,
       '$1§NUM§',
@@ -175,7 +175,7 @@ function parseChineseDayCount(value: string): number | null {
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
-  const daysAgo = clause.match(/(?:前|过去)(\d+|一|两|二|三|四|五|六|七|八|九|十)天(?:前)?/);
+  const daysAgo = clause.match(/(\d+|一|两|二|三|四|五|六|七|八|九|十)天前/);
   if (daysAgo?.[1]) {
     const days = parseChineseDayCount(daysAgo[1]);
     if (days !== null && days > 0) return { scope: 'historical', eventDate: subtractDays(today, days) };
