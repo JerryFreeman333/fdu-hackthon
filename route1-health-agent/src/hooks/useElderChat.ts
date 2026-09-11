@@ -29,6 +29,7 @@ import {
   understandElderInput,
   type StructuredElderInput,
 } from '../engine/understanding';
+import { removeCorrectedChatHealthEvents, removeCorrectedFamilyEvents } from '../engine/correction';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
@@ -94,35 +95,6 @@ function shouldPersistFamilyClaim(
   );
 }
 
-function removeLatestCorrectedChatEvents(events: HealthEvent[], priorTags: string[]): HealthEvent[] {
-  if (priorTags.length === 0) return events;
-  let removed = false;
-  const next = [...events].reverse().filter((event) => {
-    if (removed || event.source !== 'chat') return true;
-    if (event.type === 'observation' && event.observation.tags.some((tag) => priorTags.includes(tag))) {
-      removed = true;
-      return false;
-    }
-    return true;
-  });
-  return next.reverse();
-}
-
-function removeLatestCorrectedFamilyEvents(
-  events: FamilyHealthEvent[],
-  priorTags: string[],
-  priorFamilySubjects: FamilySubject[],
-): FamilyHealthEvent[] {
-  if (priorTags.length === 0 || priorFamilySubjects.length === 0) return events;
-  const familySubjects = new Set(priorFamilySubjects);
-  const index = [...events]
-    .reverse()
-    .findIndex((event) => familySubjects.has(event.subject) && event.tags.some((tag) => priorTags.includes(tag)));
-  if (index === -1) return events;
-  const actualIndex = events.length - 1 - index;
-  return events.filter((_event, eventIndex) => eventIndex !== actualIndex);
-}
-
 function isCurrentReassurance(text: string): boolean {
   return /^(?:我)?(?:现在)?(?:感觉)?(?:没事|没什么事|没什么事情|还好|挺好的)[。！!,.，]*$/.test(text.trim());
 }
@@ -164,6 +136,7 @@ export function useElderChat({
     const shareMode = intent === 'share_family' ? 'one_time' : canShare ? 'persistent' : 'private';
     const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
     const persisted = intent !== 'no_record';
+    const elderMessage = msg('elder', text, now, persisted);
 
     let agentText: string;
     if (sharingHistoryQuery) {
@@ -179,6 +152,8 @@ export function useElderChat({
       agentText = recallSummary(chat);
     } else if (understanding.clarificationQuestion) {
       agentText = understanding.clarificationQuestion;
+    } else if (understanding.correction && acceptedClaims.length === 0 && familyClaims.length === 0) {
+      agentText = '好的，我只会撤销刚才那句话对应的健康事实，不会碰其他已经记录的事情。您可以告诉我正确的情况。';
     } else if (hasDeathReport(understanding)) {
       agentText =
         '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
@@ -217,22 +192,17 @@ export function useElderChat({
     }
 
     if (intent === 'no_record') {
-      setChat((current) => [...current, msg('elder', text, now, persisted), msg('agent', agentText, now, persisted)]);
+      setChat((current) => [...current, elderMessage, msg('agent', agentText, now, persisted)]);
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
 
     if (!shouldCommitElderTurn(turnId, latestTurnRef.current)) return;
 
-    if (understanding.correction) {
-      const previousElder = [...chat].reverse().find((message) => message.role === 'elder');
-      const previousInput = previousElder ? understandElderInput(previousElder.text, TODAY, chat) : null;
-      const tagsToCorrect = previousInput?.claims.flatMap((claim) => claim.tags) ?? [];
-      const priorFamilySubjects = previousInput?.claims.map((claim) => claim.subject).filter(isFamilySubject) ?? [];
-      if (tagsToCorrect.length > 0) setEvents((current) => removeLatestCorrectedChatEvents(current, tagsToCorrect));
-      if (tagsToCorrect.length > 0) {
-        setFamilyEvents((current) => removeLatestCorrectedFamilyEvents(current, tagsToCorrect, priorFamilySubjects));
-      }
+    let nextBaseEvents = events;
+    if (understanding.correction && understanding.correctionTargetMessageId) {
+      nextBaseEvents = removeCorrectedChatHealthEvents(nextBaseEvents, understanding.correctionTargetMessageId);
+      setFamilyEvents((current) => removeCorrectedFamilyEvents(current, understanding.correctionTargetMessageId));
     }
 
     const receivedAt = localIsoTimestamp();
@@ -250,6 +220,7 @@ export function useElderChat({
           status: claim.status,
           visibility,
           shareMode,
+          sourceMessageId: elderMessage.id,
         }),
       );
       setFamilyEvents((current) => [...current, ...incomingFamilyEvents]);
@@ -280,12 +251,9 @@ export function useElderChat({
 
     if (acceptedClaims.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [
-        ...current,
-        msg('elder', text, now, persisted),
-        msg('agent', finalFamilyText, now, persisted),
-      ]);
+      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
+      setEvents(nextBaseEvents);
       return;
     }
 
@@ -303,6 +271,9 @@ export function useElderChat({
           text: claim.text,
           tags: claim.tags,
           visibility,
+          metadata: {
+            sourceMessageId: elderMessage.id,
+          },
         }),
       );
       for (const extracted of extractedValues) {
@@ -322,6 +293,7 @@ export function useElderChat({
               privacy: visibility,
               receivedAt,
               eventDate,
+              sourceMessageId: elderMessage.id,
             },
           }),
         );
@@ -330,15 +302,12 @@ export function useElderChat({
 
     if (incomingEvents.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [
-        ...current,
-        msg('elder', text, now, persisted),
-        msg('agent', finalFamilyText, now, persisted),
-      ]);
+      setChat((current) => [...current, elderMessage, msg('agent', finalFamilyText, now, persisted)]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
+      setEvents(nextBaseEvents);
       return;
     }
-    const nextEvents = appendHealthEvents(events, incomingEvents);
+    const nextEvents = appendHealthEvents(nextBaseEvents, incomingEvents);
     setEvents(nextEvents);
 
     if (intent === 'share_family') {
@@ -379,16 +348,13 @@ export function useElderChat({
     const sharingReceipt = familyAcknowledgement || selfSharingReceipt || sharingNotice;
     const receiptParts = [
       guidance,
+      understanding.correction ? '已按您刚才的更正，只处理上一句话对应的事实；其他记录保持不变。' : '',
       recordSummary ? `我已经记下：${recordSummary}。${timeNotice}` : '',
       safetyNotice && !guidance.includes(safetyNotice) ? safetyNotice : '',
       sharingReceipt,
     ].filter(Boolean);
     const finalAgentText = receiptParts.join('\n');
-    setChat((current) => [
-      ...current,
-      msg('elder', text, now, persisted),
-      msg('agent', finalAgentText, now, persisted),
-    ]);
+    setChat((current) => [...current, elderMessage, msg('agent', finalAgentText, now, persisted)]);
 
     showToast(finalAgentText.replace(/\n/g, ' '));
 

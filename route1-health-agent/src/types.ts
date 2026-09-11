@@ -140,6 +140,7 @@ export interface Observation {
   visibility?: PrivacyScope;
   measurements?: HealthMeasurement[];
   labResults?: LabResult[];
+  metadata?: Record<string, string | number | boolean>;
 }
 
 /** 家庭成员事实账本：独立于老人的 HealthEvent，不参与老人基线/检测。 */
@@ -154,6 +155,7 @@ export interface FamilyHealthEvent {
   status: ClaimStatus;
   visibility: PrivacyScope;
   shareMode: FamilyShareMode;
+  sourceMessageId?: string;
 }
 
 export type Severity = 'info' | 'watch' | 'alert' | 'urgent';

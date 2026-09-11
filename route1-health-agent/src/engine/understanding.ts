@@ -29,6 +29,7 @@ export interface StructuredElderInput {
   recallRequested: boolean;
   clarificationQuestion?: string;
   correction: boolean;
+  correctionTargetMessageId?: string;
 }
 
 function subtractDays(today: string, days: number): string {
@@ -44,7 +45,7 @@ function splitClauses(text: string): string[] {
       '$1§',
     );
   return protectedNumericComma
-    .split(/[。！？!?；;，,\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
+    .split(/[。！？!?；;,，\n]+(?!\s*(?:也(?:没|没有|未)|并(?:没|没有)|幸好|好在))/)
     .map((clause) => clause.replace(/§/g, ',').trim())
     .filter(Boolean);
 }
@@ -162,13 +163,16 @@ export function understandElderInput(
 ): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
-  const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对)/.test(trimmed);
+  const correction = /(说错了|弄错了|不是我|不是我本人|刚才不对|刚刚说错了|前面说错了)/.test(trimmed);
+  const correctionTargetMessageId = correction
+    ? [...recentMessages].reverse().find((message) => message.role === 'elder')?.id
+    : undefined;
   const clarificationQuestion = /凶闷|胸闷[?？]$/.test(trimmed)
     ? '您说的“凶闷”是指“胸闷”吗？我先不把它当成确定症状记录。'
     : undefined;
 
   if (recallRequested || clarificationQuestion) {
-    return { claims: [], recallRequested, clarificationQuestion, correction };
+    return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
 
   const priorSubjects = recentPriorSubjects(recentMessages);
@@ -272,6 +276,7 @@ export function understandElderInput(
       clarificationQuestion:
         '我听到您对不同事情有不同的分享要求。为了不把您说的“不要告诉家属的内容”发出去，我先不自动记录或分享，请您把要分享的事情和不要分享的事情分开告诉我。',
       correction,
+      correctionTargetMessageId,
     };
   }
 
@@ -282,6 +287,7 @@ export function understandElderInput(
       ? '您说的“他/她”可能是在说您自己，也可能是在说家人。我先确认清楚是指谁，再决定要不要记录，这样不会把别人的情况记到您这里。'
       : undefined,
     correction,
+    correctionTargetMessageId,
   };
 }
 
