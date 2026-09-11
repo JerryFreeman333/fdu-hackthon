@@ -104,7 +104,10 @@ async function main() {
   await runCase('coordinated denial is copied to both explicit subjects', () => {
     const input = understandElderInput('我和老伴都没有胸痛', TODAY);
     assert(input.claims.length === 2, 'coordinated denial should become two claims');
-    assert(input.claims.every((claim) => claim.status === 'negated'), 'both subjects should be negated');
+    assert(
+      input.claims.every((claim) => claim.status === 'negated'),
+      'both subjects should be negated',
+    );
     assert(input.claims[0]?.subject === 'self', 'self denial should stay self');
     assert(input.claims[1]?.subject === 'spouse', 'spouse denial should stay spouse');
     assert(acceptedSelfClaims(input).length === 0, 'negated self denial must not enter the health stream');
@@ -113,9 +116,64 @@ async function main() {
   await runCase('coordinated occurred symptom is split without leaking spouse into self', () => {
     const input = understandElderInput('我和老伴都喘', TODAY);
     assert(input.claims.length === 2, 'coordinated symptom should become two claims');
-    assert(input.claims[0]?.subject === 'self' && input.claims[0]?.status === 'occurred', 'self dyspnea claim should occur');
-    assert(input.claims[1]?.subject === 'spouse' && input.claims[1]?.status === 'occurred', 'spouse dyspnea claim should occur');
+    assert(
+      input.claims[0]?.subject === 'self' && input.claims[0]?.status === 'occurred',
+      'self dyspnea claim should occur',
+    );
+    assert(
+      input.claims[1]?.subject === 'spouse' && input.claims[1]?.status === 'occurred',
+      'spouse dyspnea claim should occur',
+    );
     assert(acceptedSelfClaims(input).length === 1, 'only one self claim should be accepted');
+  });
+
+  await runCase('omitted parallel family action inherits the prior fact safely', () => {
+    const input = understandElderInput('我没吃药，我爸也没吃', TODAY);
+    assert(input.claims.length >= 2, 'parallel family action should preserve both claims');
+    assert(
+      input.claims.some(
+        (claim) => claim.subject === 'self' && claim.tags.includes('medicationMissed') && claim.status === 'occurred',
+      ),
+      'self medication miss should remain recorded',
+    );
+    assert(
+      input.claims.some(
+        (claim) => claim.subject === 'father' && claim.tags.includes('medicationMissed') && claim.status === 'occurred',
+      ),
+      'father omitted medication miss should inherit the prior fact',
+    );
+    assert(acceptedSelfClaims(input).length === 1, 'only the self medication fact should enter self health events');
+  });
+
+  await runCase('mixed subjects keep their own state across explicit clauses', () => {
+    const input = understandElderInput('我没胸痛，我老伴昨天胸闷', TODAY);
+    assert(
+      input.claims.some((claim) => claim.subject === 'self' && claim.status === 'negated'),
+      'self chest-pain denial must stay negated',
+    );
+    assert(
+      input.claims.some(
+        (claim) => claim.subject === 'spouse' && claim.tags.includes('dyspnea') && claim.status === 'occurred',
+      ),
+      'spouse chest tightness must remain a spouse fact',
+    );
+    assert(acceptedSelfClaims(input).length === 0, 'self denial must not become an accepted symptom');
+  });
+
+  await runCase('mixed subjects preserve father measurement without contaminating self', () => {
+    const input = understandElderInput('我没吃药，我爸血压180/110', TODAY);
+    assert(
+      input.claims.some((claim) => claim.subject === 'self' && claim.tags.includes('medicationMissed')),
+      'self medication miss should remain',
+    );
+    assert(
+      input.claims.some((claim) => claim.subject === 'father' && claim.hasHealthValue),
+      'father blood pressure must remain a family measurement',
+    );
+    assert(
+      acceptedSelfClaims(input).filter((claim) => claim.hasHealthValue).length === 0,
+      'father measurement must never enter self events',
+    );
   });
 
   await runCase('pure numeric measurement remains recordable', () => {

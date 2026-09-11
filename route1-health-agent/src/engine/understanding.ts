@@ -184,7 +184,8 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   )
     return 'hypothetical';
   if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
-  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause)) return 'occurred';
+  if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause))
+    return 'occurred';
   if (tags.includes('poorSleep') && /没睡好/.test(clause)) return 'occurred';
 
   const comparativeImprovement =
@@ -311,7 +312,10 @@ export function understandElderInput(
       lastTags.length > 0;
     const isOmittedParallelAction =
       explicitTags.length === 0 &&
-      /^(?:我|我自己|本人)(?:也|还|同样)(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
+      /(?:^(?:我|我自己|本人)(?:也|还|同样)|(?:我老公|我丈夫|老公|丈夫|爱人|老伴|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)(?:也|还|同样))/.test(
+        clause,
+      ) &&
+      /(?:没|没有|未|忘|漏|吃|服|用|量|测|测了|睡)/.test(clause) &&
       lastTags.length > 0;
     const tags =
       explicitTags.length > 0 ? explicitTags : isOmittedComparison || isOmittedParallelAction ? lastTags : explicitTags;
