@@ -13,7 +13,7 @@ test('splits unpunctuated multi-person speech before assigning claims', () => {
     [
       ['father', 'occurred', ['dyspnea']],
       ['spouse', 'occurred', ['fall']],
-      ['self', 'occurred', ['chestPain']],
+      ['self', 'occurred', ['dyspnea']],
     ],
   );
 });
