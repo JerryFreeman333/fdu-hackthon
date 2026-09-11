@@ -29,7 +29,7 @@ const DIGITS: Record<string, number> = {
 function parseChineseNumber(input: string): number | null {
   if (/^\d/.test(input)) return Number(input);
   if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) {
-    return (DIGITS[input[0]] + DIGITS[input[1]]) / 2;
+    return DIGITS[input[0]] * 10 + DIGITS[input[1]];
   }
   if (input in DIGITS) return DIGITS[input];
 
@@ -109,7 +109,10 @@ const RULES: Rule[] = [
 ];
 
 function extractBloodPressure(text: string): ExtractedValue[] {
-  const match = text.match(new RegExp(String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／]\s*(${NUMBER})`));
+  const pairPattern = new RegExp(
+    String.raw`(?:血压|高压低压|高低压).{0,4}?(${NUMBER})\s*[/／,，、比\-至~]\s*(${NUMBER})`,
+  );
+  const match = text.match(pairPattern);
   if (!match) return [];
   const systolic = parseChineseNumber(match[1].replace(/\s/g, ''));
   const diastolic = parseChineseNumber(match[2].replace(/\s/g, ''));
