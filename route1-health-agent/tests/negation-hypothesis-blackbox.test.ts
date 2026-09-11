@@ -4,7 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
-// Final CI verification marker. Runtime behavior is unchanged by this comment.
+// Final CI verification marker; this comment has no runtime effect.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
