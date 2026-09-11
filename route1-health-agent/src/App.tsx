@@ -192,7 +192,18 @@ export default function App() {
   }
 
   function contactElder() {
-    showToast(`演示联系：${activeProfile.familyContact}`);
+    showToast(`正在拨打：${activeProfile.familyContact}`);
+    if (activeProfile.familyPhone) window.location.href = `tel:${activeProfile.familyPhone}`;
+  }
+
+  function contactDoctor() {
+    const phone = activeProfile.communityDoctorPhone;
+    if (!phone) {
+      showToast('尚未配置社区医生电话。');
+      return;
+    }
+    showToast(`正在拨打社区医生：${phone}`);
+    window.location.href = `tel:${phone}`;
   }
 
   if (!role) return <RoleGate onSelect={selectRole} />;
@@ -277,6 +288,7 @@ export default function App() {
           onTaskStatus={handleTaskStatus}
           onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
           onContactElder={contactElder}
+          onContactDoctor={contactDoctor}
           onRevokeSharing={revokeFamilyShare}
           onBindFamily={bindFamily}
           onViewChange={setFamilyView}

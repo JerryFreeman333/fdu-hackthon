@@ -199,6 +199,8 @@ export interface ElderProfile {
   conditions: string[];
   medications: string[];
   familyContact: string;
+  familyPhone: string;
+  communityDoctorPhone?: string;
   mobility: MobilityStatus;
   usesCane: boolean;
   nightVision: NightVisionStatus;

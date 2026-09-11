@@ -20,6 +20,7 @@ interface FamilyDashboardProps {
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onHomeSafetyActionStatus: (actionId: string, status: HomeSafetyAction['status']) => void;
   onContactElder: () => void;
+  onContactDoctor: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
   onViewChange: (view: 'home' | 'detail' | 'report') => void;
@@ -340,6 +341,11 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                     <div className="care-path">
                       <b>建议行动：</b>
                       {notification.actionPath}
+                    </div>
+                  )}
+                  {notification.finding.severity === 'urgent' && (
+                    <div className="notif-actions">
+                      <button className="btn-primary" onClick={props.onContactDoctor}>📞 联系社区医生</button>
                     </div>
                   )}
                 </div>
