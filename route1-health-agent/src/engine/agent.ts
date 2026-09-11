@@ -19,7 +19,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'dyspnea',
-    patterns: [/喘/, /气(短|不够|促)/, /憋气/, /胸闷/, /上(楼|台阶)(费劲|吃力|喘)/],
+    patterns: [/喘/, /气(短|不够|促)/, /憋气/, /上(楼|台阶)(费劲|吃力|喘)/],
     replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'],
   },
   {
@@ -54,7 +54,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'chestPain',
-    patterns: [/胸(口)?痛/, /胸疼/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/],
+    patterns: [/胸(口)?痛/, /胸疼/, /胸闷/, /胸(口)?.{0,5}(痛|疼)/, /胸口.{0,4}(压迫|压着|紧)/, /心口痛/],
     replies: ['先停止活动并保持安全姿势。如果胸痛明显或持续，尤其伴喘、冷汗、头晕，应立即寻求急救。'],
   },
   {
@@ -113,8 +113,7 @@ function buildRuleBasedReply(
   context?: AgentContext,
 ): string {
   const replyFor = (tag: SymptomTag): string =>
-    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ??
-    `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
+    INTENT_RULES.find((rule) => rule.tag === tag)?.replies[0] ?? `我记下了：${SYMPTOM_LABELS[tag] ?? '您刚才说的情况'}。`;
 
   if (newTags.includes('chestPain')) return replyFor('chestPain');
   if (newTags.includes('neuroChange')) return replyFor('neuroChange');
@@ -129,7 +128,6 @@ function buildRuleBasedReply(
       ? `我先回答您现在说的内容。还有一件之前需要继续确认的事情：${unresolved.title}。`
       : '我在听。身体有什么不舒服，或者最近走路、睡觉有变化，都可以直接告诉我。';
   }
-
   const parts = newTags.slice(0, 2).map(replyFor);
   if (context) {
     const followUps = suggestFollowUpQuestions(newTags, context);
@@ -177,11 +175,7 @@ function sanitizeExternalContext(context: AgentContext): ExternalAgentContext {
     today: context.today,
     windowDays: context.windowDays,
     safetyLevel: publicSafety,
-    personTwin: {
-      ...context.personTwin,
-      safetyRelevantChanges: [],
-      activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4),
-    },
+    personTwin: { ...context.personTwin, safetyRelevantChanges: [], activeConcerns: publicFindings.map((finding) => finding.title).slice(0, 4) },
     metrics: context.metrics.filter((metric) => metric.visibility !== 'private'),
     observations: context.observations.filter((observation) => observation.visibility !== 'private'),
     labs: context.labs.filter((lab) => lab.visibility !== 'private'),
@@ -270,7 +264,7 @@ export const QUICK_INPUTS = [
 ];
 
 export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
-  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
+  return { id: `${role}-${time}-${Math.random().toString(36).slice(0, 8)}`, role, text, time, persisted };
 }
 
 export function tagLabel(tag: SymptomTag): string {
