@@ -7,7 +7,7 @@
 import type { ChatMessage, SymptomTag } from '../types';
 import { parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
-import { parsePrivacyIntent } from './privacy';
+import { ASKS_FAMILY_RELAY, parsePrivacyIntent, TELLS_FAMILY } from './privacy';
 
 export type ElderSubject = 'self' | 'spouse' | 'father' | 'mother' | 'family_other' | 'unknown';
 export type ClaimStatus = 'occurred' | 'negated' | 'hypothetical' | 'uncertain' | 'near_miss';
@@ -84,7 +84,34 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   return null;
 }
 
+/**
+ * “告诉女儿我头晕 / 跟女儿说今天走了六千步”里的称谓是信息接收人，不是健康事实主体；
+ * 主体要看去掉接收人短语后的剩余部分：剩余部分点名家人 → 转述家人的事实，
+ * 剩余部分省略主语（老人口语常态）→ 默认是老人本人。
+ */
+function subjectFromShareRecipient(clause: string): ElderSubject | null {
+  const match = clause.match(/^(?:我)?(?:告诉|通知|跟|让).{0,2}\s*(?:孩子|女儿|儿子|家人|家里人|老伴|爱人|老公|丈夫)/);
+  if (!match) return null;
+  const remainder = clause.slice(match[0].length);
+  const remainderKinships = new Set<ElderSubject>();
+  if (/(?:我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(remainder)) remainderKinships.add('spouse');
+  if (/(?:我爸|我父亲|爸爸|父亲)/.test(remainder)) remainderKinships.add('father');
+  if (/(?:我妈|我母亲|妈妈|母亲)/.test(remainder)) remainderKinships.add('mother');
+  if (/(?:儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(remainder))
+    remainderKinships.add('family_other');
+  if (remainderKinships.size > 1) return 'unknown';
+  if (remainderKinships.size === 1) return [...remainderKinships][0];
+  if (/(?:我|我的|我自己|本人)/.test(remainder)) return 'self';
+  if (/(?:他|她|他们|她们)/.test(remainder)) return 'unknown';
+  return 'self';
+}
+
 function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+  // 分享句式判定必须先于多主体冲突检查：
+  // “告诉女儿妈妈摔倒了”里女儿是接收人，唯一的健康事实主体是妈妈。
+  const shareRecipientSubject = subjectFromShareRecipient(clause);
+  if (shareRecipientSubject) return shareRecipientSubject;
+
   // 一个分句同时点名多个健康事实主体时，禁止把整句归给第一个匹配到的人。
   const explicitlyMentionedSubjects = new Set<ElderSubject>();
   if (/(我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(clause)) explicitlyMentionedSubjects.add('spouse');
@@ -223,7 +250,7 @@ export function understandElderInput(
     return { claims: [], recallRequested, clarificationQuestion, correction, correctionTargetMessageId };
   }
 
-  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
+  const hasExplicitFamilyShare = TELLS_FAMILY.test(trimmed) || ASKS_FAMILY_RELAY.test(trimmed);
   const hasExplicitFamilyRefusal =
     /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
       trimmed,
