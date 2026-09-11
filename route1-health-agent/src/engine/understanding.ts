@@ -69,7 +69,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/我(?:觉得|看|担心|发现|注意到|看到|听说|感觉)[，,\s]*(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return 'family_other';
+    return 'unknown';
   }
 
   if (/^(?:他|她|他们|她们)/.test(clause)) {
@@ -174,13 +174,15 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
 
   const establishedSubjects: ElderSubject[] = [];
   let hasHealthSemantic = false;
+  const healthSemanticPattern =
+    /(不舒服|走路不稳|行动不稳|摔|跌|喘|头晕|头昏|胸闷|胸痛|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
 
   for (const message of elderMessages) {
     const messageSubjects: ElderSubject[] = [];
     for (const clause of splitClauses(message.text)) {
       const parsed = parseElderInput(clause);
       const hasHealthValue = extractHealthValues(clause).length > 0;
-      if (parsed.tags.length === 0 && !hasHealthValue) continue;
+      if (parsed.tags.length === 0 && !hasHealthValue && !healthSemanticPattern.test(clause)) continue;
 
       hasHealthSemantic = true;
       const subject = subjectFromText(clause, messageSubjects);
