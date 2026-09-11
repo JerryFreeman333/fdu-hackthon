@@ -78,7 +78,7 @@ function inferPronounSubject(clause: string, priorSubjects: ElderSubject[]): Eld
   if (/^(?:他|她|他们|她们)/.test(clause)) {
     const unique = [...new Set(priorSubjects.filter((subject) => subject !== 'self' && subject !== 'unknown'))];
     if (unique.length === 1) return unique[0];
-    return unique.length > 1 ? 'unknown' : 'unknown';
+    return 'unknown';
   }
 
   return null;
@@ -139,9 +139,9 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
 
   const uniqueSubjects = [...new Set(establishedSubjects.map((entry) => entry.subject))];
   if (uniqueSubjects.length !== 1) return [];
-  const [subject] = uniqueSubjects;
+  const subject = uniqueSubjects[0];
 
-  if (!subject || subject === 'self' || subject === 'unknown') return [];
+  if (subject === undefined || subject === 'self' || subject === 'unknown') return [];
   return [subject];
 }
 
