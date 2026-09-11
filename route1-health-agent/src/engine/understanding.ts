@@ -44,9 +44,11 @@ const COORDINATION = /(?:和|跟|以及|都|分别|各自|也)/;
 const PERCEPTION = /(?:觉得|看他|看她|看见|看到|发现|听见|听到|说他|说她|说他们|说她们)/;
 const UNCERTAIN_WORDS = /(?:可能|好像|似乎|大概|估计|应该是|不太确定|不清楚|听说|怀疑)/;
 const HYPOTHETICAL_WORDS = /(?:如果|假如|假设|万一|要是|倘若|会不会|怎么预防|怎么办才不会|有没有可能)/;
-const NEGATION_WORDS = /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
+const NEGATION_WORDS =
+  /(?:没有|没|未|未曾|从来没|从没|并没有|并未|不曾|否认|没有出现|没出现|没有发生|没发生|没感觉到|没有感觉到)/;
 const NEAR_MISS_WORDS = /(?:差点|差一点|险些|险些就|几乎要|差点就)/;
-const TIME_WORDS = /(?:20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}|今天|刚才|刚刚|现在|目前|此刻|早上|上午|中午|下午|傍晚|晚上|昨晚|昨天|昨日|前天|几天前|前几天|上周|上个星期|上礼拜|去年|前年|以前|之前|多年前|小时候|年轻的时候|很久以前)/;
+const TIME_WORDS =
+  /(?:20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}|今天|刚才|刚刚|现在|目前|此刻|早上|上午|中午|下午|傍晚|晚上|昨晚|昨天|昨日|前天|几天前|前几天|上周|上个星期|上礼拜|去年|前年|以前|之前|多年前|小时候|年轻的时候|很久以前)/;
 
 function explicitFamilySubjects(text: string): ElderSubject[] {
   return [...new Set(FAMILY_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([subject]) => subject))];
@@ -197,8 +199,8 @@ export function understandElderInput(
       lastTags.length > 0;
     const omittedParallel = explicitTags.length === 0 && /^(?:我|我自己|本人)也/.test(unit) && lastTags.length > 0;
     const tags = explicitTags.length > 0 ? explicitTags : omittedComparison || omittedParallel ? lastTags : [];
-    const hasHealthValue: boolean = explicitHealthValue ||
-      (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
+    const hasHealthValue: boolean =
+      explicitHealthValue || (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
 
     const parsedTime = resolveTime(unit, today);
     const time = !hasTimeMarker(unit) && lastTime !== null ? lastTime : parsedTime;
