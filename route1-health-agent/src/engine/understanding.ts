@@ -68,6 +68,7 @@ function uniqueFamily(subjects: ElderSubject[]): ElderSubject[] {
 function inferPrimarySubject(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
+  if (self && /(?:告诉|通知|跟|让).{0,6}(?:女儿|儿子|孩子|家人)/.test(text)) return 'self';
   if (family.length > 1) return 'unknown';
   if (family.length === 1) return family[0];
 
@@ -87,9 +88,17 @@ function inferPrimarySubject(text: string, priorSubjects: ElderSubject[], seenSu
   return 'self';
 }
 
-function subjectCandidates(text: string, priorSubjects: ElderSubject[], seenSubjects: ElderSubject[]): ElderSubject[] {
+function subjectCandidates(
+  text: string,
+  priorSubjects: ElderSubject[],
+  seenSubjects: ElderSubject[],
+  lastSubject?: ElderSubject,
+): ElderSubject[] {
   const family = explicitFamilySubjects(text);
   const self = hasExplicitSelf(text);
+  if (lastSubject && lastSubject !== 'self' && lastSubject !== 'unknown' && family.length === 0 && !self && !THIRD_PERSON.test(text)) {
+    return [lastSubject];
+  }
   if (family.length > 0 && self && COORDINATION.test(text)) return ['self', ...family];
   if (family.length > 1 && COORDINATION.test(text)) return family;
   return [inferPrimarySubject(text, priorSubjects, seenSubjects)];
@@ -185,12 +194,13 @@ export function understandElderInput(
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
   let lastTime: ResolvedTime | null = null;
+  let lastSubject: ElderSubject | undefined;
 
   for (const unit of splitNaturalLanguageTexts(trimmed)) {
     const parsed = parseElderInput(unit);
     const explicitTags = parsed.tags;
     const explicitHealthValue = extractHealthValues(unit).length > 0;
-    const candidates = subjectCandidates(unit, priorSubjects, seenSubjects);
+    const candidates = subjectCandidates(unit, priorSubjects, seenSubjects, lastSubject);
 
     const omittedComparison =
       explicitTags.length === 0 &&
@@ -203,7 +213,9 @@ export function understandElderInput(
       explicitHealthValue || (tags.length > 0 && lastHealthValue && (omittedComparison || omittedParallel));
 
     const parsedTime = resolveTime(unit, today);
-    const time = !hasTimeMarker(unit) && lastTime !== null ? lastTime : parsedTime;
+    const fallbackCurrentTime: ResolvedTime =
+      parsedTime.scope === 'unknown' && lastTime === null ? { scope: 'today', eventDate: today } : parsedTime;
+    const time = !hasTimeMarker(unit) && lastTime !== null ? lastTime : fallbackCurrentTime;
     if (hasTimeMarker(unit) || lastTime === null || parsedTime.scope !== 'unknown') lastTime = parsedTime;
 
     const status = statusFromText(unit, tags, hasHealthValue);
@@ -228,7 +240,9 @@ export function understandElderInput(
         claim.tags.length > 0 ||
         claim.hasHealthValue ||
         claim.subject !== 'self' ||
-        claim.status !== 'occurred'
+        claim.status !== 'occurred' ||
+        (claim.timeScope !== 'today' &&
+          /(?:摔|跌倒|喘|胸闷|胸痛|心慌|头晕|疼|痛|发烧|咳嗽|失眠|起夜|漏服|没吃药)/.test(unit))
       ) {
         claims.push(claim);
       }
@@ -237,6 +251,7 @@ export function understandElderInput(
     for (const subject of candidates) {
       if (subject !== 'self' && subject !== 'unknown') seenSubjects.push(subject);
     }
+    lastSubject = candidates.length === 1 ? candidates[0] : undefined;
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
