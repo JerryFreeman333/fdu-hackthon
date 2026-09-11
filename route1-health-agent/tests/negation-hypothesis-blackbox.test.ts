@@ -4,7 +4,7 @@ import { acceptedSelfClaims, understandElderInput } from '../src/engine/understa
 
 const TODAY = '2026-09-10';
 
-// Final CI verification marker: exact-current-HEAD trigger; no runtime effect.
+// Final CI verification marker: exact-latest-head trigger; no runtime effect.
 function claimsOf(text: string) {
   return understandElderInput(text, TODAY).claims;
 }
