@@ -289,10 +289,11 @@ export default function ElderHome({
             </p>
             {syncStatus && (
               <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
-                {syncStatus.mode === 'cross-device' && '✅ 家属端已通过 P2P 连入，跨设备实时协同。'}
-                {syncStatus.mode === 'connecting' && '⏳ 等待家属端在另一台设备输入邀请码…'}
-                {syncStatus.mode === 'failed' && `⚠️ 跨设备连接失败：${syncStatus.detail}。当前仅同浏览器协同。`}
-                {syncStatus.mode === 'local-only' && '当前仅同浏览器 tab 协同。'}
+                {/* 老人端只说"人话"：不出现 P2P/跨设备/协议等技术词；连接失败的技术细节只给家属端。 */}
+                {syncStatus.mode === 'cross-device' && '✅ 已经和家人手机连上了，这边的记录会同步过去。'}
+                {syncStatus.mode === 'connecting' && '⏳ 等家人在另一台手机上输入这个邀请码…'}
+                {syncStatus.mode === 'failed' && '⚠️ 暂时没连上家人的手机。放心，您记的内容都在，晚点再试一次就行。'}
+                {syncStatus.mode === 'local-only' && '现在只能在这一台设备上一起看。'}
               </p>
             )}
           </>

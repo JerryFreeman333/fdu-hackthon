@@ -12,6 +12,7 @@
     "format": "npx --yes prettier@3.5.3 --write .",
     "format:check": "npx --yes prettier@3.5.3 --check .",
     "security:check": "node scripts/security-check.mjs",
+    "verify:llm": "node scripts/verify-llm-understanding.mjs",
     "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:notif && npm run test:browser:cross-device",
     "preview": "vite preview",
     "test:browser": "node tests/browser-smoke.test.mjs",

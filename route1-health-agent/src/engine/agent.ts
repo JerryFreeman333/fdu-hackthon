@@ -40,7 +40,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'medicationMissed',
-    patterns: [/(忘|没|漏)(了)?(吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/],
+    patterns: [/(?:忘(?:记|了)?|没|漏)(?:了)?(?:吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/],
     replies: ['先别自行加量补吃，按原来的医生方案处理。'],
   },
   {
@@ -145,6 +145,32 @@ export function parseElderInput(text: string): ParsedInput {
     }
   }
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
+}
+
+export interface SymptomSpan {
+  tag: SymptomTag;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** 与 parseElderInput 相同的规则集，但保留每个命中的位置，供否定辖域等结构分析使用。 */
+export function matchSymptomSpans(text: string): SymptomSpan[] {
+  const spans: SymptomSpan[] = [];
+  for (const rule of INTENT_RULES) {
+    for (const pattern of rule.patterns) {
+      const global = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+      let match: RegExpExecArray | null;
+      while ((match = global.exec(text)) !== null) {
+        if (match[0].length === 0) {
+          global.lastIndex += 1;
+          continue;
+        }
+        spans.push({ tag: rule.tag, start: match.index, end: match.index + match[0].length, text: match[0] });
+      }
+    }
+  }
+  return spans;
 }
 
 function buildBloodPressureReply(text: string): string | undefined {

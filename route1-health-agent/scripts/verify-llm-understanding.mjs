@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+/**
+ * 理解层 LLM 语义仲裁的端到端验证脚本（现场演示用）。
+ *
+ * 用法（先在 route1-health-agent/.env 里配置好 BASE_URL / API_KEY / MODEL）：
+ *   npm test && npm run verify:llm
+ *
+ * 用审查反馈里的原始反例 + 阳性对照，验证 LLM 仲裁与规则兜底的合并结果：
+ *   - 否定/消失类句子必须不被记入健康档案（accepted=0）
+ *   - 阳性症状/安全事件必须仍被记录
+ */
+import { readFileSync } from 'node:fs';
+
+// 极简 .env 读取（Vite 的 env 注入在 node 脚本里不存在，这里手工解析）
+function loadEnvFile() {
+  try {
+    const text = readFileSync(new URL('../.env', import.meta.url), 'utf8');
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq < 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const value = trimmed
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, '');
+      if (!(key in process.env)) process.env[key] = value;
+    }
+  } catch {
+    // 没有 .env 文件，依赖进程环境变量
+  }
+}
+loadEnvFile();
+
+let llm;
+let understanding;
+try {
+  llm = await import('../.test-build/src/engine/llmUnderstanding.js');
+  understanding = await import('../.test-build/src/engine/understanding.js');
+} catch {
+  console.error('请先运行 npm test 生成 .test-build，再执行本脚本。');
+  process.exit(1);
+}
+const { resolveUnderstandingLlmConfig, understandElderInputWithLlm } = llm;
+const { acceptedSelfClaims, understandElderInput } = understanding;
+
+const config = resolveUnderstandingLlmConfig({
+  VITE_UNDERSTANDING_LLM_BASE_URL: process.env.VITE_UNDERSTANDING_LLM_BASE_URL,
+  VITE_UNDERSTANDING_LLM_API_KEY: process.env.VITE_UNDERSTANDING_LLM_API_KEY,
+  VITE_UNDERSTANDING_LLM_MODEL: process.env.VITE_UNDERSTANDING_LLM_MODEL,
+  VITE_UNDERSTANDING_LLM_TIMEOUT_MS: process.env.VITE_UNDERSTANDING_LLM_TIMEOUT_MS,
+});
+if (!config) {
+  console.error('未配置理解层 LLM。请在 route1-health-agent/.env 里填写：');
+  console.error('  VITE_UNDERSTANDING_LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4');
+  console.error('  VITE_UNDERSTANDING_LLM_API_KEY=你的key');
+  console.error('  VITE_UNDERSTANDING_LLM_MODEL=glm-4-flash');
+  process.exit(1);
+}
+console.log(`端点: ${config.baseUrl}  模型: ${config.model}\n`);
+
+const TODAY = '2026-09-11';
+// [句子, 期望 accepted 数, 说明]
+const CASES = [
+  ['今天不太喘了', 0, '审查反例：好转陈述'],
+  ['我毫不头晕', 0, '审查反例：强调否定'],
+  ['一点都不疼', 0, '审查反例：程度否定'],
+  ['压根没肿', 0, '开放集否定'],
+  ['头晕好了很多', 0, '痊愈表达'],
+  ['今天不那么喘了，比昨天好多了', 0, '比较级好转（LLM 仲裁改进点）'],
+  ['我不是没有喘', 1, '双重否定（LLM 仲裁改进点）'],
+  ['我今天有点喘', 1, '阳性对照：真实症状'],
+  ['我不舒服', 1, '阳性对照：含否定字的阳性习语'],
+  ['不小心摔了一跤', 1, '阳性对照：安全事件'],
+  ['血糖三十', 1, '阳性对照：数值录入'],
+];
+
+let pass = 0;
+let fail = 0;
+for (const [text, expected, note] of CASES) {
+  const ruleAccepted = acceptedSelfClaims(understandElderInput(text, TODAY)).length;
+  const merged = await understandElderInputWithLlm(text, TODAY, [], config);
+  const llmAccepted = acceptedSelfClaims(merged).length;
+  const ok = llmAccepted === expected;
+  if (ok) pass += 1;
+  else fail += 1;
+  console.log(
+    `${ok ? '✓' : '✗'} 「${text}」 期望记录=${expected} 规则=${ruleAccepted} LLM仲裁后=${llmAccepted}  (${note})`,
+  );
+}
+console.log(`\n结果: ${pass}/${CASES.length} 通过`);
+if (fail > 0) process.exit(1);

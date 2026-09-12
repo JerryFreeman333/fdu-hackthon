@@ -261,6 +261,22 @@ async function runFamilyMedicationScenario(browser) {
       '未授权时用药页 fail-closed',
       revokedText.includes('老人尚未授权家属查看详细用药信息') && !revokedText.includes('氨氯地平'),
     );
+
+    // 本地持久化（IndexedDB）：老人误刷新页面后数据不丢（审查反馈："刷新清空一切=这东西不能用"）
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.getByRole('button', { name: /我是老人/ }).click();
+    const markerInput = page.getByPlaceholder(/像平时聊天一样|说说今天/).first();
+    await markerInput.waitFor({ timeout: 5000 });
+    const markerText = `持久化验证${Date.now() % 100000}`;
+    await markerInput.fill(markerText);
+    await markerInput.press('Enter');
+    await page.waitForTimeout(1500); // 等 IndexedDB 写入完成
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.getByRole('button', { name: /我是老人/ }).click({ timeout: 5000 });
+    await page.waitForTimeout(800);
+    const bodyAfterReload = await page.evaluate(() => document.body.innerText);
+    check('刷新页面后聊天记录仍在（IndexedDB 持久化）', bodyAfterReload.includes(markerText));
   } finally {
     await page.screenshot({ path: resolve(ROOT, 'tests', 'family-medication.png'), fullPage: true }).catch(() => {});
     await context.close();

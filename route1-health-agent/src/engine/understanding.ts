@@ -12,7 +12,7 @@ const THANKS_PATTERN = /^(?:谢谢|谢谢您|多谢|多谢您|辛苦了|辛苦�
  * 人物、肯否、事件状态和时间不明确时，不允许关键词直接进入本人健康事件流。
  */
 import type { ChatMessage, SymptomTag } from '../types';
-import { parseElderInput } from './agent';
+import { matchSymptomSpans, parseElderInput } from './agent';
 import { extractHealthValues } from './extract';
 import { parsePrivacyIntent } from './privacy';
 
@@ -52,7 +52,7 @@ function subtractDays(today: string, days: number): string {
 }
 
 /** 老人真实口语里的“顺带一提”非常常见：普通逗号后也可能开始一条新事实。 */
-function splitClauses(text: string): string[] {
+export function splitClauses(text: string): string[] {
   const coordinatedMeasurementLeadPattern =
     /(?:我|本人|我自己)\s*(?:和|跟|与)\s*(?:我老公|我丈夫|老公|丈夫|爱人|老伴|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)\s*(?:都|也).{0,24}(?:血压|血氧|心率|血糖)/;
   const hasCoordinatedMeasurementLead = coordinatedMeasurementLeadPattern.test(text);
@@ -288,7 +288,100 @@ function isImmediatePostposedDenial(clause: string, previous: StructuredClaim): 
   return tagMentionedInClause(clause, previous.tags);
 }
 
-function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
+/**
+ * 结构化否定检测。
+ *
+ * 中文否定/程度表达是开放集合（不太喘、毫不头晕、一点都不疼、压根没肿……），
+ * 逐词枚举永远追不上真实口语——这正是前两轮审查反复出现的 bug 类。
+ * 这里改成结构判断：症状关键词之前的窗口里出现**否定语素**（不/没/未/无/别/莫/勿/非）
+ * 即视为否定；含否定字但语义为阳性的固定说法（不舒服、没睡好、不小心……）先被摘除。
+ * 关键词自身内部含否定字的翻转形式（头不晕、胸口不疼）单独判断。
+ * LLM 理解层（llmUnderstanding.ts）配置后会在此基础上做最终仲裁，本函数是它的兜底。
+ */
+const NEGATION_MORPHEME = /[不没未无别莫勿非]/;
+
+/** 含否定字但整体表达"有症状/有事件"的固定说法，判断前先摘除。 */
+const POSITIVE_NEGATION_IDIOMS: RegExp[] = [
+  /不舒服/g,
+  /没睡好|睡不(?:好|着|踏实)/g,
+  /没(?:有)?劲/g,
+  /不小心|不慎/g,
+  /忍不住|不由得/g,
+  /不得不说/g,
+  /喘不上气|喘不过气|透不过气|上气不接下气/g,
+  /莫名(?:其妙)?/g,
+  /不断|不但|不止|不论|无论|无非|莫非|前所未有/g,
+];
+
+/** 转折连词：窗口内若隔着转折，否定语素只作用于转折前的内容。 */
+const CONTRAST_CONNECTIVES = /(?:但是|可是|然而|不过|但是|只是|但)/g;
+
+/** 关键词之后紧跟的"痊愈/消失"表达，等价于否定（"头晕好了""肿消了"）。 */
+const RECOVERY_AFTER_KEYWORD =
+  /^(?:了)?(?:就好|好了|好多了|好些了|消失(?:了)?|消退(?:了)?|消了|缓解(?:了)?|减轻(?:了)?|停了|没了|再也没有)/;
+
+const NEGATION_WINDOW_CHARS = 8;
+const RECOVERY_WINDOW_CHARS = 6;
+
+function maskPositiveIdioms(clause: string): string {
+  let masked = clause;
+  for (const idiom of POSITIVE_NEGATION_IDIOMS) {
+    masked = masked.replace(idiom, (matched) => '\uFFFC'.repeat(matched.length));
+  }
+  return masked;
+}
+
+/**
+ * 否定是否覆盖了子句里全部症状关键词：
+ * - 全部覆盖 → 'negated'（该子句的症状都没在发生，含痊愈后缀"头晕好了"）；
+ * - 部分覆盖（"没喘但头疼"）→ 'uncertain'：部分事实被否定、部分可能在发生，
+ *   不允许整句记为发生（假警报），也不允许静默丢弃（漏记），交给追问确认；
+ * - 关键词本身就是正面习语（"没劲"）→ null。
+ */
+function structuralNegationStatus(clause: string, tags: SymptomTag[]): 'negated' | 'uncertain' | null {
+  const spans = matchSymptomSpans(clause).filter((span) => tags.includes(span.tag));
+  if (spans.length === 0) return null;
+
+  const masked = maskPositiveIdioms(clause);
+  let negatedSpans = 0;
+  let positiveSpans = 0;
+  for (const span of spans) {
+    const spanText = clause.slice(span.start, span.end);
+    const isIdiomMasked = masked
+      .slice(span.start, span.end)
+      .split('')
+      .every((char) => char === '\uFFFC');
+    if (isIdiomMasked) {
+      positiveSpans += 1;
+      continue;
+    }
+    // 关键词内部翻转（"头不晕""胸口不疼"）：否定字在命中片段内部、症状字在其后。
+    // 在摘除正面习语后的文本上检查，避免"腿没劲"这类整体命中的习语被误判为否定。
+    const morphemeInside = masked.slice(span.start, span.end - 1).search(NEGATION_MORPHEME);
+    if (morphemeInside >= 0 && spanText.length <= 5) {
+      negatedSpans += 1;
+      continue;
+    }
+    // 否定语素在关键词之前的窗口里，且窗口不被转折截断。
+    const windowStart = Math.max(0, span.start - NEGATION_WINDOW_CHARS);
+    let before = masked.slice(windowStart, span.start);
+    const contrastMatches = [...before.matchAll(CONTRAST_CONNECTIVES)];
+    if (contrastMatches.length > 0) {
+      const lastContrast = contrastMatches[contrastMatches.length - 1];
+      before = before.slice((lastContrast.index ?? 0) + lastContrast[0].length);
+    }
+    const after = masked.slice(span.end, span.end + RECOVERY_WINDOW_CHARS);
+    if (NEGATION_MORPHEME.test(before) || RECOVERY_AFTER_KEYWORD.test(after)) {
+      negatedSpans += 1;
+    } else {
+      positiveSpans += 1;
+    }
+  }
+  if (negatedSpans === 0) return null;
+  return positiveSpans === 0 ? 'negated' : 'uncertain';
+}
+
+export function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
   const semanticSymptomLanguage =
     /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
       clause,
@@ -320,6 +413,11 @@ function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: bool
   )
     return 'occurred';
 
+  // 结构化否定检测：不依赖具体否定词组合，覆盖"不太喘了/毫不头晕/一点都不疼"这类
+  // 开放集合的否定与程度表达，以及混合辖域（没喘但头疼 → 追问确认）。
+  // 放在 improvement 语义之后，"今天没那么喘了"这类带比较基线的好转仍按既有语义记为 occurred。
+  const structuralNegation = tags.length > 0 ? structuralNegationStatus(clause, tags) : null;
+  if (structuralNegation) return structuralNegation;
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡|不舒服|难受)/.test(
       clause,
@@ -411,6 +509,20 @@ export function understandElderInput(
   text: string,
   today: string,
   recentMessages: ChatMessage[] = [],
+): StructuredElderInput {
+  return understandElderInputWithOverrides(text, today, recentMessages);
+}
+
+/**
+ * 在规则理解结果之上，允许按「子句原文」覆写肯否状态。
+ * LLM 理解层（llmUnderstanding.ts）用真实语言理解仲裁否定/程度语义时走这个入口；
+ * key 不存在时覆写映射为空，行为与 understandElderInput 完全一致。
+ */
+export function understandElderInputWithOverrides(
+  text: string,
+  today: string,
+  recentMessages: ChatMessage[] = [],
+  statusOverrides?: ReadonlyMap<string, ClaimStatus>,
 ): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
@@ -522,8 +634,12 @@ export function understandElderInput(
       claims[claims.length - 1]?.subject === subject &&
       (explicitTags.length > 0 || hasExplicitHealthValue);
     const time: { scope: TimeScope; eventDate: string | null } = inheritsPreviousTime && lastTime ? lastTime : rawTime;
-    const status = statusFromText(clause, tags, hasHealthValue);
-    const deathReported = /(去世|过世|死了|死亡|没了)/.test(clause);
+    const status = statusOverrides?.get(clause) ?? statusFromText(clause, tags, hasHealthValue);
+    // "没了"双重语义：症状消失（"头晕没了"）vs 家人离世（"老伴没了"）。
+    // 症状痊愈的结构化判定优先；其余情况仍保守走 death guard。
+    const deathReported =
+      /(去世|过世|死了|死亡)/.test(clause) ||
+      (/没了/.test(clause) && !(tags.length > 0 && structuralNegationStatus(clause, tags) === 'negated'));
 
     if (!isPureCorrectionMarker(clause) && (explicitTags.length > 0 || hasExplicitHealthValue)) {
       lastTime = time;

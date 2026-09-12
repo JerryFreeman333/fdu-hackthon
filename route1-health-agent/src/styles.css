@@ -799,3 +799,13 @@ button {
     order: 3;
   }
 }
+
+/* 启动水合（IndexedDB 读取）期间的过渡页 */
+.boot-splash {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: var(--muted, #6b7280);
+}

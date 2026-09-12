@@ -17,14 +17,26 @@ import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
 import { visibleFamilyEvents } from './engine/familyLedger';
-import { healthRecordStore } from './store/LocalHealthRecordStore';
+import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
+import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
+
+// 健康数据在本浏览器内持久化（IndexedDB）；IDB 不可用（隐私模式等）时退化为会话内存。
+const healthRecordStore = new PersistentHealthRecordStore(
+  typeof indexedDB !== 'undefined' ? createIdbKeyValueStore() : null,
+);
 import { useNotificationDispatch } from './hooks/useNotificationDispatch';
 import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
 import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
+import { lazy, Suspense } from 'react';
 import ElderHome from './components/ElderHome';
-import FamilyDashboard from './components/FamilyDashboard';
-import ProfileView from './components/ProfileView';
+
+// 家属端主视图与老人端的可选状态页按需加载：
+// 老人用旧手机/弱网打开时不必下载家属端整个仪表盘（审查反馈：首屏体积）。
+const FamilyDashboard = lazy(() => import('./components/FamilyDashboard'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+
+const VIEW_FALLBACK = <div className="boot-splash">正在打开…</div>;
 import RoleGate from './components/RoleGate';
 import FontSizeControl from './components/FontSizeControl';
 import { useCareTasks } from './hooks/useCareTasks';
@@ -45,19 +57,15 @@ function clearLegacyHomeSafetyStorage() {
   window.localStorage.removeItem(LEGACY_HOME_ACTION_KEY);
 }
 
-function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
+function buildSeedSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   clearLegacyHealthStorage();
-  const stored = healthRecordStore.load();
-  if (stored.events.length || stored.familyEvents.length || stored.chat.length) return stored;
   const events = legacySnapshotToEvents({
     records: seedRecords,
     observations: [...seedObservations, ...seedPhotoObservations],
     measurements: [],
     labResults: [],
   });
-  const snapshot = { events, familyEvents: [], chat: seedChat };
-  healthRecordStore.save(snapshot);
-  return snapshot;
+  return { events, familyEvents: [], chat: seedChat };
 }
 
 function initialHomeSafetyActions(): HomeSafetyAction[] {
@@ -66,7 +74,34 @@ function initialHomeSafetyActions(): HomeSafetyAction[] {
 }
 
 export default function App() {
-  const initial = useMemo(() => initialSnapshot(), []);
+  // 启动先水合本地持久化的历史数据，再进入主界面：
+  // 否则首帧的 save 会把 IndexedDB 里的历史快照覆盖成种子数据。
+  const [initial, setInitial] = useState<ReturnType<typeof buildSeedSnapshot> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const restored = await healthRecordStore.hydrate();
+      if (cancelled) return;
+      setInitial(restored ? healthRecordStore.load() : buildSeedSnapshot());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!initial) {
+    return (
+      <div className="app">
+        <div className="boot-splash" role="status">
+          正在打开…
+        </div>
+      </div>
+    );
+  }
+  return <AppRoot initial={initial} />;
+}
+
+function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> }) {
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
@@ -329,7 +364,9 @@ export default function App() {
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
-            <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
+            <Suspense fallback={VIEW_FALLBACK}>
+              <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
+            </Suspense>
           </details>
         </main>
         {toast && <div className="toast">{toast}</div>}
@@ -356,30 +393,32 @@ export default function App() {
         </div>
       </header>
       <main className="content">
-        <FamilyDashboard
-          profile={activeProfile}
-          familyLink={familyLink}
-          notifications={familyNotifs}
-          dispatchRecords={dispatchRecords}
-          onAcknowledgeDispatch={handleAcknowledge}
-          findings={findings}
-          familyEvents={visibleFamilyFacts}
-          tasks={tasks}
-          homeSafetyActions={homeSafetyActions}
-          records={familyRecords}
-          today={TODAY}
-          onTaskStatus={handleTaskStatus}
-          onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
-          onContactElder={contactElder}
-          onContactDoctor={contactDoctor}
-          onRevokeSharing={revokeFamilyShare}
-          onBindFamily={bindFamily}
-          onViewChange={setFamilyView}
-          view={familyView}
-          syncStatus={sync.status}
-          tabId={sync.tabId}
-          todaySignalCount={todaySignalCount}
-        />
+        <Suspense fallback={VIEW_FALLBACK}>
+          <FamilyDashboard
+            profile={activeProfile}
+            familyLink={familyLink}
+            notifications={familyNotifs}
+            dispatchRecords={dispatchRecords}
+            onAcknowledgeDispatch={handleAcknowledge}
+            findings={findings}
+            familyEvents={visibleFamilyFacts}
+            tasks={tasks}
+            homeSafetyActions={homeSafetyActions}
+            records={familyRecords}
+            today={TODAY}
+            onTaskStatus={handleTaskStatus}
+            onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
+            onContactElder={contactElder}
+            onContactDoctor={contactDoctor}
+            onRevokeSharing={revokeFamilyShare}
+            onBindFamily={bindFamily}
+            onViewChange={setFamilyView}
+            view={familyView}
+            syncStatus={sync.status}
+            tabId={sync.tabId}
+            todaySignalCount={todaySignalCount}
+          />
+        </Suspense>
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">

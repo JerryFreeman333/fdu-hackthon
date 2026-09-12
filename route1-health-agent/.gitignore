@@ -4,3 +4,8 @@ dist/
 src/engine/agent.ts.bak
 src/engine/agent.ts.bak2
 tests/*.png
+
+# 本地密钥文件绝不入库
+.env
+.env.local
+.env.*.local

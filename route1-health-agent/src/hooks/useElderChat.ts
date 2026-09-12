@@ -37,6 +37,11 @@ import {
   understandElderInput,
   type StructuredElderInput,
 } from '../engine/understanding';
+import {
+  canUseLlmUnderstanding,
+  resolveUnderstandingLlmConfig,
+  understandElderInputWithLlm,
+} from '../engine/llmUnderstanding';
 import { removeCorrectedChatHealthEvents, removeCorrectedFamilyEvents } from '../engine/correction';
 import { createTurnQueue, type TurnQueue } from '../engine/turnQueue';
 
@@ -140,14 +145,13 @@ export function useElderChat({
     const elderMessage = msg('elder', text, now, persisted);
     // 回显与上下文在入队前定格：队列里的后续回合会继续改写 chat。
     const priorChat = chat;
-    const understanding = understandElderInput(text, TODAY, priorChat);
 
     // 先把老人原话上屏：重处理无论多慢，这句话都不会被静默丢弃。
     setChat((current) => [...current, elderMessage]);
 
     void turnQueueRef.current?.enqueue(async () => {
       try {
-        await runElderTurn(text, elderMessage, understanding, priorChat);
+        await runElderTurn(text, elderMessage, priorChat);
       } catch (error) {
         console.error(error);
         showToast('这条消息没有处理成功，麻烦您再说一次。');
@@ -155,14 +159,27 @@ export function useElderChat({
     });
   }
 
-  async function runElderTurn(
+  /**
+   * 理解层入口：配置了理解层 LLM 且输入不含私密意图时，用真实语言理解仲裁肯否语义；
+   * 其余情况（未配置 / private / no_record）走纯规则，原话一个字都不出本地。
+   */
+  async function buildUnderstanding(
     text: string,
-    elderMessage: ChatMessage,
-    understanding: StructuredElderInput,
     priorChat: ChatMessage[],
-  ) {
+    intent: ReturnType<typeof parsePrivacyIntent>,
+  ): Promise<StructuredElderInput> {
+    const config = resolveUnderstandingLlmConfig(import.meta.env);
+    if (canUseLlmUnderstanding(intent, config !== null)) {
+      return understandElderInputWithLlm(text, TODAY, priorChat, config as NonNullable<typeof config>);
+    }
+    return understandElderInput(text, TODAY, priorChat);
+  }
+
+  async function runElderTurn(text: string, elderMessage: ChatMessage, priorChat: ChatMessage[]) {
     const intent = parsePrivacyIntent(text);
     const sharingHistoryQuery = sharingHistoryRequested(text);
+    // LLM 仲裁在串行队列内进行：慢响应只拖慢当前回合，不阻塞上屏，也不会并发打乱顺序。
+    const understanding = await buildUnderstanding(text, priorChat, intent);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
     const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);

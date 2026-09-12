@@ -162,15 +162,18 @@ async function runSmoke() {
     // 4. 邀请码出现后，UI 必须显示某种协同状态，不能假装"已协同"
     await wait(2500); // 给 PeerJS 假 onerror 触发 + UI 更新
     const bannerText = await page.evaluate(() => document.body.innerText);
-    const showsWaiting = bannerText.includes('等待家属端') || bannerText.includes('跨设备连接失败');
-    const falseClaims = bannerText.includes('✅ 家属端已通过 P2P 连入');
+    // 老人端文案必须是"人话"：不出现 P2P/跨设备等技术词（审查反馈：技术状态不该暴露给老人）
+    const showsWaiting = bannerText.includes('等家人在另一台手机') || bannerText.includes('暂时没连上');
+    const falseClaims = bannerText.includes('已经和家人手机连上了');
+    const elderSeesTechJargon = /P2P|跨设备/.test(bannerText);
     check('未生成前不会假装"已协同"', !bannerText.includes('跨设备实时协同已建立'));
     check(
       '生成邀请码后显示等待或失败状态（不是跨设备已建立）',
       showsWaiting,
-      `banner 片段: ${bannerText.match(/(等待家属端|跨设备连接失败|跨设备实时协同已建立)/g)?.join(' / ') ?? '未找到'}`,
+      `banner 片段: ${bannerText.match(/(等家人在另一台手机|暂时没连上|已经和家人手机连上了)/g)?.join(' / ') ?? '未找到'}`,
     );
-    check('没有在没真连接时显示"已 P2P 连入"', !falseClaims);
+    check('没有在没真连接时显示"已连上"', !falseClaims);
+    check('老人端不出现 P2P/跨设备等技术词', !elderSeesTechJargon, elderSeesTechJargon ? '发现技术词' : '');
 
     // 5. 同浏览器 tab 协同仍可用：再开一个 tab，两个 tab 之间能 BroadcastChannel 通信
     const tab2 = await context.newPage();

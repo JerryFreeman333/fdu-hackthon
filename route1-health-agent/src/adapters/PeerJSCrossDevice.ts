@@ -11,7 +11,55 @@
  * 公开信令依赖意味着：PeerJS 公开服务器宕机或被墙时会回退到本地协同模式，
  * UI 必须明示当前是哪一种，不能把"联不通"包装成"已协同"。
  */
-import Peer, { type DataConnection } from 'peerjs';
+import type Peer from 'peerjs';
+import type { DataConnection } from 'peerjs';
+import { DEFAULT_ICE_SERVERS, parseIceServers, parseSignalingUrl } from './signalingConfig';
+
+/** 只声明本适配器实际用到的 PeerJS 选项，避免与版本类型耦合。 */
+interface PeerClientOptions {
+  host?: string;
+  port?: number;
+  path?: string;
+  secure?: boolean;
+  config?: { iceServers?: RTCIceServer[] };
+}
+
+type PeerConstructor = new (...args: [id: string, options?: PeerClientOptions] | [options?: PeerClientOptions]) => Peer;
+
+/**
+ * peerjs 体积较大且只在跨设备协同真正启用时才需要，改为动态加载，
+ * 避免老人端首屏为它付出下载成本（审查反馈：目标用户是弱网旧手机）。
+ */
+let peerCtorPromise: Promise<PeerConstructor> | null = null;
+function loadPeerConstructor(): Promise<PeerConstructor> {
+  if (!peerCtorPromise) {
+    peerCtorPromise = import('peerjs').then((module) => module.default);
+  }
+  return peerCtorPromise;
+}
+
+/**
+ * 信令与 ICE 选项：
+ * - 配置了 VITE_PEER_SIGNALING_URL → 指向自建/国内可达信令（大陆网络风险缓解）；
+ * - VITE_PEER_ICE_SERVERS → 完全自定义 ICE（如加 TURN）；
+ * - 默认 Google + 腾讯公共 STUN 并列，任一可达即可。
+ */
+function peerOptions(): PeerClientOptions | null {
+  const signalingRaw = import.meta.env?.VITE_PEER_SIGNALING_URL;
+  const iceServers = parseIceServers(import.meta.env?.VITE_PEER_ICE_SERVERS) ?? DEFAULT_ICE_SERVERS;
+  const parsed = signalingRaw ? parseSignalingUrl(signalingRaw) : null;
+  if (!parsed && signalingRaw?.trim()) {
+    console.warn('[peerjs] VITE_PEER_SIGNALING_URL 无法解析，回退官方公共信令');
+  }
+  const options: PeerClientOptions = { config: { iceServers } };
+  if (parsed) {
+    options.host = parsed.host;
+    options.port = parsed.port;
+    options.path = parsed.path;
+    options.secure = parsed.secure;
+  }
+  return options;
+}
 
 export type PeerMode = 'idle' | 'opening' | 'waiting' | 'connecting' | 'connected' | 'failed' | 'closed';
 
@@ -52,7 +100,9 @@ function emitTo(handlers: Array<(s: PeerStatus) => void>, status: PeerStatus) {
  * 老人端：以 inviteCode 作为 peer ID 起一个 peer，等待家属端连进来。
  * 信令失败 / 超时会上报 status.mode='failed'，由 UI 决定是否回退到 BroadcastChannel。
  */
-export function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPEN_TIMEOUT_MS): Promise<HostHandle> {
+export async function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPEN_TIMEOUT_MS): Promise<HostHandle> {
+  const PeerCtor = await loadPeerConstructor();
+  const options = peerOptions();
   return new Promise((resolve, reject) => {
     let peer: Peer | null = null;
     const messageHandlers: Array<(message: PeerMessage) => void> = [];
@@ -69,7 +119,7 @@ export function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPEN_TIME
     }, openTimeoutMs);
 
     try {
-      peer = new Peer(inviteCode);
+      peer = options ? new PeerCtor(inviteCode, options) : new PeerCtor(inviteCode);
     } catch (error) {
       window.clearTimeout(timer);
       reject(error instanceof Error ? error : new Error(String(error)));
@@ -155,7 +205,12 @@ export function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPEN_TIME
  * 家属端：用 inviteCode 作为目标 peer ID 主动连接。超时会 reject，
  * 让上层决定是否回退到本地协同模式。
  */
-export function connectToPeer(inviteCode: string, connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS): Promise<GuestHandle> {
+export async function connectToPeer(
+  inviteCode: string,
+  connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
+): Promise<GuestHandle> {
+  const PeerCtor = await loadPeerConstructor();
+  const options = peerOptions();
   return new Promise((resolve, reject) => {
     let peer: Peer | null = null;
     const messageHandlers: Array<(message: PeerMessage) => void> = [];
@@ -173,7 +228,7 @@ export function connectToPeer(inviteCode: string, connectTimeoutMs = DEFAULT_CON
     }, connectTimeoutMs);
 
     try {
-      peer = new Peer();
+      peer = options ? new PeerCtor(options) : new PeerCtor();
     } catch (error) {
       window.clearTimeout(timer);
       reject(error instanceof Error ? error : new Error(String(error)));
