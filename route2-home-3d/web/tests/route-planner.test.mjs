@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // Node >= 23.6 原生支持 TS 类型剥离；被测模块只使用 type-only import，无需编译。
-import { planBedToToilet } from '../src/hometwin/routePlanner.ts';
+import { planBedToToilet, assessRouteEligibility } from '../src/hometwin/routePlanner.ts';
 
 const NOW = '2026-09-01T00:00:00Z';
 
@@ -51,6 +51,28 @@ const fullConnects = () => [
   { subjectId: 'bathroom-door', relation: 'connects', objectId: 'toilet', confidence: 0.9, source: 'vision' }
 ];
 
+test('ambiguous, low-confidence, demo-only and blocked endpoints fail closed with location fallback', () => {
+  const cases = [
+    snapshot({ objects: [...baseObjects(), obj('bed-2', 'bed', 'bedroom', [0, 0, 1])], relations: fullConnects() }),
+    snapshot({ objects: baseObjects().map(o => o.id === 'bed' ? { ...o, confidence: 0.1 } : o), relations: fullConnects() }),
+    snapshot({ objects: baseObjects(), relations: fullConnects().map(r => ({ ...r, source: 'demo' })) }),
+    snapshot({ objects: baseObjects(), relations: [...fullConnects(), { subjectId: 'toilet', relation: 'blocks', objectId: 'bathroom-door', confidence: 1, source: 'vision' }] }),
+  ];
+  for (const value of cases) {
+    assert.equal(assessRouteEligibility(value).eligible, false);
+    assert.equal(planBedToToilet(value).route, null);
+    assert.match(planBedToToilet(value).fallback.locationText, /卫生间/);
+  }
+});
+
+test('a previously verified different path cannot certify the newly inferred path', () => {
+  const value = snapshot({ objects: baseObjects(), relations: fullConnects(), routes: [{
+    id: 'old', startObjectId: 'bed', endObjectId: 'toilet',
+    objectIds: ['bed', 'toilet'], status: 'verified', source: 'manual',
+  }] });
+  assert.equal(planBedToToilet(value).status, 'candidate');
+});
+
 test('enough connects relations produce a candidate route with door on path', () => {
   const result = planBedToToilet(snapshot({ objects: baseObjects(), relations: fullConnects() }));
   assert.equal(result.status, 'candidate');
@@ -96,7 +118,7 @@ test('pre-confirmed stored route upgrades status to verified', () => {
     title: '床 → 卫生间',
     startObjectId: 'bed',
     endObjectId: 'toilet',
-    objectIds: ['bed', 'bedroom-door', 'bathroom-door', 'toilet'],
+    objectIds: ['bed', 'bedroom-door', 'corridor-mark', 'bathroom-door', 'toilet'],
     hazardIds: [],
     confidence: 0.95,
     source: 'manual',

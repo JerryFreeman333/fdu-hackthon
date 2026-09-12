@@ -38,6 +38,33 @@ function distance(a: HomeObject, b: HomeObject): number {
   return Math.hypot(a.position.x - b.position.x, a.position.y - b.position.y, a.position.z - b.position.z);
 }
 
+const MIN_ENDPOINT_CONFIDENCE = 0.6;
+const MIN_RELATION_CONFIDENCE = 0.6;
+const ALLOWED_ROUTE_RELATION_SOURCES = new Set(['vision', 'manual', 'inferred']);
+
+function usableRelation(relation: HomeTwinSnapshot['relations'][number]): boolean {
+  return relation.relation === 'connects' &&
+    Number.isFinite(relation.confidence) && relation.confidence >= MIN_RELATION_CONFIDENCE &&
+    ALLOWED_ROUTE_RELATION_SOURCES.has(relation.source);
+}
+
+export function assessRouteEligibility(snapshot: HomeTwinSnapshot): { eligible: boolean; reason?: string } {
+  const beds = snapshot.objects.filter(object => object.category === 'bed');
+  const toilets = snapshot.objects.filter(object => object.category === 'toilet');
+  if (beds.length !== 1 || toilets.length !== 1)
+    return { eligible: false, reason: '无法唯一确定床和卫生间，暂不生成路线。' };
+  if ([beds[0], toilets[0]].some(object => !Number.isFinite(object.confidence) ||
+    object.confidence < MIN_ENDPOINT_CONFIDENCE || object.source === 'demo'))
+    return { eligible: false, reason: '端点识别证据不足或仅为演示，暂不生成路线。' };
+  const blocked = new Set(snapshot.relations.filter(relation => relation.relation === 'blocks').map(relation => relation.subjectId));
+  if (blocked.has(beds[0].id) || blocked.has(toilets[0].id))
+    return { eligible: false, reason: '路线端点存在阻断证据，暂不生成路线。' };
+  const connectingRelations = snapshot.relations.filter(usableRelation);
+  if (connectingRelations.length === 0)
+    return { eligible: false, reason: '缺少可靠的空间连接证据，暂不生成路线。' };
+  return { eligible: true };
+}
+
 /**
  * Build a graph from explicit `connects` relations and run Dijkstra between
  * the detected bed and toilet objects. Hazards marked as `blocks` are avoided.
@@ -59,6 +86,12 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
     };
   }
 
+  const eligibility = assessRouteEligibility(snapshot);
+  if (!eligibility.eligible) return {
+    status: 'needs_confirmation', route: null, reason: eligibility.reason,
+    fallback: buildFallback(toilet, snapshot.rooms, ['请参考已知文字位置，并让家人确认；不能把演示或低置信度数据当作可通行路线。'])
+  };
+
   const objectById = new Map(snapshot.objects.map(o => [o.id, o]));
   const blocked = new Set(
     snapshot.relations
@@ -68,7 +101,7 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
 
   const graph = new Map<string, Array<{ id: string; weight: number }>>();
   for (const object of snapshot.objects) graph.set(object.id, []);
-  for (const relation of snapshot.relations.filter(r => r.relation === 'connects')) {
+  for (const relation of snapshot.relations.filter(usableRelation)) {
     if (!objectById.has(relation.subjectId) || !objectById.has(relation.objectId)) continue;
     if (blocked.has(relation.subjectId) || blocked.has(relation.objectId)) continue;
     const a = objectById.get(relation.subjectId)!;
@@ -164,7 +197,7 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
       bed.confidence,
       toilet.confidence,
       ...snapshot.relations
-        .filter(r => r.relation === 'connects' && objectIds.includes(r.subjectId) && objectIds.includes(r.objectId))
+        .filter(r => usableRelation(r) && objectIds.includes(r.subjectId) && objectIds.includes(r.objectId))
         .map(r => r.confidence)
     ),
     source: 'inferred'
@@ -175,6 +208,7 @@ export function planBedToToilet(snapshot: HomeTwinSnapshot): RoutePlanResult {
   const preConfirmed = snapshot.routes.find(r =>
     r.startObjectId === bed.id &&
     r.endObjectId === toilet.id &&
+    r.objectIds.length === objectIds.length && r.objectIds.every((id, index) => id === objectIds[index]) &&
     r.status === 'verified' &&
     r.source !== 'demo'
   );

@@ -1,4 +1,5 @@
 import type { RescanInputBatch } from './rescanInput';
+import { parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './actionPlan';
 
 export type RescanJobStatus = 'queued' | 'processing' | 'ready' | 'failed';
 
@@ -7,7 +8,7 @@ export interface RescanSubmitResponse {
   jobId?: string;
   message?: string;
   latestRiskIds?: string[];
-  actionPlan?: unknown;
+  actionPlan?: HomeSafetyActionPlan;
 }
 
 export interface RescanUploadOptions {
@@ -52,6 +53,10 @@ function parseResponse(payload: unknown): RescanSubmitResponse {
   if (!['queued', 'processing', 'ready', 'failed'].includes(String(status))) {
     throw new Error('复扫服务返回了无效状态');
   }
+  const actionPlan = result.actionPlan === undefined ? null : parseHomeSafetyActionPlan(result.actionPlan);
+  if (result.actionPlan !== undefined && (!actionPlan || status !== 'ready')) {
+    throw new Error('复扫服务返回了无效行动计划或尚未完成的关闭结果');
+  }
   return {
     status: status as RescanJobStatus,
     jobId: typeof result.jobId === 'string' ? result.jobId : undefined,
@@ -59,7 +64,7 @@ function parseResponse(payload: unknown): RescanSubmitResponse {
     latestRiskIds: Array.isArray(result.latestRiskIds)
       ? result.latestRiskIds.filter((id): id is string => typeof id === 'string')
       : undefined,
-    actionPlan: result.actionPlan,
+    actionPlan: actionPlan ?? undefined,
   };
 }
 

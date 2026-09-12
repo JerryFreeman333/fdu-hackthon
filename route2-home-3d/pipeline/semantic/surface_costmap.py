@@ -207,6 +207,43 @@ def path_to_points(grid:Grid,basis:Basis,path:list[tuple[int,int]])->list[dict[s
         out.append({"x":round(p[0],6),"y":round(p[1],6),"z":round(p[2],6)})
     return out
 
+def hazard_evidence_for_path(snapshot:dict[str,Any], basis:Basis, path_points:list[dict[str,float]], cell:float, clearance:float) -> tuple[list[str], list[dict[str,Any]]]:
+    hazard_ids: list[str] = []
+    evidence: list[dict[str,Any]] = []
+    path_uv = [basis.project((float(p["x"]),float(p["y"]),float(p["z"]))) for p in path_points]
+    if not path_uv:
+        return [], []
+    for obj in snapshot.get("objects",[]):
+        category = obj.get("category")
+        object_id = obj.get("id")
+        position = obj.get("position")
+        if category not in HARD_CATEGORIES and category not in SOFT_COST:
+            continue
+        if not object_id or not isinstance(position,dict):
+            continue
+        try:
+            hazard_uv = basis.project((float(position["x"]),float(position["y"]),float(position["z"])))
+        except (TypeError, ValueError, KeyError):
+            continue
+        min_distance = min(
+            math.hypot(hazard_uv[0]-path_uv_point[0], hazard_uv[1]-path_uv_point[1])
+            for path_uv_point in path_uv
+        )
+        hazard_radius = float(obj.get("clearanceRadius", clearance))
+        route_corridor = hazard_radius + 1.5 * cell
+        if min_distance <= route_corridor:
+            hazard_ids.append(str(object_id))
+            evidence.append({
+                "objectId": str(object_id),
+                "category": category,
+                "minDistanceUnits": round(min_distance, 6),
+                "corridorRadiusUnits": round(route_corridor, 6),
+                "rule": "path-point-proximity-with-clearance",
+                "objectObservedAt": obj.get("observedAt"),
+                "objectEvidence": obj.get("evidence"),
+            })
+    return sorted(set(hazard_ids)), evidence
+
 def load_meters_per_unit(path:Path|None)->float|None:
     if path is None or not path.exists(): return None
     d=json.loads(path.read_text(encoding="utf-8")); value=d.get("metresPerUnit",d.get("metersPerUnit"))
@@ -232,8 +269,10 @@ def plan_surface(snapshot,points,cell,plane_threshold,obstacle_height,clearance,
     if start is None or goal is None: return {"status":"unavailable","reason":"床或卫生间无法吸附到有地面证据的自由栅格。","surface":surface}
     path=astar(grid,start,goal)
     if path is None: return {"status":"unavailable","reason":"地面证据与障碍膨胀后没有连通的候选通行空间。","surface":surface}
+    path_points = path_to_points(grid,basis,path)
+    hazard_ids, hazard_evidence = hazard_evidence_for_path(snapshot,basis,path_points,grid.cell,clearance)
     length=(len(path)-1)*grid.cell; metres=length*metres_per_unit if metres_per_unit else None
-    return {"status":"candidate","route":{"id":"bed-to-toilet-surface-candidate","title":"床 → 卫生间（表面代价图候选路线）","startCell":{"x":start[0],"y":start[1]},"goalCell":{"x":goal[0],"y":goal[1]},"pathPoints3D":path_to_points(grid,basis,path),"gridSteps":len(path),"reconstructionLength":round(length,6),"lengthMetres":round(metres,3) if metres is not None else None,"confidence":round(min(float(bed.get("confidence",0.0)),float(toilet.get("confidence",0.0)),support),4),"source":"surface-inferred","safetyStatus":"needs-real-scale-and-surface-validation","warning":"候选路径来自稀疏表面点与语义障碍投影；仍需真实尺度、连续表面、通行宽度和现场复核。"},"surface":surface}
+    return {"status":"candidate","route":{"id":"bed-to-toilet-surface-candidate","title":"床 → 卫生间（表面代价图候选路线）","startCell":{"x":start[0],"y":start[1]},"goalCell":{"x":goal[0],"y":goal[1]},"pathPoints3D":path_points,"gridSteps":len(path),"reconstructionLength":round(length,6),"lengthMetres":round(metres,3) if metres is not None else None,"confidence":round(min(float(bed.get("confidence",0.0)),float(toilet.get("confidence",0.0)),support),4),"source":"surface-inferred","safetyStatus":"needs-real-scale-and-surface-validation","hazardIds":hazard_ids,"hazardEvidence":hazard_evidence,"hazardCoverage":"route-corridor-evaluated","warning":"候选路径来自稀疏表面点与语义障碍投影；仍需真实尺度、连续表面、通行宽度和现场复核。"},"surface":surface}
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--snapshot",required=True,type=Path); ap.add_argument("--points",required=True,type=Path); ap.add_argument("--output",required=True,type=Path); ap.add_argument("--cell",type=float,default=0.05); ap.add_argument("--plane-threshold",type=float,default=0.02); ap.add_argument("--obstacle-height",type=float,default=0.08); ap.add_argument("--clearance",type=float,default=0.18); ap.add_argument("--scale",type=Path,default=None); args=ap.parse_args()

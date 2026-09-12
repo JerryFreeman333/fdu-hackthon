@@ -1,5 +1,5 @@
 import type { HomeSafetyActionPlan } from './actionPlan';
-import { parseHomeSafetyActionPlan, applyRescan } from './actionPlan';
+import { parseHomeSafetyActionPlan, acceptRescanActionPlan } from './actionPlan';
 import type { RescanInputBatch } from './rescanInput';
 
 export type RescanWorkflowStatus = 'idle' | 'selected' | 'processing' | 'ready-for-review' | 'failed';
@@ -52,12 +52,17 @@ export function markSubmitted(state: RescanWorkflowState): RescanWorkflowState {
 
 export function applyRescanProjection(
   state: RescanWorkflowState,
-  latestRiskIds: string[],
+  result: unknown,
 ): RescanWorkflowState {
-  if (!state.previousPlan) {
+  const baseline = state.currentPlan ?? state.previousPlan;
+  if (!baseline) {
     return { ...state, status: 'failed', message: '缺少上一轮家庭行动计划，无法比较复扫结果。' };
   }
-  const currentPlan = applyRescan(state.previousPlan, latestRiskIds);
+  const raw = result && typeof result === 'object' ? (result as { actionPlan?: unknown }).actionPlan : null;
+  const currentPlan = parseHomeSafetyActionPlan(raw);
+  if (!currentPlan) return { ...state, status: 'failed', message: '缺少有效复扫行动计划；不会根据 riskId 列表关闭风险。' };
+  const acceptance = acceptRescanActionPlan(baseline, currentPlan);
+  if (!acceptance.accepted) return { ...state, status: 'failed', message: acceptance.reason };
   return {
     ...state,
     status: 'ready-for-review',
@@ -67,4 +72,9 @@ export function applyRescanProjection(
         ? '复扫确认：上一轮行动对应风险已消失。'
         : '复扫完成：仍有风险或出现新的风险，请继续检查。',
   };
+}
+
+// Browser storage is not authoritative evidence of a completed rescan.
+export function sanitizeRestoredWorkflow(_raw: unknown): RescanWorkflowState {
+  return createInitialRescanWorkflow();
 }

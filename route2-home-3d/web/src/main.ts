@@ -4,7 +4,7 @@ import type { HazardData, HazardItem, ItemInfo, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin, type HomeTwinSnapshot, type RouteStatus } from './hometwin/model';
 import { planBedToToilet, type RoutePlanResult } from './hometwin/routePlanner';
-import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
+import { acceptRescanActionPlan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
 import { submitRescanBatch, waitForRescanJob, checkRescanService, type RescanSubmitResponse } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
@@ -20,6 +20,9 @@ const ACTION_PLAN_URL = 'data/family-action-plan.json';
 const RESCAN_ENDPOINT = import.meta.env.VITE_ROUTE2_API_URL ?? '/api/route2/rescan';
 
 async function hasRealModel(): Promise<boolean> {
+  // Explicit sample mode must never mix a locally exported real room with
+  // pre-populated hazards/medication positions belonging to the demo household.
+  if (new URLSearchParams(window.location.search).get('demo') === '1') return false;
   try {
     const res = await fetch(DEMO_SPLAT_URL, { method: 'HEAD' });
     if (!res.ok) return false;
@@ -70,6 +73,8 @@ async function main() {
   const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
+  let rescanInFlight = false;
+  let hasUserSelection = false;
 
   let homeTwin: HomeTwinSnapshot | null = null;
   let routePlan: RoutePlanResult | null = null;
@@ -118,6 +123,7 @@ async function main() {
   });
 
   function openHazard(h: HazardItem) {
+    hasUserSelection = true;
     markers.setSelected(h.id);
     showHazardCard(h, data.meta.levels);
     const p = markers.positionOf(h.id);
@@ -131,6 +137,7 @@ async function main() {
   let dangerZones: THREE.Group | null = null;
 
   function selectPath(p: any | null) {
+    if (p) hasUserSelection = true;
     pathVisuals.forEach((v) => v.hide());
     dangerZones?.removeFromParent();
     dangerZones = null;
@@ -202,9 +209,11 @@ async function main() {
   if (roleMount && roleSwitcher) { roleSwitcherEl = roleSwitcher; roleMount.replaceChildren(roleSwitcher); }
 
   async function handleRescanFiles(files: File[]): Promise<void> {
+    if (rescanInFlight) { setHint('正在处理上一轮复扫，请等待完成。'); return; }
     const input = prepareRescanFiles(files);
     if (!input) { setHint('没有识别到支持的图片或视频。'); return; }
     lastRescanInput = input;
+    rescanInFlight = true;
     const batch = input.batch;
     setHint(`已选择 ${batch.files.length} 个复扫文件。正在提交到 Home Twin…`);
     try {
@@ -215,8 +224,14 @@ async function main() {
         result = await waitForRescanJob(result.jobId, { endpoint: RESCAN_ENDPOINT, maxAttempts: 90, intervalMs: 1000 });
       }
       if (result.status === 'failed') throw new Error(result.message ?? '复扫处理失败');
-      if (result.actionPlan) { const parsed = parseHomeSafetyActionPlan(result.actionPlan); if (parsed) currentActionPlan = parsed; }
-      else if (result.latestRiskIds && currentActionPlan) currentActionPlan = applyRescan(currentActionPlan, result.latestRiskIds);
+      if (result.actionPlan) {
+        if (!currentActionPlan) throw new Error('缺少当前家庭行动基线，不能接受自动关闭结果');
+        const acceptance = acceptRescanActionPlan(currentActionPlan, result.actionPlan);
+        if (!acceptance.accepted) throw new Error(acceptance.reason);
+        currentActionPlan = result.actionPlan;
+      } else if (result.latestRiskIds) {
+        throw new Error('复扫仅返回风险编号，缺少新采集和重建证据');
+      }
       panelController.updateActionPlan(currentActionPlan);
       refreshJourney();
       setHint(result.message ?? `复扫完成：${batch.files.length} 个文件已由 Home Twin 处理。`);
@@ -226,6 +241,7 @@ async function main() {
     } finally {
       revokeRescanPreview(lastRescanInput);
       lastRescanInput = null;
+      rescanInFlight = false;
     }
   }
 
@@ -251,6 +267,7 @@ async function main() {
   }
 
   function selectItem(item: ItemInfo): void {
+    hasUserSelection = true;
     const pos = mode === 'demo' ? item.demoPos : item.realPos;
     if (!pos) {
       setHint(`「${item.title}」: ${item.location} — ${item.say} 位置未做 3D 标定，以上文字仅供参考；如不确定，可让系统请家人确认。`);
@@ -273,6 +290,8 @@ async function main() {
   void checkRescanService(RESCAN_ENDPOINT).then((status) => {
     rescanOffline = !status.online;
     panelController.setRescanOffline(rescanOffline);
+    // The async service probe is lower priority than a find/route result.
+    if (hasUserSelection) return;
     if (rescanOffline) {
       setHint('复扫服务未启动：家属端「重新扫描确认」暂不可用。启动方式：python -m uvicorn backend.app:app --port 8010。找东西等功能不受影响。');
     } else if (!hasStoredRole()) {
