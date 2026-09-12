@@ -40,6 +40,8 @@ export default function ElderHome({
 }: ElderHomeProps) {
   const activeTasks = tasks
     .filter((task) => task.status !== 'completed' && task.status !== 'dismissed')
+    // 家属共享由下方唯一的授权卡处理，不能把同一 finding 再包装成一条重复待办。
+    .filter((task) => task.kind !== 'contact_family')
     .filter((task, index, list) => list.findIndex((candidate) => candidate.title === task.title) === index);
   const gentleChanges = findings.filter((finding) => finding.severity === 'watch');
   const importantChanges = findings.filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent');
@@ -118,7 +120,10 @@ export default function ElderHome({
       <section className="voice-launch-section" aria-label="AI 助手入口">
         <button className="voice-launch" type="button" onClick={onOpenAssistant} aria-label="打开 AI 助手">
           <span className="voice-launch-core">
-            <span className="voice-mic-mark" aria-hidden="true" />
+            <svg className="voice-mic-icon" viewBox="0 0 48 48" aria-hidden="true">
+              <rect x="17" y="7" width="14" height="24" rx="7" />
+              <path d="M11 24v2a13 13 0 0 0 26 0v-2M24 39v5M17 44h14" />
+            </svg>
           </span>
         </button>
         <h2>有事，和我说说</h2>
