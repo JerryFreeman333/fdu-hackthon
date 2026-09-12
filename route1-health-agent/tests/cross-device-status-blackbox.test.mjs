@@ -49,7 +49,9 @@ function startPreview() {
     const onData = (chunk) => {
       const text = chunk.toString();
       process.stdout.write('[preview] ' + text);
-      if (text.includes('Local:')) resolve();
+      // Vite 在 CI=true 下会强制 ANSI 着色，"Local" 与 ":" 之间夹着转义序列，
+      // 不能只认 'Local:'；URL 里的 localhost 不着色，作为兜底。
+      if (text.includes('Local:') || text.includes('localhost')) resolve();
     };
     serverProcess.stdout.on('data', onData);
     serverProcess.stderr.on('data', onData);
@@ -197,8 +199,13 @@ async function runSmoke() {
   const passed = results.filter((r) => r.ok).length;
   const total = results.length;
   log(`总计: ${passed}/${total} 通过`);
-  if (passed < total) process.exit(1);
+  if (passed < total) {
+    // 强制退出前先收掉 preview 子进程，否则 runSmoke 里的 exit 会跳过 main 的 finally。
+    stopPreview();
+    process.exit(1);
+  }
   // CI 的公共信令可达时，PeerJS 的 WebSocket 会一直挂着事件循环——断言跑完也必须强制退出。
+  stopPreview();
   process.exit(0);
 }
 
