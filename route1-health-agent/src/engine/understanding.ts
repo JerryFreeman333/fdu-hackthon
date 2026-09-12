@@ -162,6 +162,8 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
+  // An explicitly ambiguous group is a boundary, not an invitation to pick one member.
+  if (priorSubjects.at(-1) === 'unknown') return 'unknown';
   const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
   if (lastKnownSubject) return lastKnownSubject;
 
@@ -169,6 +171,18 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
 }
 
 function coordinatedSubjectsFromText(clause: string): ElderSubject[] | null {
+  // Keep sharing recipients out of subject coordination.
+  if (
+    !subjectFromShareRecipient(clause) &&
+    /(?:和|跟|与|以及|还有|、)/.test(clause) &&
+    /(?:都|分别|各自)/.test(clause)
+  ) {
+    const family: ElderSubject[] = [];
+    if (/(我老公|我丈夫|老公|丈夫|爱人|老伴)/.test(clause)) family.push('spouse');
+    if (/(我爸|我父亲|爸爸|父亲)/.test(clause)) family.push('father');
+    if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) family.push('mother');
+    if (family.length >= 2) return family;
+  }
   const match = clause.match(
     /^(?:我|本人|我自己)\s*(?:和|跟|与)\s*(我老公|我丈夫|老公|丈夫|爱人|老伴|我爸|我父亲|爸爸|父亲|我妈|我母亲|妈妈|母亲|儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)\s*(?:都|也)(?=\S)/,
   );
@@ -214,6 +228,14 @@ function parseChineseDayCount(value: string): number | null {
 }
 
 function timeFromText(clause: string, today: string): { scope: TimeScope; eventDate: string | null } {
+  const explicitDate = clause.match(/(20\d{2})[年\/-](\d{1,2})[月\/-](\d{1,2})(?:日|号)?/);
+  if (explicitDate) {
+    const date = `${explicitDate[1]}-${explicitDate[2]!.padStart(2, '0')}-${explicitDate[3]!.padStart(2, '0')}`;
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date || date > today)
+      return { scope: 'unknown', eventDate: null };
+    return { scope: date === today ? 'today' : 'historical', eventDate: date };
+  }
   const hasToday = /(今天|刚才|刚刚|现在|目前)/.test(clause);
   const hasYesterday = /(昨天|昨日)/.test(clause);
   const currentComparison =
@@ -243,7 +265,7 @@ const EXPLICIT_TIME_PATTERN =
   /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|三|四|五|六|七|八|九|十)天前|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
 
 function hasExplicitTime(clause: string): boolean {
-  return EXPLICIT_TIME_PATTERN.test(clause);
+  return EXPLICIT_TIME_PATTERN.test(clause) || /20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}/.test(clause);
 }
 
 function isRhetoricalNegation(clause: string): boolean {
@@ -613,6 +635,7 @@ export function understandElderInputWithOverrides(
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
   let lastTime: { scope: TimeScope; eventDate: string | null } | null = null;
+  let lastHealthSubject: ElderSubject | null = null;
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
@@ -659,7 +682,7 @@ export function understandElderInputWithOverrides(
       !hasExplicitTime(clause) &&
       lastTime !== null &&
       claims.length > 0 &&
-      claims[claims.length - 1]?.subject === subject &&
+      (lastHealthSubject === subject || /^(?:后来|随后|之后|接着|然后|再|又|仍然|还是|一直)/.test(clause)) &&
       (explicitTags.length > 0 || hasExplicitHealthValue);
     const time: { scope: TimeScope; eventDate: string | null } = inheritsPreviousTime && lastTime ? lastTime : rawTime;
     const status = statusOverrides?.get(clause) ?? statusFromText(clause, tags, hasHealthValue);
@@ -671,6 +694,7 @@ export function understandElderInputWithOverrides(
 
     if (!isPureCorrectionMarker(clause) && (explicitTags.length > 0 || hasExplicitHealthValue)) {
       lastTime = time;
+      lastHealthSubject = coordinatedSubjects ? null : subject;
     }
 
     if (coordinatedSubjects && hasAmbiguousMeasurementAssignment && !deathReported) {
@@ -701,7 +725,7 @@ export function understandElderInputWithOverrides(
           hasHealthValue,
         });
       }
-      subjectsSeen.push(...coordinatedSubjects);
+      subjectsSeen = ['unknown'];
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;

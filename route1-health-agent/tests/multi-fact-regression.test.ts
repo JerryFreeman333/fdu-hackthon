@@ -38,8 +38,15 @@ test('clarifies a pronoun when multiple family subjects are active', () => {
   assert.equal(ambiguous?.text, '他现在不舒服');
 });
 
-test('does not choose one person when a single clause explicitly names multiple people', () => {
+test('explicit 都 assigns the shared event to both named people, never just one', () => {
   const result = understandElderInput('我爸和我老公都摔了一跤', TODAY);
+
+  assert.deepEqual(new Set(result.claims.map((claim) => claim.subject)), new Set(['father', 'spouse']));
+  assert.ok(result.claims.every((claim) => claim.tags.includes('fall')));
+});
+
+test('multiple names without an explicit shared predicate still require clarification', () => {
+  const result = understandElderInput('我爸和我老公摔了一跤', TODAY);
 
   assert.match(result.clarificationQuestion ?? '', /指谁|确认清楚/);
   assert.ok(result.claims.some((claim) => claim.subject === 'unknown'));
