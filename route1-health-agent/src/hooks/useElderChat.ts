@@ -22,8 +22,15 @@ import { recordSharingAudit } from '../engine/sharingAudit';
 import { createTurnQueue, type TurnQueue } from '../engine/turnQueue';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
+// 回复层 LLM 超时（P1-4）：默认收窄到 12s，可用 VITE_AGENT_LLM_TIMEOUT_MS 调整。
+// 超时或失败都会降级到规则回复，老人最迟十几秒内一定得到回应；视觉上的即时
+// 反馈由"正在听你说…"占位气泡保证（见 handleElderSend）。
+const AGENT_LLM_TIMEOUT_MS = Number(import.meta.env.VITE_AGENT_LLM_TIMEOUT_MS);
 const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
-  ? createHttpLlmAdapter(import.meta.env.VITE_AGENT_LLM_ENDPOINT)
+  ? createHttpLlmAdapter(
+      import.meta.env.VITE_AGENT_LLM_ENDPOINT,
+      Number.isFinite(AGENT_LLM_TIMEOUT_MS) && AGENT_LLM_TIMEOUT_MS >= 1000 ? AGENT_LLM_TIMEOUT_MS : 12000,
+    )
   : ruleBasedAdapter;
 
 interface UseElderChatOptions {
@@ -41,6 +48,8 @@ interface UseElderChatOptions {
   onMedicationMissed: (createdAt: string) => void;
   onShareFindingIds: (ids: string[]) => void;
   onShareFamilyEventIds: (ids: string[]) => void;
+  /** P0-1 配套：本回合新事件同步给同浏览器其它 tab（只走 BroadcastChannel）。 */
+  onBroadcastEvents?: (events: HealthEvent[]) => void;
 }
 
 function localIsoTimestamp(): string {
@@ -69,6 +78,7 @@ export function useElderChat({
   onMedicationMissed,
   onShareFindingIds,
   onShareFamilyEventIds,
+  onBroadcastEvents,
 }: UseElderChatOptions) {
   const turnQueueRef = useRef<TurnQueue | null>(null);
   if (!turnQueueRef.current) turnQueueRef.current = createTurnQueue();
@@ -81,14 +91,20 @@ export function useElderChat({
     // 回显与上下文在入队前定格：队列里的后续回合会继续改写 chat。
     const priorChat = chat;
 
-    // 先把老人原话上屏：重处理无论多慢，这句话都不会被静默丢弃。
-    setChat((current) => [...current, elderMessage]);
+    // 占位回复（P0-3/P1-4）：与老人原话同时上屏，位置紧跟原话。
+    // 回复就绪后原地替换——老人连发多条时，每条回复一定紧跟触发它的那句话，
+    // 不会再出现"对着'头一点都不晕了'说'我已记下头晕'"的错位；
+    // LLM 再慢，老人也能立刻看到"正在听你说…"，而不是可疑的沉默。
+    const pendingReply: ChatMessage = { ...msg('agent', '', now, false), pending: true };
+    setChat((current) => [...current, elderMessage, pendingReply]);
 
     void turnQueueRef.current?.enqueue(async () => {
       try {
-        await runElderTurn(text, elderMessage, priorChat);
+        await runElderTurn(text, elderMessage, priorChat, pendingReply.id);
       } catch (error) {
         console.error(error);
+        const failureReply = msg('agent', '这条消息没有处理成功，麻烦您再说一次。', now, false);
+        setChat((current) => settlePendingReply(current, pendingReply.id, failureReply));
         showToast('这条消息没有处理成功，麻烦您再说一次。');
       }
     });
@@ -112,11 +128,28 @@ export function useElderChat({
   }
 
   /**
+   * P0-3 的配对机制：把就绪的回复写进占位气泡的位置（找不到占位则追加兜底）。
+   * 用 setState 更新器内部完成查找与替换，保证原子性。
+   */
+  function settlePendingReply(current: ChatMessage[], pendingId: string, reply: ChatMessage): ChatMessage[] {
+    const index = current.findIndex((item) => item.id === pendingId);
+    if (index < 0) return [...current, reply];
+    const next = [...current];
+    next[index] = { ...reply, id: pendingId };
+    return next;
+  }
+
+  /**
    * 一回合 = 纯规划（engine/elderTurn.planElderTurn）+ 执行（本函数）。
    * 规划层决定回复分块、待入库事件、家属同步与提示文案；这里只做状态更新
    * 与副作用，且执行顺序与旧实现保持一致。
    */
-  async function runElderTurn(text: string, elderMessage: ChatMessage, priorChat: ChatMessage[]) {
+  async function runElderTurn(
+    text: string,
+    elderMessage: ChatMessage,
+    priorChat: ChatMessage[],
+    pendingReplyId: string,
+  ) {
     const intent = parsePrivacyIntent(text);
     const understanding = await buildUnderstanding(text, priorChat, intent);
     const now = elderMessage.time;
@@ -159,17 +192,18 @@ export function useElderChat({
           plan.eventsToAppend,
         ),
       );
+      // P0-1 配套：同浏览器其它 tab（如已打开的家属端）实时补齐事件，
+      // 否则家属端自己的检测/门控状态永远停留在打开那一刻的快照。
+      onBroadcastEvents?.(plan.eventsToAppend);
       if (plan.shareFindingIds.length > 0) onShareFindingIds(plan.shareFindingIds);
     }
     if (plan.medicationMissed) onMedicationMissed(receivedAt);
 
-    setChat((current) => [
-      ...current,
-      msg('agent', plan.replyText, now, persisted, {
-        safetyAction: plan.safetyAction,
-        blocks: plan.replyBlocks,
-      }),
-    ]);
+    const reply = msg('agent', plan.replyText, now, persisted, {
+      safetyAction: plan.safetyAction,
+      blocks: plan.replyBlocks,
+    });
+    setChat((current) => settlePendingReply(current, pendingReplyId, reply));
     showToast(plan.toast);
   }
 

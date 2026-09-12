@@ -13,7 +13,10 @@ import type { FamilyNotificationRecord } from './notify';
  *    聊天解析漏掉了，必须提示家属主动确认，而不是绿色"ok"
  * 3. notifications 为空但存在被隐私门控挡住的 alert/urgent（gatedAlertCount > 0）
  *    → 不是没信号，是老人尚未授权、内容对家属不可见。系统知道有事，
- *    绝不能表述成正面"正常"（评审现场：老人报胸痛后家属看到"今天总体正常"）
+ *    绝不能表述成正面"正常"（评审现场：老人报胸痛后家属看到"今天总体正常"）。
+ *    被挡住包含两种来源（见 escalate.collectGatedFindings）：有 familyMessage 但
+ *    未授权（授权门控），以及内容本身 private 而没有 familyMessage 的紧急发现
+ *    （如未授权共享时的摔倒报告）——后者同样必须让家属知道"有事但被挡住"。
  */
 export type FamilyStatusTone = 'danger' | 'warn' | 'unknown' | 'ok';
 

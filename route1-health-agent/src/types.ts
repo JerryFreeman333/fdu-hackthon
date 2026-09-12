@@ -222,6 +222,11 @@ export interface ChatMessage {
    * text 始终保留全量拼接文本，供 toast、检索与既有断言使用。
    */
   blocks?: ChatMessageBlock[];
+  /**
+   * 占位回复（P0-3/P1-4）：回复尚在生成时的"正在听你说…"气泡。
+   * 永不持久化（persisted=false），就绪后由 useElderChat 原地替换为正式回复。
+   */
+  pending?: boolean;
 }
 
 export interface ElderProfile {

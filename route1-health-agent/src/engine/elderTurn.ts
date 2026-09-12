@@ -354,9 +354,15 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
   // 回复保持旧版文本不变，整条作为主气泡。
   if (incomingEvents.length === 0) {
     const finalFamilyText = familyAcknowledgement || agentText;
+    // P2 修复：混合意图（隐私请求 + 症状）在症状没被识别成事件时，隐私请求
+    // 仍必须得到独立成行的显式回应，不能让"不要告诉孩子"这句话凭空消失。
+    const earlyReplyBlocks: ChatMessageBlock[] = [{ kind: 'main', text: finalFamilyText }];
+    if (intent === 'private') {
+      earlyReplyBlocks.push({ kind: 'privacy', text: '好的，这部分不会告诉家属。' });
+    }
     return {
       recordIntent: 'record',
-      replyBlocks: [{ kind: 'main', text: finalFamilyText }],
+      replyBlocks: earlyReplyBlocks,
       replyText: finalFamilyText,
       safetyAction: forceSafetyActions || hasUrgentFinding,
       correction,
@@ -380,9 +386,13 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
   const sharingNotice =
     intent === 'share_family'
       ? '这次只分享给家属一次，不会自动打开长期共享。'
-      : canShare
-        ? '按您现在的授权，家属可以看到必要的变化。'
-        : '这部分只供您本人使用。';
+      : intent === 'private'
+        ? // P2 修复："这个不要告诉孩子，我最近胸口有点闷"这类混合意图，
+          // 隐私请求必须被显式回应，而不是只给一句含糊的"只供您本人使用"。
+          '好的，这部分不会告诉家属，只保存在您这台设备上。'
+        : canShare
+          ? '按您现在的授权，家属可以看到必要的变化。'
+          : '这部分只供您本人使用。';
   const hasSafetyGuidance = acceptedTags.some((tag) => SAFETY_TAGS.has(tag));
   const safetyNotice =
     acceptedTags

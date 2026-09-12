@@ -101,6 +101,8 @@ async function runOnboardingSuite() {
 
     const demoSeedText = await page.getByText('今天很累，什么都不想干').count();
     check('personal 模式从空白开始，没有合成聊天种子', demoSeedText === 0);
+    // P2 信息架构收敛后，"数据从哪儿来"收进可展开区块：展开后再断言 personal 模式文案
+    await page.locator('details.advanced-details summary', { hasText: '数据从哪儿来' }).click();
     await page.getByText('当前版本未接入真实硬件').waitFor({ state: 'visible', timeout: 5000 });
     check('personal 模式的设备说明不再声称"模拟设备数据"', true);
 

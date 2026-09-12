@@ -1,8 +1,21 @@
 import { useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
 import { formatLocalDate } from '../data/demo';
+import { performLinkHandshake, type FamilyLinkPayload, type LinkPeerConnection } from '../engine/familyLinkHandshake';
 
 const MAX_PENDING_ONE_TIME_IDS = 50;
+
+/**
+ * 绑定握手的通道集合（P0-2）。App 层用 useCrossDeviceSync 的 broadcast/subscribe
+ * 与 PeerJS 临时拨号组出来传入；测试里可以注入假通道。
+ */
+export interface FamilyLinkTransport {
+  broadcast: (type: string, payload: unknown) => void;
+  subscribe: (handler: (envelope: { type: string; payload: unknown }) => void) => () => void;
+  dialPeer?: (code: string) => Promise<LinkPeerConnection>;
+}
+
+export type BindFamilyOutcome = { ok: true } | { ok: false; reason: 'rejected' | 'unreachable'; detail?: string };
 
 function localIsoTimestamp(): string {
   // 本地墙上时间（无时区后缀）：slice(0, 10) 恒等于本地日期；
@@ -91,21 +104,60 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     };
     setIssuedInviteCode(code);
     setFamilyLink(link);
-    showToast(`邀请码已生成：${code}`);
+    showToast(`邀请码已生成：${code}（重新生成会使旧码失效）`);
   }
 
-  function bindFamily(inviteCode: string): boolean {
-    if (!inviteCode || !issuedInviteCode || inviteCode !== issuedInviteCode || !familyLink) return false;
+  /**
+   * L1：同 tab 本地比对（回归路径保留）。
+   * L2/L3：交给 familyLinkHandshake —— 家属端出示邀请码，拥有邀请码的老人端
+   * 校验并应答。跨 tab / 跨设备不再依赖"输入方本地恰好有这个码"。
+   */
+  async function bindFamily(inviteCode: string, transport?: FamilyLinkTransport): Promise<BindFamilyOutcome> {
+    const code = inviteCode.trim();
+    if (!code) return { ok: false, reason: 'rejected', detail: 'empty_code' };
+    if (issuedInviteCode && code === issuedInviteCode && familyLink) {
+      activateLink(code, '本地演示家属', '本地设备');
+      return { ok: true };
+    }
+    if (!transport) return { ok: false, reason: 'rejected', detail: 'code_mismatch' };
+    const result = await performLinkHandshake({ code, ...transport });
+    if (!result.ok) return { ok: false, reason: result.reason, detail: result.detail };
+    setIssuedInviteCode(null);
+    setFamilyLink({ ...result.link });
+    showToast('家属绑定成功。邀请码已失效。');
+    return { ok: true };
+  }
+
+  /** 激活本地 pending 链接：老人端确认握手（confirmLinkRequest）与同 tab 绑定共用。 */
+  function activateLink(code: string, displayName: string, maskedContact: string) {
+    if (!familyLink) return;
     const link: FamilyLink = {
       ...familyLink,
-      displayName: '本地演示家属',
-      maskedContact: '本地设备',
+      displayName,
+      maskedContact,
+      inviteCode: code,
       status: 'active',
     };
     setIssuedInviteCode(null);
     setFamilyLink(link);
-    showToast('家属绑定成功（本地 Demo）。邀请码已失效。');
-    return true;
+  }
+
+  /**
+   * 老人端：收到家属的绑定请求时校验邀请码。码匹配 pending 邀请 → 激活绑定并
+   * 返回回执（由调用方经 family.link accepted 发回家属端）；否则返回 null。
+   * 安全语义：出示正确邀请码即视为老人授权（demo 级），错误码只得到 rejected。
+   */
+  function confirmLinkRequest(code: string): FamilyLinkPayload | null {
+    if (!code || !issuedInviteCode || code !== issuedInviteCode || !familyLink) return null;
+    activateLink(code, '已通过邀请码绑定的家属', '已验证邀请码');
+    return {
+      id: familyLink.id,
+      relation: familyLink.relation,
+      displayName: '已通过邀请码绑定的家属',
+      maskedContact: '已验证邀请码',
+      inviteCode: code,
+      status: 'active',
+    };
   }
 
   function shareFindingIds(ids: string[]) {
@@ -130,6 +182,7 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     revokeFamilyShare,
     generateInvite,
     bindFamily,
+    confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
   };

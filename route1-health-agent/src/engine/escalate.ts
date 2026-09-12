@@ -48,13 +48,19 @@ export function collectFamilyNotifications(
 
 /**
  * 与 collectFamilyNotifications 同一判定源的反向集合：
- * 今日存在、familyEligible 未拒绝、但因授权门控（familySharing !== 'granted'
- * 且未一次性共享）而没有进入家属通知的 alert/urgent 发现。
+ * 今日存在、但没有进入家属通知的 alert/urgent 发现——按"挡住的原因"分两类：
+ *
+ * - 类型 A（授权门控）：familyMessage 存在且 familyEligible 未拒绝，内容本可共享，
+ *   只是 familySharing !== 'granted' 且未一次性共享；
+ * - 类型 B（内容私密）：老人未授权共享导致 visibility='private'，安全规则因此
+ *   生成的是"无 familyMessage / familyEligible=false"的变体（如 safety.fall）。
+ *   内容永远对家属保密，但"系统知道有紧急信号"这个事实必须对家属可见。
  *
  * 这就是"第三种未知"：不是没数据，而是有数据但被隐私设置挡住。
  * 家属首页状态必须看到这个数量，否则会把被挡住的紧急信号表述成"今天总体正常"
- * （评审现场：老人 02:42 报胸痛，家属 02:44 打开看到"今天总体正常"）。
- * 只暴露数量，不暴露内容——未授权时家属无权看到发现本身。
+ * （评审现场一：老人 02:42 报胸痛，家属 02:44 打开看到"今天总体正常"；
+ * 评审现场二：老人从未授权共享就报摔跤，private 的 urgent 发现从真相视图里蒸发）。
+ * 只暴露数量，不暴露内容——家属无权看到发现本身。
  */
 export function collectGatedFindings(
   findings: Finding[],
@@ -63,14 +69,17 @@ export function collectGatedFindings(
   today: string = '',
 ): Finding[] {
   const sharedIds = new Set(oneTimeSharedFindingIds);
-  return findings.filter(
-    (finding) =>
-      FAMILY_LEVELS.includes(finding.severity) &&
-      finding.familyMessage &&
-      finding.familyEligible !== false &&
-      (today === '' || finding.date === today) &&
-      !(familySharing === 'granted' || sharedIds.has(finding.id)),
-  );
+  return findings.filter((finding) => {
+    if (!FAMILY_LEVELS.includes(finding.severity)) return false;
+    if (today !== '' && finding.date !== today) return false;
+    // 类型 A：内容可共享、只差授权；已被授权（长期或一次性）的会进入通知，不算被挡
+    if (finding.familyMessage && finding.familyEligible !== false) {
+      return !(familySharing === 'granted' || sharedIds.has(finding.id));
+    }
+    // 类型 B：内容私密（无 familyMessage 或 familyEligible=false）。
+    // 无论授权状态如何，内容都不可见——这正是"被挡住"本身。
+    return true;
+  });
 }
 
 export function severityBadge(sev: Severity): { text: string; className: string } {

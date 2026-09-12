@@ -157,28 +157,47 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
           <div key={m.id} className={`chat-row ${m.role === 'elder' ? 'row-elder' : 'row-agent'}`}>
             {m.role === 'agent' && <div className="chat-avatar">安</div>}
             <div className="chat-bubble">
-              {m.blocks
-                ? m.blocks.map((block, i) =>
-                    block.kind === 'main' ? (
-                      <div key={i} className="chat-main">
-                        {block.text.split('\n').map((line, lineIndex) => (
-                          <p key={lineIndex}>{line}</p>
-                        ))}
-                      </div>
-                    ) : (
-                      <p key={i} className={block.kind === 'receipt' ? 'chat-receipt' : 'chat-privacy'}>
-                        {block.text}
-                      </p>
-                    ),
-                  )
-                : m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
-              <div className="chat-time">{m.time}</div>
-              {m.role === 'agent' && ttsSupported && (
-                <button className="btn-secondary" onClick={() => speak(mainSpeechText(m))} aria-label="朗读这条回复">
-                  🔊 朗读
-                </button>
+              {m.pending ? (
+                // 占位回复（P0-3/P1-4）：LLM 再慢也立刻有"正在听你说…"，
+                // 老人不会面对几秒钟可疑的沉默。
+                <div className="chat-pending" role="status">
+                  正在听你说
+                  <span className="chat-pending-dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {m.blocks
+                    ? m.blocks.map((block, i) =>
+                        block.kind === 'main' ? (
+                          <div key={i} className="chat-main">
+                            {block.text.split('\n').map((line, lineIndex) => (
+                              <p key={lineIndex}>{line}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p key={i} className={block.kind === 'receipt' ? 'chat-receipt' : 'chat-privacy'}>
+                            {block.text}
+                          </p>
+                        ),
+                      )
+                    : m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                  <div className="chat-time">{m.time}</div>
+                  {m.role === 'agent' && ttsSupported && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => speak(mainSpeechText(m))}
+                      aria-label="朗读这条回复"
+                    >
+                      🔊 朗读
+                    </button>
+                  )}
+                  {m.role === 'agent' && m.safetyAction && <SafetyActions profile={profile} />}
+                </>
               )}
-              {m.role === 'agent' && m.safetyAction && <SafetyActions profile={profile} />}
             </div>
           </div>
         ))}

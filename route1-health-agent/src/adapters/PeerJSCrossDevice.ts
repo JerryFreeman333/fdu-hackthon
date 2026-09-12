@@ -83,10 +83,22 @@ export interface GuestHandle {
   destroy(): void;
   onMessage(handler: (message: PeerMessage) => void): void;
   onStatus(handler: (status: PeerStatus) => void): void;
+  /** 家属端同样需要发送（绑定握手 request、派发确认动作都走这条路）。 */
+  broadcast(message: PeerMessage): void;
 }
 
 const DEFAULT_OPEN_TIMEOUT_MS = 8000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10000;
+
+/**
+ * 邀请码 → peer id 的唯一推导（P0-2）。
+ * 裸邀请码直接当 peer id 会与全球其它 PeerJS 应用相撞（"unavailable id"），
+ * 加命名空间前缀后：老人端 host、家属端 guest、绑定握手临时拨号三处
+ * 必须使用同一个推导，否则永远连不上。
+ */
+export function peerIdForInviteCode(inviteCode: string): string {
+  return `ankang-r1-${inviteCode.trim()}`;
+}
 
 function isPeerMessage(value: unknown): value is PeerMessage {
   return value === null || typeof value === 'object';
@@ -103,6 +115,7 @@ function emitTo(handlers: Array<(s: PeerStatus) => void>, status: PeerStatus) {
 export async function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPEN_TIMEOUT_MS): Promise<HostHandle> {
   const PeerCtor = await loadPeerConstructor();
   const options = peerOptions();
+  const peerId = peerIdForInviteCode(inviteCode);
   return new Promise((resolve, reject) => {
     let peer: Peer | null = null;
     const messageHandlers: Array<(message: PeerMessage) => void> = [];
@@ -119,7 +132,7 @@ export async function hostAsPeer(inviteCode: string, openTimeoutMs = DEFAULT_OPE
     }, openTimeoutMs);
 
     try {
-      peer = options ? new PeerCtor(inviteCode, options) : new PeerCtor(inviteCode);
+      peer = options ? new PeerCtor(peerId, options) : new PeerCtor(peerId);
     } catch (error) {
       window.clearTimeout(timer);
       reject(error instanceof Error ? error : new Error(String(error)));
@@ -236,7 +249,7 @@ export async function connectToPeer(
     }
 
     peer.on('open', () => {
-      conn = peer!.connect(inviteCode, { reliable: true });
+      conn = peer!.connect(peerIdForInviteCode(inviteCode), { reliable: true });
       conn.on('open', () => {
         if (settled) return;
         settled = true;
@@ -250,6 +263,14 @@ export async function connectToPeer(
           onStatus(handler) {
             statusHandlers.push(handler);
             handler(connectedStatus);
+          },
+          broadcast(message) {
+            if (!isPeerMessage(message)) return;
+            if (conn && conn.open) {
+              try {
+                conn.send(message);
+              } catch {}
+            }
           },
           destroy() {
             try {

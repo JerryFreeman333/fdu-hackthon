@@ -17,6 +17,7 @@ import {
   type WebhookProvider,
 } from '../adapters/WebhookPushChannel';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
+import type { BindFamilyOutcome } from '../hooks/useFamilyBinding';
 
 interface FamilyDashboardProps {
   profile: ElderProfile;
@@ -45,7 +46,8 @@ interface FamilyDashboardProps {
   onContactElder: () => void;
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
-  onBindFamily: (inviteCode: string) => boolean;
+  /** P0-2：绑定是异步握手（跨 tab / 跨设备都要等老人端应答），结果带原因归类。 */
+  onBindFamily: (inviteCode: string) => Promise<BindFamilyOutcome> | BindFamilyOutcome;
   /** 评审 P0-4：家属端也提供清空本机数据入口（试玩污染同样发生在家属端）。 */
   onClearData?: () => void;
   onViewChange: (view: 'home' | 'detail' | 'report' | 'medication') => void;
@@ -105,6 +107,7 @@ function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
+  const [binding, setBinding] = useState(false);
   const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount, props.gatedAlertCount);
   // ===== 微信推送设置（评审 P0-6/P1-3）=====
   const initialWebhook = loadWebhookConfig();
@@ -370,9 +373,30 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     );
   }
 
-  function bind() {
-    const ok = props.onBindFamily(inviteCode.trim());
-    setBindError(ok ? null : '邀请码无效或已失效，请让老人重新生成。');
+  function bindOutcomeMessage(outcome: Exclude<BindFamilyOutcome, { ok: true }>): string {
+    if (outcome.reason === 'rejected') {
+      return '邀请码不对或已失效。请核对老人端当前显示的邀请码；对不上时让老人点"重新生成邀请码"，再用新码绑定。';
+    }
+    return `联系不上老人端的手机${
+      outcome.detail && outcome.detail !== 'no_peer_transport' ? `（${outcome.detail}）` : ''
+    }。请确认：老人端已生成邀请码、那台手机屏幕亮着，两台设备都能上网。确认后可直接再点一次"绑定"。`;
+  }
+
+  async function bind() {
+    if (binding) return;
+    const code = inviteCode.trim();
+    if (!code) {
+      setBindError('请先输入老人端显示的邀请码。');
+      return;
+    }
+    setBinding(true);
+    setBindError(null);
+    try {
+      const outcome = await props.onBindFamily(code);
+      if (!outcome.ok) setBindError(bindOutcomeMessage(outcome));
+    } finally {
+      setBinding(false);
+    }
   }
 
   function saveWebhookSettings() {
@@ -426,13 +450,19 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               className="chat-input"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void bind();
+              }}
               placeholder="例如 AN-2026-1234"
             />
-            <button className="btn-primary" onClick={bind}>
-              绑定
+            <button className="btn-primary" onClick={() => void bind()} disabled={binding}>
+              {binding ? '绑定中…' : '绑定'}
             </button>
           </div>
-          {bindError && <p className="muted">{bindError}</p>}
+          {bindError && <p className="family-bind-error">{bindError}</p>}
+          <p className="muted">
+            同一台手机：让老人端在另一个标签页生成邀请码后直接输入。两台手机：输入老人端屏幕上显示的邀请码，握手约需几秒。
+          </p>
           <p className="muted">这是演示访问控制；真实产品必须由服务端账号、授权与会话共同校验。</p>
         </section>
       </div>

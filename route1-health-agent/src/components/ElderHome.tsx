@@ -189,36 +189,6 @@ export default function ElderHome({
         </section>
       )}
 
-      <section className="card photo-card">
-        <div className="section-head">
-          <div>
-            <h3>记录一下血压、体重或报告</h3>
-            <span className="muted">这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。</span>
-          </div>
-        </div>
-        <div className="chat-input-row">
-          <select
-            aria-label="要记录什么"
-            value={photoKind}
-            onChange={(event) => setPhotoKind(event.target.value as DemoImageKind)}
-          >
-            <option value="bloodPressure">血压</option>
-            <option value="weight">体重</option>
-            <option value="report">体检报告</option>
-          </select>
-          <button className="btn-primary" onClick={choosePhoto}>
-            拍一张/选一张
-          </button>
-          <input
-            ref={fileInputRef}
-            hidden
-            type="file"
-            accept="image/*"
-            onChange={(event) => void handlePhotoChange(event.target.files?.[0])}
-          />
-        </div>
-      </section>
-
       {pendingPhotoError && (
         <section className="card photo-confirm-card photo-confirm-error">
           <p>{pendingPhotoError}</p>
@@ -239,7 +209,7 @@ export default function ElderHome({
                   : pendingPhotoKind === 'weight'
                     ? '体重秤照片'
                     : '体检报告照片'}
-                {}— 确认后会写入健康记录。
+                {}— 确认后会写入健康记录。
               </span>
             </div>
           </div>
@@ -284,72 +254,133 @@ export default function ElderHome({
         </section>
       )}
 
-      <section className="card data-source-card">
-        <div className="section-head">
-          <div>
-            <h3>数据从哪儿来</h3>
-            <span className="muted">这两条路都进入同一个个人基线和变化检测。</span>
+      {/*
+        P2 信息架构收敛：首页只保留"说话、求助、今天要做的事"三类高频入口；
+        拍照、数据来源、家庭协同降为可展开的次要区块，避免一屏长卷。
+      */}
+      <details className="advanced-details">
+        <summary>拍照记录血压、体重或报告</summary>
+        <section className="card photo-card">
+          <div className="section-head">
+            <div>
+              <h3>记录一下血压、体重或报告</h3>
+              <span className="muted">这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。</span>
+            </div>
           </div>
-        </div>
-        <ul className="data-source-list">
-          <li>
-            <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
-            <span className="muted">
-              —{' '}
-              {dataMode === 'demo'
-                ? '来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）'
-                : '当前版本未接入真实硬件；接入后会自动进入同一基线与检测'}
-            </span>
-          </li>
-          <li>
-            <b>📷 血压 / 体重 / 血糖 / 体检报告</b>
-            <span className="muted">— 来自拍照识别或手动录入</span>
-          </li>
-          <li>
-            <b>💬 主诉（"累了"、"喘"、"睡不好"）</b>
-            <span className="muted">— 来自聊天</span>
-          </li>
-        </ul>
-      </section>
-      <section className="card privacy-card">
-        <div className="section-head">
-          <div>
-            <h3>家庭协同</h3>
-            <span className="muted">已经绑定家属后，您可以随时暂停共享。</span>
+          <div className="chat-input-row">
+            <select
+              aria-label="要记录什么"
+              value={photoKind}
+              onChange={(event) => setPhotoKind(event.target.value as DemoImageKind)}
+            >
+              <option value="bloodPressure">血压</option>
+              <option value="weight">体重</option>
+              <option value="report">体检报告</option>
+            </select>
+            <button className="btn-primary" onClick={choosePhoto}>
+              拍一张/选一张
+            </button>
+            <input
+              ref={fileInputRef}
+              hidden
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handlePhotoChange(event.target.files?.[0])}
+            />
           </div>
-        </div>
-        {familyLink?.status === 'active' ? (
-          <>
-            <p>
-              已绑定家属：{familyLink.relation} · {familyLink.displayName}
-            </p>
-            {profile.familySharing === 'granted' && (
-              <button className="btn-secondary" onClick={onRevokeFamilyShare}>
-                暂停家属共享
-              </button>
-            )}
-          </>
-        ) : familyLink ? (
-          <>
-            <p>
-              请让家属输入这个邀请码：<strong>{familyLink.inviteCode}</strong>
-            </p>
-            {syncStatus && (
-              <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
-                {/* 老人端只说"人话"：不出现 P2P/跨设备/协议等技术词；连接失败的技术细节只给家属端。 */}
-                {syncStatus.mode === 'cross-device' && '✅ 已经和家人手机连上了，这边的记录会同步过去。'}
-                {syncStatus.mode === 'connecting' && '⏳ 等家人在另一台手机上输入这个邀请码…'}
-                {syncStatus.mode === 'failed' && '⚠️ 暂时没连上家人的手机。放心，您记的内容都在，晚点再试一次就行。'}
-                {syncStatus.mode === 'local-only' && '现在只能在这一台设备上一起看。'}
+        </section>
+      </details>
+
+      <details className="advanced-details">
+        <summary>数据从哪儿来</summary>
+        <section className="card data-source-card">
+          <div className="section-head">
+            <div>
+              <h3>数据从哪儿来</h3>
+              <span className="muted">这两条路都进入同一个个人基线和变化检测。</span>
+            </div>
+          </div>
+          <ul className="data-source-list">
+            <li>
+              <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
+              <span className="muted">
+                —{' '}
+                {dataMode === 'demo'
+                  ? '来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）'
+                  : '当前版本未接入真实硬件；接入后会自动进入同一基线与检测'}
+              </span>
+            </li>
+            <li>
+              <b>📷 血压 / 体重 / 血糖 / 体检报告</b>
+              <span className="muted">— 来自拍照识别或手动录入</span>
+            </li>
+            <li>
+              <b>💬 主诉（"累了"、"喘"、"睡不好"）</b>
+              <span className="muted">— 来自聊天</span>
+            </li>
+          </ul>
+        </section>
+      </details>
+
+      {/*
+        家庭协同：已有邀请码或已绑定时保持可见（老人要看到码 / 看到绑定状态）；
+        还没生成邀请码时只占两行的精简卡片。P0-2：pending 状态必须保留
+        "重新生成"入口，否则家属端输入失败后双方死锁。
+      */}
+      {familyLink ? (
+        <section className="card privacy-card">
+          <div className="section-head">
+            <div>
+              <h3>家庭协同</h3>
+              <span className="muted">已经绑定家属后，您可以随时暂停共享。</span>
+            </div>
+          </div>
+          {familyLink.status === 'active' ? (
+            <>
+              <p>
+                已绑定家属：{familyLink.relation} · {familyLink.displayName}
               </p>
-            )}
-          </>
-        ) : (
+              {profile.familySharing === 'granted' && (
+                <button className="btn-secondary" onClick={onRevokeFamilyShare}>
+                  暂停家属共享
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="invite-code-line">
+                请让家属输入这个邀请码：
+                <strong className="invite-code">{familyLink.inviteCode}</strong>
+              </p>
+              {syncStatus && (
+                <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
+                  {/* 老人端只说"人话"：不出现 P2P/跨设备/协议等技术词；连接失败的技术细节只给家属端。 */}
+                  {syncStatus.mode === 'cross-device' && '✅ 已经和家人手机连上了，这边的记录会同步过去。'}
+                  {syncStatus.mode === 'connecting' && '⏳ 等家人在另一台手机上输入这个邀请码…'}
+                  {syncStatus.mode === 'failed' && '⚠️ 暂时没连上家人的手机。放心，您记的内容都在，晚点再试一次就行。'}
+                  {syncStatus.mode === 'local-only' && '现在只能在这一台设备上一起看。'}
+                </p>
+              )}
+              <button className="btn-secondary" onClick={onGenerateInvite}>
+                重新生成邀请码
+              </button>
+              <span className="muted"> 家属一直输入不成功时，换一个新码再试。旧码会立刻作废。</span>
+            </>
+          )}
+        </section>
+      ) : (
+        <section className="card privacy-card family-link-cta">
+          <div className="section-head">
+            <div>
+              <h3>家庭协同</h3>
+              <span className="muted">生成邀请码，让家人在另一台手机上看到需要他/她知道的变化。</span>
+            </div>
+          </div>
           <button className="btn-primary" onClick={onGenerateInvite}>
             生成家属邀请码
           </button>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

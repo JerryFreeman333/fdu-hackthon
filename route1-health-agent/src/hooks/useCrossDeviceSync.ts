@@ -69,6 +69,8 @@ interface UseCrossDeviceSyncOptions {
 
 export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyncOptions): {
   broadcast: (type: CrossTabMessageEnvelope['type'], payload: unknown) => void;
+  /** 只在本浏览器的 tab 之间广播（不进 PeerJS）：健康事件与 IndexedDB 同一信任域，不落到别的设备。 */
+  broadcastLocal: (type: CrossTabMessageEnvelope['type'], payload: unknown) => void;
   subscribe: (handler: Handler) => () => void;
   status: CrossDeviceStatus;
   tabId: string;
@@ -219,6 +221,24 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
     [role],
   );
 
+  const broadcastLocal = useCallback(
+    (type: CrossTabMessageEnvelope['type'], payload: unknown) => {
+      const envelope: CrossTabMessageEnvelope = {
+        tabId: tabIdRef.current,
+        fromRole: role,
+        type,
+        payload,
+        at: new Date().toISOString(),
+      };
+      const channel = channelRef.current;
+      if (!channel) return;
+      try {
+        channel.postMessage(envelope);
+      } catch {}
+    },
+    [role],
+  );
+
   const subscribe = useCallback((handler: Handler) => {
     handlersRef.current.add(handler);
     return () => {
@@ -226,5 +246,5 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
     };
   }, []);
 
-  return { broadcast, subscribe, status, tabId: tabIdRef.current };
+  return { broadcast, broadcastLocal, subscribe, status, tabId: tabIdRef.current };
 }

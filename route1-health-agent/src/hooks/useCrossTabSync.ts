@@ -27,7 +27,20 @@ export type CrossTabMessage =
   | { type: 'dispatch.append'; record: unknown }
   | { type: 'family.link'; link: unknown; sharing: UserRole | null }
   | { type: 'chat.append'; message: unknown }
-  | { type: 'chat.share'; sharedFindingIds: string[]; sharedFamilyEventIds: string[] };
+  | { type: 'chat.share'; sharedFindingIds: string[]; sharedFamilyEventIds: string[] }
+  /**
+   * P0-1 配套：健康事件在**同浏览器**各 tab 间保持一致（与 IndexedDB 持久化同一信任域，
+   * 只走 BroadcastChannel，不进 PeerJS——私密事件不能落到另一台设备的存储里）。
+   * payload: { events: HealthEvent[] }
+   */
+  | { type: 'events.append'; events: unknown[] }
+  /**
+   * P0-1 配套：隐私安全的"今日信号量"摘要（只有数量，没有内容），同浏览器与
+   * 跨设备（PeerJS）都发——让另一台设备上的家属端也能如实显示
+   * "有 N 条信号被隐私挡住"，而不是"今天还没有任何健康信号"。
+   * payload: { today: string; signalCount: number; gatedAlertCount: number }
+   */
+  | { type: 'signals.summary'; today: string; signalCount: number; gatedAlertCount: number };
 
 export interface CrossTabMessageEnvelope {
   tabId: string;

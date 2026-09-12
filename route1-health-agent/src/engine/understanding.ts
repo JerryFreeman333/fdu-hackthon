@@ -515,6 +515,21 @@ export function understandElderInput(
 }
 
 /**
+ * 子句里是否存在"正面的"分享请求：分享动词前面（同子句内 6 字窗口）没有拒绝词。
+ * "告诉女儿我血压高" → true；"这个不要告诉孩子" → false（拒绝，不是分享）。
+ * 真正的混合指令（"告诉女儿血压，别告诉儿子"）仍然两条都命中，走澄清分支。
+ */
+function hasPositiveShareRequest(clause: string): boolean {
+  const pattern = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人|家里人)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(clause)) !== null) {
+    const before = clause.slice(Math.max(0, match.index - 6), match.index);
+    if (!/(?:不要|别|不想|不希望|不愿意|不愿|不需要|先别)/.test(before)) return true;
+  }
+  return false;
+}
+
+/**
  * 在规则理解结果之上，允许按「子句原文」覆写肯否状态与症状标签。
  * LLM 理解层（llmUnderstanding.ts）用真实语言理解仲裁两类规则盲区时走这个入口：
  * - statusOverrides：肯否语义（否定/程度/双重否定）；
@@ -569,13 +584,17 @@ export function understandElderInputWithOverrides(
     };
   }
 
-  const hasExplicitFamilyShare = /(?:告诉|通知|跟|让).{0,4}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|说|讲)?/.test(trimmed);
   const hasExplicitFamilyRefusal =
     /(?:不要|别|不想|不希望|不愿意|不愿|不需要).{0,4}(?:告诉|让|通知).{0,3}(?:孩子|女儿|儿子|家人|他|她|他们|她们)/.test(
       trimmed,
     ) ||
     /(?:不想|不希望|不愿意|不愿|不需要).{0,2}(?:让|叫)?(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见)/.test(trimmed) ||
     /不想让.{0,3}(?:孩子|女儿|儿子|家人).{0,3}(?:知道|看见|知道这件事)/.test(trimmed);
+  // P2 修复：分享请求必须是"正面"的——"不要告诉孩子"是拒绝，不是分享要求。
+  // 旧正则把宾语从句设为可选，导致任何"告诉…孩子"都命中分享请求，与拒绝并存时
+  // 整句被误判为"分享要求冲突"，症状 claim 被整句丢弃（评审现场："这个不要告诉
+  // 孩子，我最近胸口有点闷" → 只得到澄清文，胸闷就地蒸发）。
+  const hasExplicitFamilyShare = splitClauses(trimmed).some(hasPositiveShareRequest);
   if (hasExplicitFamilyShare && hasExplicitFamilyRefusal && parsePrivacyIntent(trimmed) === 'private') {
     return {
       claims: [],

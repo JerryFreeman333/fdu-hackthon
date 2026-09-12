@@ -20,7 +20,17 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'dyspnea',
-    patterns: [/喘/, /气(短|不够|促)/, /憋气/, /胸闷/, /上(楼|台阶)(费劲|吃力|喘)/],
+    patterns: [
+      /喘/,
+      /气(短|不够|促)/,
+      /憋气/,
+      /胸闷/,
+      // P2 修复："胸口有点闷/胸口发闷"此前不产生任何标签，整句症状被静默丢弃
+      // （评审现场："这个不要告诉孩子，我最近胸口有点闷" → 只得到解释文）。
+      // 窗口限制在 4 字内、限定"胸"字开头，避免误收"心里闷"类情绪表达。
+      /胸(?:口|部|口里)?[^。？\n]{0,4}闷/,
+      /上(楼|台阶)(费劲|吃力|喘)/,
+    ],
     replies: ['别着急，慢慢说。我先记下您现在说的感觉，可以再告诉我是静坐时还是活动时更明显。'],
   },
   {
@@ -346,7 +356,7 @@ export function isAllowedAgentEndpoint(endpoint: string): boolean {
 }
 
 /** 同源 API 适配器。API key 应保留在服务端，不进入 Vite 客户端；慢响应超时后由规则引擎兜底。 */
-export function createHttpLlmAdapter(endpoint: string, timeoutMs = 15000): LlmAdapter {
+export function createHttpLlmAdapter(endpoint: string, timeoutMs = 12000): LlmAdapter {
   if (!isAllowedAgentEndpoint(endpoint))
     throw new Error('LLM endpoint must be a same-origin path, HTTPS URL, or localhost during development.');
   return {

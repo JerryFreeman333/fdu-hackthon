@@ -34,6 +34,9 @@ import { pushPermission, requestPushPermission } from './adapters/BrowserNotific
 import { loadWebhookConfig, sendWebhookPush } from './adapters/WebhookPushChannel';
 import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
+import { connectToPeer } from './adapters/PeerJSCrossDevice';
+import type { FamilyLinkMessage } from './engine/familyLinkHandshake';
+import type { FamilyLinkTransport } from './hooks/useFamilyBinding';
 import { lazy, Suspense } from 'react';
 import ElderHome from './components/ElderHome';
 
@@ -188,6 +191,7 @@ function AppRoot({
     revokeFamilyShare,
     generateInvite,
     bindFamily,
+    confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
   } = useFamilyBinding({ showToast, today });
@@ -236,6 +240,29 @@ function AppRoot({
     peerId: familyLink?.inviteCode ?? null,
     endpoint: role === 'elder' ? 'host' : role === 'family' ? 'guest' : 'none',
   });
+  const { broadcastLocal } = sync;
+  /**
+   * 绑定握手通道（P0-2）：家属端 bindFamily 用它走 L2（BroadcastChannel）与
+   * L3（PeerJS 临时拨号）。校验发生在拥有邀请码的老人端，输入方不再依赖
+   * 本地内存里恰好有这个码。
+   */
+  const familyLinkTransport = useMemo(
+    () => ({
+      broadcast: (type: string, payload: unknown) =>
+        sync.broadcast(type as Parameters<typeof sync.broadcast>[0], payload),
+      subscribe: (handler: (envelope: { type: string; payload: unknown }) => void) =>
+        sync.subscribe(handler as Parameters<typeof sync.subscribe>[0]),
+      dialPeer: async (code: string) => {
+        const handle = await connectToPeer(code);
+        return {
+          send: (message: unknown) => handle.broadcast(message),
+          onMessage: (onData: (message: unknown) => void) => handle.onMessage(onData),
+          close: () => handle.destroy(),
+        };
+      },
+    }),
+    [sync],
+  );
   const {
     records: dispatchRecords,
     acknowledge: acknowledgeDispatch,
@@ -247,9 +274,20 @@ function AppRoot({
     familyLink,
   });
 
+  // 另一端广播来的"今日信号摘要"（P0-1 配套，只有数量没有内容）：
+  // 跨设备时家属端自己的事件流是空的，必须用老人端广播来的数量才能如实显示
+  // "有信号但被隐私挡住"，而不是"今天还没有任何健康信号"。
+  const [remoteSignalSummary, setRemoteSignalSummary] = useState<{
+    today: string;
+    signalCount: number;
+    gatedAlertCount: number;
+  } | null>(null);
+
   // 把本地派发台账的变更广播给其它 tab，让"老人端"和"家属端"在同一浏览器内
   // 互相能看到对方的动作。这是真跨设备同步上线前最诚实的演示形态：
   // 至少不是切同一个 useState。
+  const familyLinkRequestRef = useRef(confirmLinkRequest);
+  familyLinkRequestRef.current = confirmLinkRequest;
   useEffect(() => {
     const unsubscribe = sync.subscribe((envelope: CrossTabMessageEnvelope) => {
       if (envelope.type === 'dispatch.acknowledge') {
@@ -258,10 +296,45 @@ function AppRoot({
       } else if (envelope.type === 'dispatch.append') {
         const record = envelope.payload as import('./engine/notify').FamilyNotificationRecord;
         mergeRecord(record);
+      } else if (envelope.type === 'events.append') {
+        // P0-1 配套：同浏览器 tab 间的健康事件补齐（只走 BroadcastChannel，不会来自别的设备）。
+        // 与 IndexedDB 同一信任域：刷新后本来就能看到这些事件，这里只是让同浏览器实时一致。
+        const payload = envelope.payload as { events?: unknown[] };
+        const incoming = Array.isArray(payload?.events) ? (payload.events as HealthEvent[]) : [];
+        if (incoming.length > 0) setEvents((current) => mergeHealthEvents(current, incoming));
+      } else if (envelope.type === 'signals.summary') {
+        const payload = envelope.payload as { today?: string; signalCount?: number; gatedAlertCount?: number };
+        if (
+          typeof payload?.today === 'string' &&
+          typeof payload.signalCount === 'number' &&
+          typeof payload.gatedAlertCount === 'number'
+        ) {
+          setRemoteSignalSummary({
+            today: payload.today,
+            signalCount: payload.signalCount,
+            gatedAlertCount: payload.gatedAlertCount,
+          });
+        }
+      } else if (envelope.type === 'family.link') {
+        // P0-2：绑定握手。只有老人端应答（家属端保持沉默，避免多 tab 时错误的
+        // rejected 抢在正确的 accepted 之前到达）；accepted/rejected 的消费方是
+        // 等待中的 bindFamily 握手，这里只处理 request。
+        const payload = envelope.payload as Partial<FamilyLinkMessage>;
+        if (payload?.kind !== 'request' || typeof payload.requestId !== 'string' || typeof payload.code !== 'string')
+          return;
+        if (role !== 'elder') return;
+        const link = familyLinkRequestRef.current(payload.code);
+        sync.broadcast(
+          'family.link',
+          link
+            ? { kind: 'accepted', requestId: payload.requestId, link }
+            : { kind: 'rejected', requestId: payload.requestId, reason: 'code_mismatch' },
+        );
+        if (link) showToast('家属已通过邀请码绑定成功。');
       }
     });
     return unsubscribe;
-  }, [sync, mergeAcknowledge, mergeRecord]);
+  }, [sync, mergeAcknowledge, mergeRecord, role, showToast]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
   const handleAcknowledge = useCallback(
@@ -284,6 +357,20 @@ function AppRoot({
     }
     lastBroadcastRecordIdsRef.current = currentIds;
   }, [dispatchRecords, sync]);
+
+  // 老人端广播今日信号摘要（P0-1 配套，只有数量没有内容，隐私安全）。
+  // broadcast 内部按签名去重：数值不变时不会反复发。
+  useEffect(() => {
+    if (role !== 'elder') return;
+    sync.broadcast('signals.summary', { today, signalCount: todaySignalCount, gatedAlertCount });
+  }, [role, sync, today, todaySignalCount, gatedAlertCount]);
+
+  // 家属端可见的信号量取"本 tab 计算"与"老人端广播"的较大值：
+  // 同浏览器双 tab 靠 events.append 已能对齐；跨设备时本 tab 没有事件流，
+  // 只能靠摘要数量如实呈现，绝不把"另一端有事"显示成"总体正常"。
+  const remoteSummaryForToday = remoteSignalSummary && remoteSignalSummary.today === today ? remoteSignalSummary : null;
+  const combinedSignalCount = Math.max(todaySignalCount, remoteSummaryForToday?.signalCount ?? 0);
+  const combinedGatedCount = Math.max(gatedAlertCount, remoteSummaryForToday?.gatedAlertCount ?? 0);
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings, today });
   const {
     handleElderSend,
@@ -308,6 +395,7 @@ function AppRoot({
     onMedicationMissed: () => ensureMedicationCheck(activeProfile.medications),
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
+    onBroadcastEvents: (incoming) => broadcastLocal('events.append', { events: incoming }),
   });
 
   useEffect(() => {
@@ -526,22 +614,20 @@ function AppRoot({
             onContactElder={contactElder}
             onContactDoctor={contactDoctor}
             onRevokeSharing={revokeFamilyShare}
-            onBindFamily={bindFamily}
+            onBindFamily={(code) => bindFamily(code, familyLinkTransport as FamilyLinkTransport)}
             onViewChange={setFamilyView}
             view={familyView}
             syncStatus={sync.status}
             tabId={sync.tabId}
-            todaySignalCount={todaySignalCount}
-            gatedAlertCount={gatedAlertCount}
+            todaySignalCount={combinedSignalCount}
+            gatedAlertCount={combinedGatedCount}
             onClearData={handleClearAllData}
           />
         </Suspense>
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；
-        回复层 LLM 走服务端 Endpoint，key 不进浏览器；理解层 LLM 若配置 Demo 直连模式，key 会经 Vite 注入浏览器（仅限
-        一次性/免费 key，见 README「诚实声明」；也可用 npm run proxy 本地代理让 bundle 不含 key）。
+        安康助手 · 演示版：所有数据只保存在这台设备上，需要删除时用「数据与设置」里的清空入口。
       </footer>
     </div>
   );

@@ -692,10 +692,69 @@ button {
   color: var(--ink-soft);
   margin-top: 4px;
 }
+/* 占位回复（P0-3/P1-4）：回复生成期间的即时反馈，三个点呼吸动画表示"还活着"。 */
+.chat-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95em;
+  color: var(--ink-soft);
+}
+.chat-pending-dots i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: chat-pending-breathe 1.2s ease-in-out infinite;
+}
+.chat-pending-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.chat-pending-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes chat-pending-breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-pending-dots i {
+    animation: none;
+  }
+}
 .chat-quick {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+/* 邀请码大字展示（P0-2）：老人要把这串码念给/输给另一台手机的家人，必须一眼可读。 */
+.invite-code-line {
+  font-size: 1.05em;
+}
+.invite-code {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 4px 14px;
+  border: 2px solid var(--brand);
+  border-radius: 10px;
+  font-size: 1.5em;
+  letter-spacing: 2px;
+  background: #fff;
+}
+/* 家属端绑定失败提示（P0-2）：按原因归类的明确指引，比灰色小字更显眼。 */
+.family-bind-error {
+  color: #a8482f;
+  font-weight: 600;
+  margin: 8px 0 4px;
 }
 .chip {
   border: 1.5px solid var(--brand);
