@@ -4,17 +4,20 @@
  * 所有数据均为模拟数据，仅用于产品 Demo。
  */
 import type { ChatMessage, DayRecord, ElderProfile, Observation } from '../types';
+import { formatLocalDate } from '../engine/clock';
 
-/** 把墙上时间格式化为本地日期 YYYY-MM-DD；不能用 toISOString（UTC+ 时区会退回前一天）。 */
-export function formatLocalDate(date: Date): string {
-  const pad = (value: number, width = 2): string => `${value}`.padStart(width, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+// formatLocalDate 的规范实现在 engine/clock.ts（时钟服务）；这里 re-export 保持既有导入路径兼容。
+export { formatLocalDate };
 
 function localToday(): string {
   return formatLocalDate(new Date());
 }
 
+/**
+ * 演示种子数据的时间锚点（模块加载那一刻的日期）。
+ * 只用于生成加载时冻结的 Demo 数据；运行期的"今天"必须走 engine/clock.ts
+ * 的时钟服务（评审 P1-4：页面跨午夜继续开着时，TODAY 常量会把新消息算到昨天）。
+ */
 export const TODAY = localToday();
 
 function dateOffset(offset: number): string {

@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage, ElderProfile, ElderSubject, FamilyHealthEvent, Finding } from '../types';
 import { METRICS } from '../types';
-import { formatLocalDate, TODAY } from '../data/demo';
+import { formatLocalDate } from '../data/demo';
+import { chatClockLabel } from '../engine/clock';
 import {
   appendHealthEvents,
   labResultToEvent,
@@ -57,6 +58,8 @@ const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
 
 interface UseElderChatOptions {
+  /** 注入的"今天"（评审 P1-4）：来自 App 的时钟服务，跨午夜后新回合归到新的一天。 */
+  today: string;
   familySharing: ElderProfile['familySharing'];
   events: HealthEvent[];
   chat: ChatMessage[];
@@ -126,6 +129,7 @@ function isCurrentReassurance(text: string): boolean {
 }
 
 export function useElderChat({
+  today,
   familySharing,
   events,
   chat,
@@ -145,7 +149,7 @@ export function useElderChat({
   async function handleElderSend(text: string) {
     const intent = parsePrivacyIntent(text);
     const persisted = intent !== 'no_record';
-    const now = `${TODAY.slice(5)} ${new Date().toTimeString().slice(0, 5)}`;
+    const now = chatClockLabel(today, new Date());
     const elderMessage = msg('elder', text, now, persisted);
     // 回显与上下文在入队前定格：队列里的后续回合会继续改写 chat。
     const priorChat = chat;
@@ -175,9 +179,9 @@ export function useElderChat({
   ): Promise<StructuredElderInput> {
     const config = resolveUnderstandingLlmConfig(import.meta.env);
     if (canUseLlmUnderstanding(intent, config !== null)) {
-      return understandElderInputWithLlm(text, TODAY, priorChat, config as NonNullable<typeof config>);
+      return understandElderInputWithLlm(text, today, priorChat, config as NonNullable<typeof config>);
     }
-    return understandElderInput(text, TODAY, priorChat);
+    return understandElderInput(text, today, priorChat);
   }
 
   async function runElderTurn(text: string, elderMessage: ChatMessage, priorChat: ChatMessage[]) {
@@ -282,7 +286,7 @@ export function useElderChat({
       const incomingFamilyEvents = familyClaims.map(
         (claim, claimIndex): FamilyHealthEvent => ({
           id: `family-live-${Date.now()}-${claimIndex}`,
-          timestamp: `${claim.eventDate ?? TODAY}T12:00:00`,
+          timestamp: `${claim.eventDate ?? today}T12:00:00`,
           source: 'chat',
           subject: claim.subject,
           text: claim.text,
@@ -337,7 +341,7 @@ export function useElderChat({
       const claim = acceptedClaims[claimIndex];
       if (!shouldPersistClaim(claim)) continue;
       const extractedValues = extractHealthValues(claim.text);
-      const eventDate = claim.eventDate ?? TODAY;
+      const eventDate = claim.eventDate ?? today;
       incomingEvents.push(
         observationToEvent({
           id: `obs-live-${Date.now()}-${claimIndex}`,
@@ -394,7 +398,7 @@ export function useElderChat({
 
     if (intent === 'share_family') {
       const mergedForDetection = appendHealthEvents(dropCorrected(events), incomingEvents);
-      const shareableFindingIds = runDetection(mergedForDetection, TODAY)
+      const shareableFindingIds = runDetection(mergedForDetection, today)
         .filter(
           (finding) =>
             (finding.severity === 'alert' || finding.severity === 'urgent') &&

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ElderProfile, FamilyLink } from '../types';
-import { formatLocalDate, TODAY } from '../data/demo';
+import { formatLocalDate } from '../data/demo';
 
 const MAX_PENDING_ONE_TIME_IDS = 50;
 
@@ -15,17 +15,19 @@ function localIsoTimestamp(): string {
   )}`;
 }
 
-function createInviteCode(): string {
+function createInviteCode(today: string): string {
   // Demo 级别的 4 位数字邀请码：仅用于单设备演示绑定，真实产品必须由服务端签发高熵授权。
   const random =
     typeof crypto !== 'undefined' && 'getRandomValues' in crypto
       ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
       : Math.floor(Math.random() * 10000);
-  return `AN-${TODAY.slice(0, 4)}-${random.toString().padStart(4, '0')}`;
+  return `AN-${today.slice(0, 4)}-${random.toString().padStart(4, '0')}`;
 }
 
 interface UseFamilyBindingOptions {
   showToast: (text: string) => void;
+  /** 注入的"今天"（评审 P1-4）：邀请码年份跟随当前日期，不再用模块加载时常量。 */
+  today: string;
 }
 
 /**
@@ -35,7 +37,7 @@ interface UseFamilyBindingOptions {
  * One-time grants stay held for the whole session and are only cleared by revoke/reset:
  * the family view must be able to show exactly what the elder was told was shared.
  */
-export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
+export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) {
   const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>('denied');
   const [consentUpdatedAt, setConsentUpdatedAt] = useState('');
   const [familyLink, setFamilyLink] = useState<FamilyLink | null>(null);
@@ -78,7 +80,7 @@ export function useFamilyBinding({ showToast }: UseFamilyBindingOptions) {
   }
 
   function generateInvite() {
-    const code = createInviteCode();
+    const code = createInviteCode(today);
     const link: FamilyLink = {
       id: `family-${Date.now()}`,
       relation: '家属',
