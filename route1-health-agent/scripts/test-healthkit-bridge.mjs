@@ -93,6 +93,8 @@ try {
   const receipt = await accepted.json();
   assert.equal(receipt.accepted, 2, 'duplicate IDs must be stored once');
   assert.equal(receipt.duplicatesRemoved, 1);
+  assert.equal(receipt.revision, 1);
+  assert.equal(receipt.updatedAt, receipt.receivedAt);
 
   const mismatch = await get('?userId=另一位测试用户');
   assert.equal(mismatch.status, 409, 'wrong user must not look like an empty sample set');
@@ -105,10 +107,19 @@ try {
   assert.equal(filtered.measurements[0].source, 'healthkit');
   assert.equal(filtered.measurements[0].metadata.deviceName, 'Test Apple Watch');
   assert.equal(filtered.diagnostics.freshness, 'fresh');
+  assert.equal(filtered.diagnostics.revision, 1);
+
+  const diagnosticsResponse = await get('?userId=现场测试用户&diagnostics=1');
+  assert.equal(diagnosticsResponse.status, 200);
+  const diagnosticsOnly = await diagnosticsResponse.json();
+  assert.equal(diagnosticsOnly.measurements, undefined, 'poll endpoint must not return the full sample payload');
+  assert.equal(diagnosticsOnly.diagnostics.revision, 1);
 
   const repeated = await post({ ...base, measurements: [measurement, secondMeasurement] });
   assert.equal(repeated.status, 202);
-  assert.equal((await repeated.json()).accepted, 2, 're-uploading the same batch must not multiply stored records');
+  const repeatedReceipt = await repeated.json();
+  assert.equal(repeatedReceipt.accepted, 2, 're-uploading the same batch must not multiply stored records');
+  assert.equal(repeatedReceipt.revision, 2, 'each accepted iPhone upload advances the bridge revision');
   const afterRepeat = await get('?userId=现场测试用户&from=2026-09-01&to=2026-09-12');
   assert.equal((await afterRepeat.json()).measurements.length, 2);
 
@@ -121,7 +132,7 @@ try {
   assert.equal(stalePayload.error, 'stale_data');
   assert.equal(stalePayload.diagnostics.freshness, 'stale');
 
-  console.log('PASS: HealthKit bridge validation, freshness, token, user isolation, filtering and dedup');
+  console.log('PASS: HealthKit bridge revision, diagnostics, freshness, token, user isolation, filtering and dedup');
 } finally {
   child.kill('SIGTERM');
   await rm(temp, { recursive: true, force: true });

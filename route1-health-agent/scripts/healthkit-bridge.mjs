@@ -80,6 +80,8 @@ function diagnosticsFor(stored, now = Date.now()) {
     ? Math.max(0, (now - receivedTime) / 60_000)
     : Number.POSITIVE_INFINITY;
   return {
+    revision: Number.isSafeInteger(stored.revision) && stored.revision >= 0 ? stored.revision : 0,
+    updatedAt: typeof stored.updatedAt === 'string' ? stored.updatedAt : stored.receivedAt,
     authorizationStatus: stored.authorizationStatus,
     receivedAt: stored.receivedAt,
     generatedAt: stored.generatedAt,
@@ -126,8 +128,12 @@ const server = createServer(async (request, response) => {
         return send(response, 400, { error: '存在无效测量：必须是 source=healthkit、标准单位、有效时间戳和有限数值' });
       }
       const measurements = dedupeMeasurements(payload.measurements);
+      const previous = await loadPayload();
+      const previousRevision = Number.isSafeInteger(previous?.revision) && previous.revision >= 0 ? previous.revision : 0;
+      const receivedAt = new Date().toISOString();
       const stored = {
         schemaVersion: 1,
+        revision: previousRevision + 1,
         userId: payload.userId,
         generatedAt: payload.generatedAt,
         authorizationStatus: ['not-requested', 'request-completed', 'limited-or-no-data'].includes(
@@ -136,7 +142,8 @@ const server = createServer(async (request, response) => {
           ? payload.authorizationStatus
           : 'unknown',
         deviceName: typeof payload.deviceName === 'string' ? payload.deviceName : undefined,
-        receivedAt: new Date().toISOString(),
+        receivedAt,
+        updatedAt: receivedAt,
         measurements,
       };
       await mkdir(dirname(dataFile), { recursive: true });
@@ -144,6 +151,8 @@ const server = createServer(async (request, response) => {
       return send(response, 202, {
         accepted: stored.measurements.length,
         receivedAt: stored.receivedAt,
+        updatedAt: stored.updatedAt,
+        revision: stored.revision,
         duplicatesRemoved: payload.measurements.length - measurements.length,
       });
     }
@@ -167,6 +176,9 @@ const server = createServer(async (request, response) => {
           message: `HealthKit 数据已过期，上次上传时间为 ${stored.receivedAt}，请重新从 iPhone 同步。`,
           diagnostics,
         });
+      }
+      if (url.searchParams.get('diagnostics') === '1') {
+        return send(response, 200, { diagnostics });
       }
       const from = url.searchParams.get('from') ?? '0000-01-01';
       const to = url.searchParams.get('to') ?? '9999-12-31';

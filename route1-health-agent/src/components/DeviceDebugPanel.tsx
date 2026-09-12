@@ -6,6 +6,9 @@ import type { DeviceMode } from '../config/runtime';
 export interface DeviceSyncState {
   status: 'idle' | 'syncing' | 'success' | 'error';
   lastSyncAt?: string;
+  lastCheckedAt?: string;
+  autoPolling?: boolean;
+  lastTrigger?: 'manual' | 'automatic';
   error?: string;
   received: HealthMeasurement[];
   diagnostics?: HealthKitBridgeDiagnostics;
@@ -61,6 +64,14 @@ export default function DeviceDebugPanel({ mode, state, eventCount, findings, pe
               <span>{state.status === 'success' ? '已连接' : state.status === 'error' ? '失败' : '等待同步'}</span>
             </div>
             <div>
+              <b>自动检测</b>
+              <span>{state.autoPolling ? '已开启（每 7 秒）' : '未开启'}</span>
+            </div>
+            <div>
+              <b>Bridge revision</b>
+              <span>{state.diagnostics?.revision ?? '尚无'}</span>
+            </div>
+            <div>
               <b>权限请求</b>
               <span>{state.diagnostics?.authorizationStatus ?? '尚未收到 iPhone 状态'}</span>
             </div>
@@ -112,6 +123,12 @@ export default function DeviceDebugPanel({ mode, state, eventCount, findings, pe
             </div>
           </div>
           {state.lastSyncAt && <p className="muted">最近同步：{new Date(state.lastSyncAt).toLocaleString()}</p>}
+          {state.lastCheckedAt && (
+            <p className="muted">
+              最近检测：{new Date(state.lastCheckedAt).toLocaleString()}
+              {state.lastTrigger ? ` · 最近刷新由${state.lastTrigger === 'automatic' ? '自动检测' : '手动按钮'}触发` : ''}
+            </p>
+          )}
           {state.error && (
             <div className="sync-error" role="alert">
               {state.error}

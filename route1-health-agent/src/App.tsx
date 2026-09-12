@@ -14,6 +14,12 @@ import {
 import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { HealthKitDeviceAdapter } from './adapters/HealthKitDeviceAdapter';
+import {
+  HEALTHKIT_POLL_INTERVAL_MS,
+  healthKitRevisionKey,
+  shouldPollHealthKit,
+  shouldRefreshHealthKit,
+} from './healthkit/autoSync';
 import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
@@ -94,6 +100,9 @@ export default function App() {
     [],
   );
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
+  const healthKitSyncInFlightRef = useRef(false);
+  const healthKitPollInFlightRef = useRef(false);
+  const lastAppliedHealthKitRevisionRef = useRef<string>();
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
     setToast(text);
@@ -223,30 +232,97 @@ export default function App() {
     onShareFamilyEventIds: shareFamilyEventIds,
   });
 
-  // 手动同步：demo 模式走 DemoDeviceAdapter；healthkit 模式走真实桥接并 fail-closed。
-  const syncDevice = useCallback(async () => {
+  // 手动和自动同步复用同一条 Adapter → HealthEvent → Detection/Finding → Person Twin 链。
+  const syncDevice = useCallback(async (trigger: 'manual' | 'automatic' = 'manual') => {
+    if (healthKitSyncInFlightRef.current) return;
+    healthKitSyncInFlightRef.current = true;
     setDeviceSync((current) => ({ ...current, status: 'syncing', error: undefined }));
     try {
       const adapter = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter : demoDeviceAdapter;
       const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? TODAY);
       const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : profile.name;
       const deviceMeasurements = await adapter.getMeasurements(userId, from, TODAY);
+      const diagnostics = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter.lastDiagnostics : undefined;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
+      if (runtimeConfig.deviceMode === 'healthkit') {
+        lastAppliedHealthKitRevisionRef.current = healthKitRevisionKey(diagnostics);
+      }
       setDeviceSync({
         status: 'success',
         received: deviceMeasurements,
         lastSyncAt: new Date().toISOString(),
-        diagnostics: healthKitAdapter.lastDiagnostics,
+        lastCheckedAt: new Date().toISOString(),
+        autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
+        lastTrigger: trigger,
+        diagnostics,
       });
-      showToast(
-        `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
-      );
+      if (trigger === 'manual') {
+        showToast(
+          `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setDeviceSync({ status: 'error', received: [], error: message, diagnostics: healthKitAdapter.lastDiagnostics });
-      showToast('同步失败，未使用 Demo 数据替代。');
+      setDeviceSync((current) => ({
+        ...current,
+        status: 'error',
+        error: message,
+        lastCheckedAt: new Date().toISOString(),
+        autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
+        diagnostics: healthKitAdapter.lastDiagnostics,
+      }));
+      if (trigger === 'manual') showToast('同步失败，未使用 Demo 数据替代。');
+    } finally {
+      healthKitSyncInFlightRef.current = false;
     }
   }, [healthKitAdapter, showToast]);
+
+  useEffect(() => {
+    if (!shouldPollHealthKit(runtimeConfig.deviceMode)) return;
+    let stopped = false;
+    setDeviceSync((current) => ({ ...current, autoPolling: true }));
+
+    const pollDiagnostics = async () => {
+      if (healthKitPollInFlightRef.current || healthKitSyncInFlightRef.current) return;
+      healthKitPollInFlightRef.current = true;
+      try {
+        const diagnostics = await healthKitAdapter.getDiagnostics(runtimeConfig.healthkitUserId);
+        if (stopped) return;
+        setDeviceSync((current) => ({
+          ...current,
+          diagnostics,
+          lastCheckedAt: new Date().toISOString(),
+          autoPolling: true,
+          error: current.status === 'error' ? undefined : current.error,
+          status: current.status === 'error' ? 'idle' : current.status,
+        }));
+        if (shouldRefreshHealthKit(lastAppliedHealthKitRevisionRef.current, diagnostics)) {
+          await syncDevice('automatic');
+        }
+      } catch (error) {
+        if (stopped) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setDeviceSync((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+          diagnostics: healthKitAdapter.lastDiagnostics,
+          lastCheckedAt: new Date().toISOString(),
+          autoPolling: true,
+        }));
+      } finally {
+        healthKitPollInFlightRef.current = false;
+      }
+    };
+
+    void pollDiagnostics();
+    const timer = window.setInterval(() => void pollDiagnostics(), HEALTHKIT_POLL_INTERVAL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      setDeviceSync((current) => ({ ...current, autoPolling: false }));
+    };
+  }, [healthKitAdapter, syncDevice]);
 
   useEffect(() => {
     if (runtimeConfig.deviceMode !== 'demo') return;
@@ -395,7 +471,7 @@ export default function App() {
             eventCount={events.length}
             findings={findings}
             personTwin={agentContext.personTwin}
-            onSync={() => void syncDevice()}
+            onSync={() => void syncDevice('manual')}
           />
         </main>
         {toast && <div className="toast">{toast}</div>}

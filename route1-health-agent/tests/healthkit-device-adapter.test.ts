@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HealthKitAdapterError, HealthKitDeviceAdapter } from '../src/adapters/HealthKitDeviceAdapter';
+import {
+  HealthKitAdapterError,
+  HealthKitDeviceAdapter,
+  type HealthKitBridgeDiagnostics,
+} from '../src/adapters/HealthKitDeviceAdapter';
 import { measurementToEvent, mergeHealthEvents } from '../src/pipeline/events';
+import {
+  healthKitRevisionKey,
+  shouldPollHealthKit,
+  shouldRefreshHealthKit,
+} from '../src/healthkit/autoSync';
 
 const validMeasurement = {
   id: 'healthkit-uuid-1',
@@ -20,7 +29,9 @@ const validMeasurement = {
   },
 };
 
-const diagnostics = {
+const diagnostics: HealthKitBridgeDiagnostics = {
+  revision: 1,
+  updatedAt: '2026-09-12T08:00:00.000Z',
   authorizationStatus: 'request-completed',
   receivedAt: '2026-09-12T08:00:00.000Z',
   generatedAt: '2026-09-12T07:59:00.000Z',
@@ -65,6 +76,36 @@ test('valid payload preserves provenance and sends optional token', async () => 
       assert.equal(adapter.lastDiagnostics?.freshness, 'fresh');
     },
   );
+});
+
+test('diagnostics polling uses its lightweight endpoint and preserves revision', async () => {
+  await withFetch(
+    async (input) => {
+      const url = new URL(String(input));
+      assert.equal(url.searchParams.get('diagnostics'), '1');
+      assert.equal(url.searchParams.get('userId'), '现场测试用户');
+      assert.equal(url.searchParams.has('from'), false);
+      return jsonResponse({ diagnostics });
+    },
+    async () => {
+      const result = await new HealthKitDeviceAdapter('http://localhost/test').getDiagnostics('现场测试用户');
+      assert.equal(result.revision, 1);
+    },
+  );
+});
+
+test('auto-sync gate refreshes only for a changed fresh revision marker', () => {
+  const firstKey = healthKitRevisionKey(diagnostics);
+  assert.equal(shouldRefreshHealthKit(undefined, diagnostics), true, 'first fresh upload triggers synchronization');
+  assert.equal(shouldRefreshHealthKit(firstKey, diagnostics), false, 'unchanged revision does not repeat synchronization');
+  assert.equal(shouldRefreshHealthKit(firstKey, { ...diagnostics, revision: 2 }), true, 'changed revision triggers');
+  assert.equal(
+    shouldRefreshHealthKit(firstKey, { ...diagnostics, freshness: 'stale', revision: 2 }),
+    false,
+    'stale diagnostics never refresh Person Twin',
+  );
+  assert.equal(shouldPollHealthKit('healthkit'), true);
+  assert.equal(shouldPollHealthKit('demo'), false, 'non-healthkit mode does not poll');
 });
 
 for (const [name, changed] of [

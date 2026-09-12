@@ -24,6 +24,8 @@ struct HealthKitUpload: Codable {
 struct UploadReceipt: Codable {
     let accepted: Int
     let receivedAt: String
+    let updatedAt: String?
+    let revision: Int?
 }
 
 enum BridgeError: LocalizedError {

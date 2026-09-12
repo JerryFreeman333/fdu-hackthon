@@ -4,6 +4,8 @@ import { METRICS, type HealthMeasurement, type MetricKey } from '../types';
 const METRIC_KEYS = new Set<MetricKey>(Object.keys(METRICS) as MetricKey[]);
 
 export interface HealthKitBridgeDiagnostics {
+  revision?: number;
+  updatedAt?: string;
   authorizationStatus: 'not-requested' | 'request-completed' | 'limited-or-no-data' | 'unknown';
   receivedAt?: string;
   generatedAt?: string;
@@ -42,6 +44,8 @@ function diagnosticsFrom(value: unknown): HealthKitBridgeDiagnostics | undefined
   const status = value.authorizationStatus;
   const freshness = value.freshness;
   return {
+    revision: typeof value.revision === 'number' && Number.isSafeInteger(value.revision) ? value.revision : undefined,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : undefined,
     authorizationStatus:
       status === 'not-requested' || status === 'request-completed' || status === 'limited-or-no-data'
         ? status
@@ -112,15 +116,40 @@ export class HealthKitDeviceAdapter implements DeviceAdapter {
     private readonly bridgeToken = '',
   ) {}
 
+  async getDiagnostics(userId: string): Promise<HealthKitBridgeDiagnostics> {
+    this.lastDiagnostics = undefined;
+    const payload = await this.fetchPayload(userId, { diagnostics: '1' });
+    const diagnostics = record(payload) ? diagnosticsFrom(payload.diagnostics) : undefined;
+    if (!diagnostics) throw new HealthKitAdapterError('HealthKit 桥接服务响应缺少 diagnostics', 'invalid-response');
+    this.lastDiagnostics = diagnostics;
+    return diagnostics;
+  }
+
   async getMeasurements(userId: string, from: string, to: string): Promise<HealthMeasurement[]> {
     this.lastDiagnostics = undefined;
+    const payload = await this.fetchPayload(userId, { from, to });
+    const list = Array.isArray(payload) ? payload : record(payload) ? payload.measurements : null;
+    if (!Array.isArray(list)) throw new HealthKitAdapterError('响应缺少 measurements 数组', 'invalid-response');
+    if (record(payload)) this.lastDiagnostics = diagnosticsFrom(payload.diagnostics);
+    const measurements = list
+      .map(normalizeMeasurement)
+      .filter((item) => item.timestamp.slice(0, 10) >= from && item.timestamp.slice(0, 10) <= to);
+    if (measurements.length === 0) {
+      throw new HealthKitAdapterError(
+        '桥接已连接，但所选日期内没有可读取的 HealthKit 样本；请检查 Apple 健康权限和数据时间范围。',
+        'no-samples',
+      );
+    }
+    return measurements;
+  }
+
+  private async fetchPayload(userId: string, query: Record<string, string>): Promise<unknown> {
     let response: Response;
     try {
       const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
       const url = new URL(this.endpoint, origin);
       url.searchParams.set('userId', userId);
-      url.searchParams.set('from', from);
-      url.searchParams.set('to', to);
+      for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (this.bridgeToken) headers['X-HealthKit-Bridge-Token'] = this.bridgeToken;
       response = await fetch(url, { headers, cache: 'no-store' });
@@ -168,18 +197,6 @@ export class HealthKitDeviceAdapter implements DeviceAdapter {
     } catch {
       throw new HealthKitAdapterError('HealthKit 桥接服务未返回有效 JSON', 'invalid-response');
     }
-    const list = Array.isArray(payload) ? payload : record(payload) ? payload.measurements : null;
-    if (!Array.isArray(list)) throw new HealthKitAdapterError('响应缺少 measurements 数组', 'invalid-response');
-    if (record(payload)) this.lastDiagnostics = diagnosticsFrom(payload.diagnostics);
-    const measurements = list
-      .map(normalizeMeasurement)
-      .filter((item) => item.timestamp.slice(0, 10) >= from && item.timestamp.slice(0, 10) <= to);
-    if (measurements.length === 0) {
-      throw new HealthKitAdapterError(
-        '桥接已连接，但所选日期内没有可读取的 HealthKit 样本；请检查 Apple 健康权限和数据时间范围。',
-        'no-samples',
-      );
-    }
-    return measurements;
+    return payload;
   }
 }

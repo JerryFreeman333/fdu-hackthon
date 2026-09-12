@@ -10,6 +10,22 @@ Apple Watch → Apple 健康 / HealthKit → iPhone companion
 
 浏览器不会直接读取 HealthKit。真实模式不包含 Demo fallback；桥接未启动、无样本或响应来源不正确时，页面会明确报错。
 
+## 准实时自动同步模式
+
+比赛模式的稳定链路如下：
+
+```text
+HealthKit 变化 → iPhone observer → 5 秒 debounce → 自动读取并上传
+→ Bridge revision 递增 → Web 每 7 秒检测 diagnostics
+→ revision / receivedAt 变化 → 复用完整同步链刷新 Person Twin
+```
+
+- App 启动会注册 observer、请求后台投递，并自动读取/上传一次；已经完成 HealthKit 授权时无需再点“读取”和“上传”。
+- observer 覆盖步数、静息心率，以及现有支持的步行速度、血氧和睡眠；多次回调会合并，读取/上传任务不会并发执行。
+- `HKHealthStore.enableBackgroundDelivery(..., .immediate)` 只是请求尽快投递。后台是否唤醒及具体时机由 iOS 决定，不保证秒级实时；比赛现场保持 companion 在前台最稳。
+- Bridge 每次接受上传后持久化递增 `revision`，并返回 `updatedAt` / `receivedAt`。网页只轮询轻量 diagnostics，revision 与 receivedAt 均未变化时不会重复生成 HealthEvent 或刷新 Person Twin。
+- Bridge 断线、token 错误、用户不匹配或数据 stale 时，网页保持 fail-closed，只显示错误，不刷新 Person Twin，也绝不切换到 Demo。
+
 ## 0. 准备
 
 - 一台 Mac（用于 Xcode）和一台真实 iPhone；iOS Simulator 不适合验收真实 HealthKit 数据。
@@ -52,7 +68,11 @@ open AnkangHealthBridge.xcodeproj
 
 若不使用 XcodeGen，可在 Xcode 新建 iOS App，把 `Sources` 下四个 Swift 文件加入 target，并把 `Support/Info.plist` 的隐私说明和 entitlement 配到 target。
 
-## 3. iPhone 上读取并上传
+## 3. iPhone 上自动读取并上传
+
+首次安装仍需点击“请求读取权限”并在系统界面授权。以后比赛现场先启动 Bridge，再打开 companion；App 会自动读取最近 22 天并上传，页面显示“自动同步成功”和 Bridge revision。HealthKit 后续变化会自动触发同一流程。
+
+若自动流程受网络或系统调度影响，下面的三个按钮继续作为现场兜底，原手动流程完整保留：
 
 1. 桥接地址填写电脑的 `.local` 地址；测试用户 ID 必须与 `VITE_HEALTHKIT_USER_ID` 一致。
 2. 如果 bridge 开启了测试 Token，在 companion 中填写同一个 Token。
@@ -71,12 +91,13 @@ Apple 为保护隐私，不允许 App 区分“某项读取权限被拒绝”和
 npm run dev -- --host 0.0.0.0
 ```
 
-进入老人端或家属端，展开“真实硬件验收”，点击“同步真实健康数据”。
+进入老人端，展开“真实硬件验收”。真实模式会每 7 秒自动检测 Bridge；发现新 revision 后自动同步。“同步真实健康数据”按钮继续保留作为手动兜底。
 
 ## 5. 现场通过标准
 
 - 页面模式条显示 `设备 healthkit`。
 - 调试页显示桥接状态、样本数、HealthEvent 数、Finding 数和 Person Twin 刷新日期。
+- 调试页显示自动检测已开启、Bridge revision、最近检测时间及最近一次刷新触发方式。
 - 样本 `source=healthkit`，数值和时间可与 Apple 健康人工核对。
 - 样本保留 source/device/UUID；按天聚合的步数和睡眠标记聚合方法。
 - 停止桥接服务后再次同步，页面明确报错，并显示“未使用 Demo 数据替代”。
@@ -92,7 +113,11 @@ npm run healthkit:bridge
 
 确认日志出现 `HealthKit bridge listening`、30 分钟 freshness 限制，以及 Token 已启用或无认证警告。
 
-### B. iPhone 三步操作
+### B. iPhone 最少操作
+
+已授权的比赛机只需打开 companion 并保持前台，确认“自动同步成功”。首次安装需要额外完成一次系统 HealthKit 授权。
+
+自动流程异常时再使用保留的三步手动兜底：
 
 ```text
 1. 请求读取权限
@@ -102,9 +127,9 @@ npm run healthkit:bridge
 
 确认显示“电脑已接收 X 条”。
 
-### C. 电脑网页同步
+### C. 电脑网页自动同步
 
-确认 `.env.local` 中 `VITE_DEVICE_MODE=healthkit`，运行 `npm run dev`，在“真实硬件验收”点击“同步真实健康数据”。
+确认 `.env.local` 中 `VITE_DEVICE_MODE=healthkit`，运行 `npm run dev`。等待最多约 7 秒，确认 revision 变化触发自动刷新；必要时可点击保留的“同步真实健康数据”。
 
 ### D. 人工核对
 
@@ -112,7 +137,7 @@ npm run healthkit:bridge
 
 ### E. 断线失败验证
 
-停止 bridge，再次点击网页同步。页面必须显示失败和“未使用 Demo 数据替代”。重新启动 bridge 后，如最后上传已超过 freshness 限制，页面必须显示“旧数据，不能用于本轮真实硬件验收”，直到 iPhone 重新上传。
+停止 bridge，等待一次轮询或再次点击网页同步。页面必须显示失败和“未使用 Demo 数据替代”。重新启动 bridge 后，如最后上传已超过 freshness 限制，页面必须显示“旧数据，不能用于本轮真实硬件验收”，且 Person Twin 不刷新，直到 iPhone 重新上传。
 
 ## 指标边界
 
@@ -131,3 +156,13 @@ npm run security:check
 ```
 
 Swift 工程必须在 Mac 上以真实 iPhone 再完成一次 Build + Run 验证。
+
+本地 Swift 编译可先执行：
+
+```bash
+cd native-ios
+xcodegen generate
+xcodebuild -project AnkangHealthBridge.xcodeproj -scheme AnkangHealthBridge -sdk iphoneos -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+自动化无法替代真机验证：必须人工确认 observer 前台触发、锁屏/后台由 iOS 调度后的唤醒、局域网上传，以及自动刷新后的真实数值和来源。

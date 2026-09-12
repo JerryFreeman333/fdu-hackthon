@@ -13,7 +13,7 @@
   <key>CFBundleVersion</key><string>1</string>
   <key>LSRequiresIPhoneOS</key><true/>
   <key>NSHealthShareUsageDescription</key><string>读取您授权的步数、静息心率、睡眠、步行速度和血氧，用于验证健康变化分析。</string>
-  <key>NSLocalNetworkUsageDescription</key><string>将您主动同步的健康数据发送到同一局域网内的现场测试电脑。</string>
+  <key>NSLocalNetworkUsageDescription</key><string>将您授权读取的健康数据自动或手动发送到同一局域网内的现场测试电脑。</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
   <key>UILaunchScreen</key><dict/>
   <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
