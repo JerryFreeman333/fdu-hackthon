@@ -15,8 +15,14 @@ final class HealthKitService: ObservableObject {
 
     private var readTypes: Set<HKObjectType> {
         var types = Set<HKObjectType>()
-        [.stepCount, .restingHeartRate, .walkingSpeed, .oxygenSaturation].forEach {
-            if let type = HKObjectType.quantityType(forIdentifier: $0) { types.insert(type) }
+        let quantityIdentifiers: [HKQuantityTypeIdentifier] = [
+            .stepCount,
+            .restingHeartRate,
+            .walkingSpeed,
+            .oxygenSaturation
+        ]
+        quantityIdentifiers.forEach { identifier in
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) { types.insert(type) }
         }
         if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
         return types
@@ -130,7 +136,12 @@ final class HealthKitService: ObservableObject {
             }
             store.execute(query)
         }
-        let asleepValues: Set<Int> = [HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue, .asleepCore.rawValue, .asleepDeep.rawValue, .asleepREM.rawValue]
+        let asleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue
+        ]
         let asleep = samples.filter { asleepValues.contains($0.value) }
         let grouped = Dictionary(grouping: asleep) { calendar.startOfDay(for: $0.endDate) }
         return grouped.compactMap { date, daySamples in
