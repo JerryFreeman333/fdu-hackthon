@@ -868,3 +868,9 @@ button {
   font-size: 17px;
   padding: 10px 18px;
 }
+.task-call-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}

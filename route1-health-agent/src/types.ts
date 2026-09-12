@@ -21,6 +21,9 @@ export interface FamilyLink {
   status: 'active' | 'pending';
 }
 
+/** 老人端任务卡上可直接执行的动作（评审 P0-3：不允许出现"死胡同任务"）。 */
+export type CareTaskAction = 'call_family' | 'request_share';
+
 export interface CareTask {
   id: string;
   title: string;
@@ -31,6 +34,8 @@ export interface CareTask {
   sourceFindingId?: string;
   kind: 'medication_check' | 'safety_check' | 'contact_family' | 'observation';
   completionNote?: string;
+  /** 可直接执行的动作；contact_family 任务必须至少携带一个（不变量测试锁定）。 */
+  actions?: CareTaskAction[];
 }
 
 export interface ConsentState {

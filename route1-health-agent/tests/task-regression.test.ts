@@ -24,6 +24,19 @@ async function main(): Promise<void> {
     familyTask?.kind === 'contact_family',
     'family-eligible findings with a family message must create contact_family tasks',
   );
+  // 评审 P0-3：老人端任务不得复用写给家属的文案（第三人称），且必须带可执行动作。
+  assert(
+    familyTask.description !== sharedAlert.familyMessage && familyTask.description !== sharedAlert.carePath,
+    'elder task description must not reuse family-facing copy (familyMessage/carePath)',
+  );
+  assert(
+    (familyTask.actions?.length ?? 0) >= 1,
+    'contact_family tasks must carry at least one executable action (no dead-end tasks)',
+  );
+  assert(
+    familyTask.actions?.includes('call_family') && familyTask.actions?.includes('request_share'),
+    'contact_family tasks must offer call + share actions',
+  );
 
   const privateUrgent: Finding = {
     ...sharedAlert,
@@ -36,6 +49,11 @@ async function main(): Promise<void> {
   assert(
     safetyTask?.kind === 'safety_check',
     'urgent findings without shareable family context must remain safety_check tasks',
+  );
+  assert(safetyTask.actions?.includes('call_family'), 'urgent safety tasks must offer a call action');
+  assert(
+    safetyTask.description !== privateUrgent.carePath,
+    'elder safety task description must be elder-directed, not the family carePath',
   );
 
   const parsed = await demoImageHealthParser.parse(new Blob(['demo']), {
