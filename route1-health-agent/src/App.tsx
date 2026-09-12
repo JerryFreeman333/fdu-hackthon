@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
-import { TODAY, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { startClockService, todayNow } from './engine/clock';
 import { demoStoredProfile, loadStoredProfile, saveStoredProfile, type StoredProfile } from './store/profileStore';
 import FirstRunGate from './components/FirstRunGate';
 import OnboardingFlow from './components/OnboardingFlow';
@@ -162,6 +163,13 @@ function AppRoot({
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
   const [toast, setToast] = useState<string | null>(null);
+  // 时钟服务（评审 P1-4）：运行期的"今天"是可对时的 state，不再是模块加载时定格的常量。
+  // 每分钟 tick + 页面从后台恢复时对时；跨午夜后新消息/新任务/新检测都算新的一天。
+  const [today, setToday] = useState(() => todayNow());
+  useEffect(() => {
+    const clock = startClockService(setToday);
+    return () => clock.stop();
+  }, []);
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
@@ -182,7 +190,7 @@ function AppRoot({
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-  } = useFamilyBinding({ showToast });
+  } = useFamilyBinding({ showToast, today });
 
   const activeProfile: ElderProfile = useMemo(
     () => ({ ...storedProfile.profile, familySharing }),
@@ -198,26 +206,26 @@ function AppRoot({
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
   );
-  const findings = useMemo(() => runDetection(events, TODAY), [events]);
+  const findings = useMemo(() => runDetection(events, today), [events, today]);
   const agentContext = useMemo(
-    () => buildAgentContext(activeProfile, events, TODAY, findings),
-    [activeProfile, events, findings],
+    () => buildAgentContext(activeProfile, events, today, findings),
+    [activeProfile, events, today, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
-    [findings, familySharing, sharedFindingIds],
+    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, today),
+    [findings, familySharing, sharedFindingIds, today],
   );
   // 第三种未知（评审 P0-2）：今日存在但被隐私门控挡住的 alert/urgent 数量。
   // 家属首页状态必须知道它，否则会把被挡住的紧急信号表述成"今天总体正常"。
   const gatedAlertCount = useMemo(
-    () => collectGatedFindings(findings, familySharing, sharedFindingIds, TODAY).length,
-    [findings, familySharing, sharedFindingIds],
+    () => collectGatedFindings(findings, familySharing, sharedFindingIds, today).length,
+    [findings, familySharing, sharedFindingIds, today],
   );
   // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
   // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
   const todaySignalCount = useMemo(
-    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(TODAY)).length,
-    [events],
+    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(today)).length,
+    [events, today],
   );
   // 派发引擎只关心"是否真的送出去了"，UI 列表继续走 familyNotifs；
   // 二者共享 collectFamilyNotifications 的判定，但派发有台账和确认闭环。
@@ -276,7 +284,7 @@ function AppRoot({
     }
     lastBroadcastRecordIdsRef.current = currentIds;
   }, [dispatchRecords, sync]);
-  const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
+  const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings, today });
   const {
     handleElderSend,
     handlePhotoImport,
@@ -287,6 +295,7 @@ function AppRoot({
     pendingPhotoError,
     quickInputs,
   } = useElderChat({
+    today,
     familySharing,
     events,
     chat,
@@ -305,15 +314,15 @@ function AppRoot({
     // 模拟设备数据只属于演示模式；personal 模式不注入任何合成数据（评审 P1-2）。
     if (!demoMode) return;
     let cancelled = false;
-    const from = seedRecords[0]?.date ?? TODAY;
-    demoDeviceAdapter.getMeasurements(activeProfile.name, from, TODAY).then((deviceMeasurements) => {
+    const from = seedRecords[0]?.date ?? today;
+    demoDeviceAdapter.getMeasurements(activeProfile.name, from, today).then((deviceMeasurements) => {
       if (cancelled) return;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
     });
     return () => {
       cancelled = true;
     };
-  }, [demoMode, activeProfile.name]);
+  }, [demoMode, activeProfile.name, today]);
 
   useEffect(() => {
     // 开应用就生成今天的"💊 今天的药"任务；没有录入用药时不制造噪声。
@@ -466,7 +475,7 @@ function AppRoot({
                 records={records}
                 observations={observations}
                 findings={findings}
-                today={TODAY}
+                today={today}
                 profile={activeProfile}
                 dataMode={storedProfile.dataMode}
                 onProfileSave={handleProfileSave}
@@ -511,7 +520,7 @@ function AppRoot({
             tasks={tasks}
             homeSafetyActions={homeSafetyActions}
             records={familyRecords}
-            today={TODAY}
+            today={today}
             onTaskStatus={handleTaskStatus}
             onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
             onContactElder={contactElder}
