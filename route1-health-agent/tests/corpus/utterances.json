@@ -1,0 +1,121 @@
+{
+  "comment": [
+    "语料驱动测试的共享语料（评审 P2：验证体系）。",
+    "category 语义：",
+    "  mixed          混合句式（否定+真实症状 / 家属+本人），期望写在 expect 字段里；",
+    "  negated        否定/痊愈表达，一条事件都不许捏造（events == 0），但必须得到回应；",
+    "  family         说的是家里人的情况，不得写进本人档案，但必须生成家属事实；",
+    "  no-record      老人明确要求不记录，事件与家属事实都必须为零；",
+    "  conversational 寒暄/报平安，不得生成事件，回复不得为空。",
+    "本文件只冻结『管线性质』（记不记、归谁、有没有回应），不冻结具体文案；",
+    "新增语料时先手工确认期望再入库，入库后所有黑盒/单测必须保持全绿。"
+  ],
+  "utterances": [
+    {
+      "text": "我今天早上在厕所摔了一跤",
+      "category": "self-occurred"
+    },
+    {
+      "text": "不小心摔了一跤",
+      "category": "self-occurred"
+    },
+    {
+      "text": "我今天有点喘",
+      "category": "self-occurred"
+    },
+    {
+      "text": "我今天头晕",
+      "category": "self-occurred"
+    },
+    {
+      "text": "我今天早上忘了吃降压药",
+      "category": "self-occurred"
+    },
+    {
+      "text": "我昨晚起夜三四次",
+      "category": "self-occurred"
+    },
+    {
+      "text": "今天走了六千步",
+      "category": "self-occurred"
+    },
+    {
+      "text": "我今天量了血压150/95",
+      "category": "self-occurred"
+    },
+    {
+      "text": "今天不太喘了",
+      "category": "negated"
+    },
+    {
+      "text": "我毫不头晕",
+      "category": "negated"
+    },
+    {
+      "text": "一点都不疼",
+      "category": "negated"
+    },
+    {
+      "text": "压根没肿",
+      "category": "negated"
+    },
+    {
+      "text": "头晕好了很多",
+      "category": "negated"
+    },
+    {
+      "text": "头一点都不晕了",
+      "category": "negated"
+    },
+    {
+      "text": "摔是没摔，就是腿软了一下",
+      "category": "mixed",
+      "expect": {
+        "minEvents": 1,
+        "forbiddenTags": ["fall"]
+      },
+      "note": "摔倒被否定不得入库；腿软是真实症状必须留痕"
+    },
+    {
+      "text": "我爸今天血压150/95",
+      "category": "family",
+      "subject": "father"
+    },
+    {
+      "text": "我妈昨天胸闷，今天好多了",
+      "category": "family",
+      "subject": "mother"
+    },
+    {
+      "text": "我爸今天喘，后来我也喘了",
+      "category": "mixed",
+      "subject": "father",
+      "expect": {
+        "minEvents": 1,
+        "minFamilyEvents": 1
+      },
+      "note": "家属部分进家属事实，本人部分进本人事件流"
+    },
+    {
+      "text": "我爸昨天摔了一跤",
+      "category": "family",
+      "subject": "father"
+    },
+    {
+      "text": "我头晕，这段不要记录",
+      "category": "no-record"
+    },
+    {
+      "text": "今天走了六千步，这段不要保存",
+      "category": "no-record"
+    },
+    {
+      "text": "我现在感觉还好",
+      "category": "conversational"
+    },
+    {
+      "text": "没什么事",
+      "category": "conversational"
+    }
+  ]
+}

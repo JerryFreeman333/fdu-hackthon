@@ -20,6 +20,7 @@ import {
   type HostHandle,
   type GuestHandle,
 } from '../adapters/PeerJSCrossDevice';
+import { runWithRetry } from '../engine/retry';
 import type { CrossTabMessageEnvelope } from './useCrossTabSync';
 
 export type SyncMode = 'local-only' | 'connecting' | 'cross-device' | 'failed';
@@ -35,6 +36,9 @@ type Handler = (envelope: CrossTabMessageEnvelope) => void;
 const CHANNEL_NAME = 'ankang-route1-cross-tab';
 const TAB_ID_KEY = 'ankang-route1-tab-id';
 const PING_INTERVAL_MS = 15000;
+/** 家属端首连重试（评审 P2）：公网信令抖动时再试，而不是一次失败就放弃。 */
+const GUEST_CONNECT_ATTEMPTS = 3;
+const GUEST_CONNECT_RETRY_DELAY_MS = 1500;
 
 function ensureTabId(): string {
   if (typeof window === 'undefined') return 'ssr';
@@ -112,7 +116,23 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
 
     const wireUp = async () => {
       try {
-        const handle = endpoint === 'host' ? await hostAsPeer(peerId) : await connectToPeer(peerId);
+        // 家属端首连带重试（评审 P2）：信令抖动 / 老人端 peer 还没注册完成时再试，
+        // 每次重试都在状态里如实显示，重试耗尽才进入 failed。
+        const handle =
+          endpoint === 'host'
+            ? await hostAsPeer(peerId)
+            : await runWithRetry((_attempt) => connectToPeer(peerId), {
+                attempts: GUEST_CONNECT_ATTEMPTS,
+                delayMs: GUEST_CONNECT_RETRY_DELAY_MS,
+                onRetry: (failedAttempt, error) => {
+                  if (cancelled) return;
+                  setStatus({
+                    mode: 'connecting',
+                    detail: `暂时没连上，正在再试（第 ${failedAttempt + 1}/${GUEST_CONNECT_ATTEMPTS} 次）：${error.message}`,
+                    peerId,
+                  });
+                },
+              });
         if (cancelled) {
           handle.destroy();
           return;
