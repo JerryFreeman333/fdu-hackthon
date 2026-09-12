@@ -1,0 +1,22 @@
+name: AnkangHealthBridge
+options:
+  bundleIdPrefix: org.fdu.hackathon
+targets:
+  AnkangHealthBridge:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.fdu.hackathon.AnkangHealthBridge
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+        INFOPLIST_FILE: Support/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Support/AnkangHealthBridge.entitlements
+    dependencies:
+      - sdk: HealthKit.framework
+    attributes:
+      SystemCapabilities:
+        com.apple.HealthKit:
+          enabled: 1

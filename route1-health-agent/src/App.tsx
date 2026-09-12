@@ -13,6 +13,8 @@ import {
 } from './pipeline/events';
 import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
+import { HealthKitDeviceAdapter } from './adapters/HealthKitDeviceAdapter';
+import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications } from './engine/escalate';
@@ -27,6 +29,8 @@ import FamilyDashboard from './components/FamilyDashboard';
 import ProfileView from './components/ProfileView';
 import RoleGate from './components/RoleGate';
 import FontSizeControl from './components/FontSizeControl';
+import DeviceDebugPanel, { type DeviceSyncState } from './components/DeviceDebugPanel';
+import RuntimeModeBanner from './components/RuntimeModeBanner';
 import { useCareTasks } from './hooks/useCareTasks';
 import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
@@ -47,6 +51,8 @@ function clearLegacyHomeSafetyStorage() {
 
 function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   clearLegacyHealthStorage();
+  // HealthKit 真实模式 fail-closed：不加载 Demo seed，也不读取本地缓存快照。
+  if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], chat: [] };
   const stored = healthRecordStore.load();
   if (stored.events.length || stored.familyEvents.length || stored.chat.length) return stored;
   const events = legacySnapshotToEvents({
@@ -62,7 +68,15 @@ function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthE
 
 function initialHomeSafetyActions(): HomeSafetyAction[] {
   clearLegacyHomeSafetyStorage();
+  if (runtimeConfig.deviceMode === 'healthkit') return [];
   return demoHomeSafetyActions.map((action) => ({ ...action }));
+}
+
+function dateDaysAgo(days: number): string {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export default function App() {
@@ -74,6 +88,11 @@ export default function App() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
   const [toast, setToast] = useState<string | null>(null);
+  const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
+  const healthKitAdapter = useMemo(
+    () => new HealthKitDeviceAdapter(runtimeConfig.healthkitEndpoint, runtimeConfig.healthkitBridgeToken),
+    [],
+  );
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();
   const showToast = useCallback((text: string) => {
@@ -204,7 +223,33 @@ export default function App() {
     onShareFamilyEventIds: shareFamilyEventIds,
   });
 
+  // 手动同步：demo 模式走 DemoDeviceAdapter；healthkit 模式走真实桥接并 fail-closed。
+  const syncDevice = useCallback(async () => {
+    setDeviceSync((current) => ({ ...current, status: 'syncing', error: undefined }));
+    try {
+      const adapter = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter : demoDeviceAdapter;
+      const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? TODAY);
+      const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : profile.name;
+      const deviceMeasurements = await adapter.getMeasurements(userId, from, TODAY);
+      setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
+      setDeviceSync({
+        status: 'success',
+        received: deviceMeasurements,
+        lastSyncAt: new Date().toISOString(),
+        diagnostics: healthKitAdapter.lastDiagnostics,
+      });
+      showToast(
+        `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setDeviceSync({ status: 'error', received: [], error: message, diagnostics: healthKitAdapter.lastDiagnostics });
+      showToast('同步失败，未使用 Demo 数据替代。');
+    }
+  }, [healthKitAdapter, showToast]);
+
   useEffect(() => {
+    if (runtimeConfig.deviceMode !== 'demo') return;
     let cancelled = false;
     const from = seedRecords[0]?.date ?? TODAY;
     demoDeviceAdapter.getMeasurements(profile.name, from, TODAY).then((deviceMeasurements) => {
@@ -281,6 +326,18 @@ export default function App() {
     window.location.href = `tel:${phone}`;
   }
 
+  const configurationErrors = runtimeConfigurationErrors();
+  if (configurationErrors.length > 0) {
+    return (
+      <main className="configuration-error">
+        <h1>运行配置错误</h1>
+        {configurationErrors.map((error) => (
+          <p key={error}>{error}</p>
+        ))}
+      </main>
+    );
+  }
+
   if (!role) return <RoleGate onSelect={selectRole} />;
 
   if (role === 'elder') {
@@ -306,6 +363,7 @@ export default function App() {
           </div>
         </header>
         <main className="content">
+          <RuntimeModeBanner />
           <ElderHome
             profile={activeProfile}
             chat={chat}
@@ -331,6 +389,14 @@ export default function App() {
             <summary>查看我的状态（可选）</summary>
             <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
           </details>
+          <DeviceDebugPanel
+            mode={runtimeConfig.deviceMode}
+            state={deviceSync}
+            eventCount={events.length}
+            findings={findings}
+            personTwin={agentContext.personTwin}
+            onSync={() => void syncDevice()}
+          />
         </main>
         {toast && <div className="toast">{toast}</div>}
       </div>
@@ -356,6 +422,7 @@ export default function App() {
         </div>
       </header>
       <main className="content">
+        <RuntimeModeBanner />
         <FamilyDashboard
           profile={activeProfile}
           familyLink={familyLink}

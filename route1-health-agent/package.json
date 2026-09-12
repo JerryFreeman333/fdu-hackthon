@@ -16,7 +16,9 @@
     "preview": "vite preview",
     "test:browser": "node tests/browser-smoke.test.mjs",
     "test:browser:notif": "node tests/notification-push-blackbox.test.mjs",
-    "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs"
+    "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs",
+    "healthkit:bridge": "node scripts/healthkit-bridge.mjs",
+    "test:healthkit": "node scripts/test-healthkit.mjs"
   },
   "dependencies": {
     "peerjs": "^1.5.5",

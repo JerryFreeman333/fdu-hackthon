@@ -799,3 +799,103 @@ button {
     order: 3;
   }
 }
+
+/* ===== HealthKit 真实硬件验收（DeviceDebugPanel / RuntimeModeBanner） ===== */
+.device-debug {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+.device-debug summary {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 700;
+}
+.mode-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.mode-pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 14px;
+}
+.mode-real {
+  color: #1f6548;
+  background: #e3f4e9;
+  border: 1px solid #afd5bd;
+}
+.mode-demo {
+  color: #825514;
+  background: #fff2d9;
+  border: 1px solid #ebcc92;
+}
+.runtime-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+.runtime-banner span {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.runtime-banner small {
+  width: 100%;
+  color: var(--ink-soft);
+}
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.debug-grid div {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+.debug-grid b,
+.debug-grid span {
+  display: block;
+}
+.debug-grid span {
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+.sync-error,
+.configuration-error {
+  padding: 14px;
+  border-radius: 10px;
+  color: #842727;
+  background: #fff0f0;
+  border: 1px solid #e9b0b0;
+}
+.configuration-error {
+  max-width: 760px;
+  margin: 60px auto;
+}
+.sample-table-wrap {
+  overflow-x: auto;
+}
+.sample-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.sample-table th,
+.sample-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.sample-table small {
+  display: block;
+  color: var(--ink-soft);
+}
