@@ -37,7 +37,16 @@ export function loadStoredProfile(): StoredProfile | null {
     if (!isValidStoredProfile(parsed)) return null;
     return {
       version: 1,
-      profile: parsed.profile,
+      profile:
+        parsed.dataMode !== 'personal' && !parsed.profile.medicationRecords
+          ? {
+              ...parsed.profile,
+              sex: parsed.profile.sex ?? 'female',
+              medicationRecords: demoProfile.medicationRecords?.filter(
+                (record) => record.status === 'stopped' || parsed.profile.medications.includes(record.name),
+              ),
+            }
+          : parsed.profile,
       dataMode: parsed.dataMode === 'personal' ? 'personal' : 'demo',
       preferredRole:
         parsed.preferredRole === 'elder' || parsed.preferredRole === 'family' ? parsed.preferredRole : undefined,

@@ -66,6 +66,16 @@ export default function ElderSettingsPage({
       </header>
 
       <section className="settings-list card">
+        {dataMode === 'demo' && (
+          <div className="settings-row">
+            <span>
+              <strong>演示人物：王秀兰 · 72 岁 · 女</strong>
+              <small>
+                基础病：高血压、心功能减退随访中。女儿李芳协助照护，平时使用手杖，夜间视力下降。可展示近期健康变化、用药与家庭沟通。
+              </small>
+            </span>
+          </div>
+        )}
         <button type="button" onClick={() => setLoginNotice(true)}>
           <span>
             <strong>账号与登录</strong>

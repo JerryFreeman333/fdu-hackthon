@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { demoArchives } from '../data/demoArchives';
 
 const categories = ['体检报告', '就诊记录', '检验检查', '影像资料', '病历资料', '其他资料'];
 type Archive = { id: string; name: string; category: string; date: string; file: File };
@@ -13,12 +14,14 @@ function database(): Promise<IDBDatabase> {
 export default function HealthArchivePage({
   children,
   onRecognize,
+  demoMode = false,
 }: {
   children: ReactNode;
   onRecognize?: (file: File) => void;
+  demoMode?: boolean;
 }) {
   const [healthOpen, setHealthOpen] = useState(false);
-  const [items, setItems] = useState<Archive[]>([]);
+  const [items, setItems] = useState<Archive[]>(() => (demoMode ? demoArchives() : []));
   const [category, setCategory] = useState('全部');
   const [upload, setUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -34,7 +37,7 @@ export default function HealthArchivePage({
       .then((db) => {
         const r = db.transaction('files').objectStore('files').getAll();
         r.onsuccess = () => {
-          if (active) setItems(r.result as Archive[]);
+          if (active) setItems([...(demoMode ? demoArchives() : []), ...(r.result as Archive[])]);
           db.close();
         };
         r.onerror = () => {
@@ -46,7 +49,7 @@ export default function HealthArchivePage({
     return () => {
       active = false;
     };
-  }, []);
+  }, [demoMode]);
   useEffect(() => {
     if (!selected) return;
     const url = URL.createObjectURL(selected.file);
@@ -89,7 +92,11 @@ export default function HealthArchivePage({
       <header className="page-title-block">
         <span className="page-kicker">医疗资料，集中整理</span>
         <h1>健康档案</h1>
-        <p>附件目前仅保存在这台浏览器，不会自动上传云端。</p>
+        <p>
+          {demoMode
+            ? '演示档案包含 12 份模拟资料，可分类、预览和下载。非真实医疗文件。'
+            : '附件目前仅保存在这台浏览器，不会自动上传云端。'}
+        </p>
       </header>
       {error && <p role="alert">{error}</p>}
       {selected ? (

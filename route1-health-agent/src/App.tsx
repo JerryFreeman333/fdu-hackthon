@@ -95,7 +95,8 @@ const FAMILY_TABS: readonly MobileTabItem<'home' | 'tasks' | 'report' | 'profile
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
-const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || `${window.location.protocol}//${window.location.hostname}:5174`;
+const HOME_TWIN_URL =
+  import.meta.env.VITE_HOME_TWIN_URL?.trim() || `${window.location.protocol}//${window.location.hostname}:5174`;
 const HOME_TWIN_API_URL = import.meta.env.VITE_HOME_TWIN_API_URL?.trim() || 'http://localhost:8010';
 
 function clearLegacyHealthStorage() {
@@ -746,6 +747,7 @@ function AppRoot({
           )}
           {elderScreen === 'health' && (
             <HealthArchivePage
+              demoMode={demoMode}
               onRecognize={(file) => {
                 if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
                   showToast('真实识别服务尚未配置，未写入模拟结果。');
@@ -802,6 +804,7 @@ function AppRoot({
                 </section>
               )}
               <ElderHomeSpacePage
+                demoMode={demoMode}
                 profile={activeProfile}
                 homeTwinUrl={HOME_TWIN_URL}
                 connection={homeTwin.connection}

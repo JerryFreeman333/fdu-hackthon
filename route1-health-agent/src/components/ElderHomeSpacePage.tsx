@@ -8,6 +8,7 @@ interface ElderHomeSpacePageProps {
   onRetry: () => void;
   onFindItem: (query: string) => void;
   onAsk: (prompt: string) => void;
+  demoMode?: boolean;
 }
 
 function residentHomeUrl(base: string): string {
@@ -29,6 +30,7 @@ export default function ElderHomeSpacePage({
   onRetry,
   onFindItem,
   onAsk,
+  demoMode = false,
 }: ElderHomeSpacePageProps) {
   function find(query: string) {
     onFindItem(query);
@@ -51,6 +53,17 @@ export default function ElderHomeSpacePage({
           <p>打开摄像头 → 按指引拍摄 → 上传建模 → 查看自己的房间</p>
         </div>
       </section>
+      {demoMode && (
+        <section className="card">
+          <span className="page-kicker">模拟家庭 · 演示专用</span>
+          <h2>王秀兰的示例家庭空间</h2>
+          <p>包含卧室、客厅、卫生间等示例区域。可以展示常用药位置与家庭照护流程。</p>
+          <a className="btn-primary" href={`${residentHomeUrl(homeTwinUrl)}&demo=1`}>
+            打开已准备好的示例房间
+          </a>
+          <p className="muted">这是预置模型，不代表已拍摄或重建用户的真实房间。</p>
+        </section>
+      )}
 
       <section className="life-help-grid" aria-label="生活帮助">
         <button type="button" onClick={() => void find('常用药')}>

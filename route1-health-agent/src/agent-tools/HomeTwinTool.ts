@@ -1,10 +1,11 @@
 import { HomeTwinClient } from '../adapters/HomeTwinClient';
 import type { AgentTool, AgentToolResult, FindHomeItemInput } from './types';
 
-function residentTarget(homeTwinUrl: string, itemId?: string): string {
+function residentTarget(homeTwinUrl: string, itemId?: string, demo = false): string {
   const url = new URL(homeTwinUrl);
   url.searchParams.set('role', 'resident');
   if (itemId) url.searchParams.set('find', itemId);
+  if (demo) url.searchParams.set('demo', '1');
   return url.toString();
 }
 
@@ -36,7 +37,10 @@ export class HomeTwinFindItemTool implements AgentTool<FindHomeItemInput> {
         message: `${result.message}\n数据来源：${sourceLabel}。`,
         source: 'route2-home-twin',
         dataMode: result.dataMode,
-        target: { url: residentTarget(this.homeTwinUrl, result.item.id), label: '在家庭空间中查看位置' },
+        target: {
+          url: residentTarget(this.homeTwinUrl, result.item.id, result.dataMode === 'demo'),
+          label: '在家庭空间中查看位置',
+        },
       };
     } catch (error) {
       return {
