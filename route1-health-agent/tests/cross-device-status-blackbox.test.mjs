@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+import { seedDemoProfile as seedDemoProfileContext } from './helpers/demo-seed.mjs';
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.CROSS_SMOKE_PORT ?? 4175);
@@ -75,6 +76,7 @@ async function fetchReady() {
 async function runSmoke() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'zh-CN' });
+  await seedDemoProfileContext(context);
   // 替换 PeerJS 让信令走本地桥：避免依赖公开服务器的同时，仍能模拟 host / guest 两端连通
   // 这里简化：让 hostAsPeer 永远 reject（模拟信令不可达），验证 UI 不会假装"已协同"
   await context.addInitScript(() => {

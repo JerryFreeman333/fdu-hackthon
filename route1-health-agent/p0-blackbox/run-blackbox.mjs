@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 
+import { seedDemoProfile } from '../tests/helpers/demo-seed.mjs';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
 const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
@@ -40,6 +41,7 @@ async function waitForServer(timeout = 20000) {
 
 async function newPage(context) {
   const page = await context.newPage();
+  await seedDemoProfile(page);
   page.setDefaultTimeout(5000);
   await page.goto(BASE_URL, {
     waitUntil: 'domcontentloaded',

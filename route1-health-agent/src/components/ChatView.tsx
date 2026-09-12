@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile } from '../types';
 import SafetyActions from './SafetyActions';
+import type { DataMode } from '../store/profileStore';
 
 interface ChatViewProps {
   id?: string;
@@ -8,6 +9,8 @@ interface ChatViewProps {
   onSend: (text: string) => void | Promise<void>;
   quickInputs: string[];
   profile: ElderProfile;
+  /** 决定开场说明：demo 提示设备数据是模拟的；personal 说明数据只在本机。 */
+  deviceNote?: DataMode;
 }
 
 type SpeechRecognitionResultEvent = Event & {
@@ -51,7 +54,7 @@ function voiceMessage(state: VoiceState): string {
   }
 }
 
-export default function ChatView({ id, chat, onSend, quickInputs, profile }: ChatViewProps) {
+export default function ChatView({ id, chat, onSend, quickInputs, profile, deviceNote = 'demo' }: ChatViewProps) {
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -138,7 +141,9 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile }: Cha
       <div className="chat-intro">
         <div className="agent-greeting">
           我是<b>阿安</b>，您的健康小助手。身体有什么不舒服、心里有什么话，都可以跟我说。
-          现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。
+          {deviceNote === 'demo'
+            ? '现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。'
+            : '您说的话和记录都只保存在这台设备里。'}
         </div>
       </div>
 

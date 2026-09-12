@@ -878,3 +878,74 @@ button {
   border: 1.5px solid #e4d5b8;
   background: #fffcf5;
 }
+
+/* ---------- 建档 / 档案编辑（评审 P0-4） ---------- */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: left;
+}
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.form-section label {
+  font-weight: 700;
+  font-size: 18px;
+}
+.form-input {
+  width: 100%;
+  min-height: 52px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 18px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+.med-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.med-chip {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--ink);
+}
+.form-error {
+  color: #c0392b;
+  font-weight: 700;
+}
+.form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.form-submit {
+  font-size: 19px;
+  min-height: 54px;
+}
+.profile-summary {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 16px;
+}
+.onboarding-card {
+  max-width: 560px;
+}
+.onboarding-card .role-lead {
+  font-size: 17px;
+}

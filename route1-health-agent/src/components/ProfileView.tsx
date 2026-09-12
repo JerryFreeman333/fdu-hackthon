@@ -1,14 +1,21 @@
-import type { DayRecord, Finding, MetricKey, Observation } from '../types';
+import { useState } from 'react';
+import type { DayRecord, ElderProfile, Finding, MetricKey, Observation } from '../types';
 import { METRICS } from '../types';
 import { computeBaseline, recentMean, diffDays } from '../engine/baseline';
 import { severityBadge } from '../engine/escalate';
 import Sparkline from './Sparkline';
+import ProfileForm from './ProfileForm';
+import type { DataMode } from '../store/profileStore';
 
 interface ProfileViewProps {
   records: DayRecord[];
   observations: Observation[];
   findings: Finding[];
   today: string;
+  /** 本机档案；传入后显示"我的档案"卡与编辑入口（评审 P0-4）。 */
+  profile?: ElderProfile;
+  dataMode?: DataMode;
+  onProfileSave?: (profile: ElderProfile) => void;
   /** 评审 P0-4：清空本机全部数据入口；不传则不渲染该区块。 */
   onClearData?: () => void;
 }
@@ -24,16 +31,73 @@ const DISPLAY_METRICS: MetricKey[] = [
   'bloodGlucose',
 ];
 
-export default function ProfileView({ records, observations, findings, today, onClearData }: ProfileViewProps) {
+export default function ProfileView({
+  records,
+  observations,
+  findings,
+  today,
+  profile,
+  dataMode = 'demo',
+  onProfileSave,
+  onClearData,
+}: ProfileViewProps) {
   const profileFindings = findings.filter((f) => f.severity === 'alert' || f.severity === 'urgent');
+  const [editingProfile, setEditingProfile] = useState(false);
 
   return (
     <div className="profile-view detail-view">
-      <div className="card">
-        <div className="eyebrow">个人状态</div>
-        <h3>这些信息用于认识老人，不是医疗诊断。</h3>
-        <p className="muted">系统重点关注活动、行动能力、睡眠和近期主诉是否偏离本人平时状态。</p>
-      </div>
+      {profile && onProfileSave ? (
+        editingProfile ? (
+          <div className="card">
+            <h3>编辑我的档案</h3>
+            <ProfileForm
+              initial={profile}
+              submitLabel="保存档案"
+              onSubmit={(next) => {
+                onProfileSave(next);
+                setEditingProfile(false);
+              }}
+              onCancel={() => setEditingProfile(false)}
+            />
+          </div>
+        ) : (
+          <div className="card">
+            <div className="section-head">
+              <div>
+                <h3>我的档案</h3>
+                <span className="muted">
+                  {dataMode === 'demo' ? '这是预置的演示档案，可以编辑体验建档功能。' : '随时可以修改，立即生效。'}
+                </span>
+              </div>
+              <button className="btn-secondary" onClick={() => setEditingProfile(true)}>
+                编辑我的档案
+              </button>
+            </div>
+            <ul className="profile-summary">
+              <li>
+                <b>称呼</b>：{profile.name}
+                {profile.age > 0 ? ` · ${profile.age} 岁` : ''}
+              </li>
+              <li>
+                <b>用药</b>：{profile.medications.length > 0 ? profile.medications.join('；') : '（未填写）'}
+              </li>
+              <li>
+                <b>家属</b>：
+                {profile.familyPhone ? `${profile.familyContact || '已留电话'} ${profile.familyPhone}` : '（未填写）'}
+              </li>
+              <li>
+                <b>社区医生</b>：{profile.communityDoctorPhone ?? '（未填写）'}
+              </li>
+            </ul>
+          </div>
+        )
+      ) : (
+        <div className="card">
+          <div className="eyebrow">个人状态</div>
+          <h3>这些信息用于认识老人，不是医疗诊断。</h3>
+          <p className="muted">系统重点关注活动、行动能力、睡眠和近期主诉是否偏离本人平时状态。</p>
+        </div>
+      )}
 
       {profileFindings.length > 0 && (
         <div className="card highlight-card">
