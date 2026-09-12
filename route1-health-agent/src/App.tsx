@@ -3,7 +3,8 @@ import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './t
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
-import { startClockService, todayNow } from './engine/clock';
+import { chatClockLabel, startClockService, todayNow } from './engine/clock';
+import { msg } from './engine/agent';
 import { demoStoredProfile, loadStoredProfile, saveStoredProfile, type StoredProfile } from './store/profileStore';
 import FirstRunGate from './components/FirstRunGate';
 import OnboardingFlow from './components/OnboardingFlow';
@@ -65,6 +66,7 @@ import { useCareTasks } from './hooks/useCareTasks';
 import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
+import { useHomeTwinIntegration } from './hooks/useHomeTwinIntegration';
 
 const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-route1-health-records-v2'];
 const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
@@ -87,6 +89,7 @@ const FAMILY_TABS: readonly MobileTabItem<'home' | 'tasks' | 'report' | 'profile
 ];
 
 const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || 'http://localhost:5174';
+const HOME_TWIN_API_URL = import.meta.env.VITE_HOME_TWIN_API_URL?.trim() || 'http://localhost:8010';
 
 function clearLegacyHealthStorage() {
   if (typeof window === 'undefined') return;
@@ -116,9 +119,9 @@ function emptySnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEve
   return { events: [], familyEvents: [], chat: [] };
 }
 
-function initialHomeSafetyActions(): HomeSafetyAction[] {
+function initialHomeSafetyActions(demoMode: boolean): HomeSafetyAction[] {
   clearLegacyHomeSafetyStorage();
-  if (runtimeConfig.deviceMode === 'healthkit') return [];
+  if (!demoMode || runtimeConfig.deviceMode === 'healthkit') return [];
   return demoHomeSafetyActions.map((action) => ({ ...action }));
 }
 
@@ -135,6 +138,7 @@ export default function App() {
   const [initial, setInitial] = useState<ReturnType<typeof buildSeedSnapshot> | null>(null);
   const [storedProfile, setStoredProfile] = useState<StoredProfile | null>(null);
   const [onboarding, setOnboarding] = useState(false);
+  const [pendingRole, setPendingRole] = useState<UserRole>('elder');
   const [profileReady, setProfileReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -169,8 +173,9 @@ export default function App() {
     if (onboarding) {
       return (
         <OnboardingFlow
+          role={pendingRole}
           onComplete={(profile) => {
-            const next: StoredProfile = { version: 1, profile, dataMode: 'personal' };
+            const next: StoredProfile = { version: 1, profile, dataMode: 'personal', preferredRole: pendingRole };
             saveStoredProfile(next);
             setStoredProfile(next);
           }}
@@ -179,13 +184,16 @@ export default function App() {
     }
     return (
       <FirstRunGate
-        onDemo={() => {
-          const next = demoStoredProfile();
+        onDemo={(selectedRole) => {
+          const next = demoStoredProfile(selectedRole);
           saveStoredProfile(next);
           setStoredProfile(next);
           if (initial.events.length === 0 && initial.chat.length === 0) setInitial(buildSeedSnapshot());
         }}
-        onPersonal={() => setOnboarding(true)}
+        onPersonal={(selectedRole) => {
+          setPendingRole(selectedRole);
+          setOnboarding(true);
+        }}
       />
     );
   }
@@ -205,13 +213,21 @@ function AppRoot({
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
-  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() =>
+    initialHomeSafetyActions(demoMode),
+  );
+  const [role, setRole] = useState<UserRole | null>(storedProfile.preferredRole ?? null);
   const [familyView, setFamilyView] = useState<FamilyView>('home');
   const [elderScreen, setElderScreen] = useState<ElderScreen>('home');
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
+  const homeTwin = useHomeTwinIntegration(HOME_TWIN_API_URL);
+
+  useEffect(() => {
+    if (homeTwin.connection.status !== 'connected') return;
+    setHomeSafetyActions(homeTwin.connection.integration.actions);
+  }, [homeTwin.connection]);
   const healthKitAdapter = useMemo(
     () => new HealthKitDeviceAdapter(runtimeConfig.healthkitEndpoint, runtimeConfig.healthkitBridgeToken),
     [],
@@ -342,7 +358,7 @@ function AppRoot({
   }, [dispatchRecords, sync]);
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings, today });
   const {
-    handleElderSend,
+    handleElderSend: handleHealthChatSend,
     handlePhotoImport,
     commitPhotoImport,
     cancelPhotoImport,
@@ -365,6 +381,14 @@ function AppRoot({
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
+
+  function handleElderSend(text: string) {
+    if (/(找|在哪|哪里).*(药|眼镜|钥匙)|(药|眼镜|钥匙).*(在哪|哪里)/.test(text)) {
+      const query = text.includes('眼镜') ? '眼镜' : text.includes('钥匙') ? '钥匙' : '常用药';
+      return openHomeTwinLookup(query);
+    }
+    return handleHealthChatSend(text);
+  }
 
   // 手动和自动同步复用同一条 Adapter → HealthEvent → Detection/Finding → Person Twin 链。
   const syncDevice = useCallback(
@@ -527,6 +551,35 @@ function AppRoot({
     if (prompt) void handleElderSend(prompt);
   }
 
+  async function openHomeTwinLookup(query: string) {
+    setElderScreen('assistant');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    const time = chatClockLabel(today, new Date());
+    setChat((current) => [...current, msg('elder', `帮我找${query}`, time, true)]);
+    if (homeTwin.connection.status !== 'connected') {
+      setChat((current) => [
+        ...current,
+        msg('agent', `${homeTwin.connection.detail}。我不会猜测物品位置，请先恢复家庭空间连接。`, time, true),
+      ]);
+      return;
+    }
+    try {
+      const result = await homeTwin.findItem(query);
+      const source = result.dataMode === 'real' ? '真实家庭空间记录' : '演示家庭空间数据';
+      setChat((current) => [...current, msg('agent', `${result.message}\n数据来源：${source}。`, time, true)]);
+    } catch (error) {
+      setChat((current) => [
+        ...current,
+        msg(
+          'agent',
+          `家庭空间查询失败：${error instanceof Error ? error.message : String(error)}。我不会猜测位置。`,
+          time,
+          true,
+        ),
+      ]);
+    }
+  }
+
   // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
   // clearAllLocalData 会连本机档案一起清掉，reload 后回到首启选择。
   function handleClearAllData() {
@@ -562,7 +615,17 @@ function AppRoot({
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
   }
 
-  function handleHomeSafetyActionStatus(actionId: string, status: HomeSafetyAction['status']) {
+  async function handleHomeSafetyActionStatus(actionId: string, status: HomeSafetyAction['status']) {
+    if (status === 'resolved') {
+      showToast('只有路线二复扫确认风险消失后，才能标记为已解决。');
+      return;
+    }
+    try {
+      await homeTwin.updateAction(actionId, status);
+    } catch (error) {
+      showToast(`未能同步到家庭空间：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     setHomeSafetyActions((current) =>
       current.map((action) => (action.id === actionId ? { ...action, status } : action)),
     );
@@ -619,11 +682,19 @@ function AppRoot({
               tasks={tasks}
               findings={findings}
               onTaskStatus={handleTaskStatus}
+              onTaskOpen={(task) =>
+                task.kind === 'medication_check'
+                  ? void openHomeTwinLookup('常用药')
+                  : openAssistant(`请帮我处理这个待办：${task.title}。${task.description}`)
+              }
               onOpenAssistant={() => openAssistant()}
               onOpenHealth={() => navigateElder('health')}
               onOpenHomeSpace={() => navigateElder('home_space')}
               onRequestFamilyShare={requestFamilyShare}
               onKeepFamilyPrivate={keepFamilyPrivate}
+              familyLink={familyLink}
+              syncStatus={sync.status}
+              homeTwin={homeTwin.connection}
             />
           )}
           {elderScreen === 'assistant' && (
@@ -655,7 +726,14 @@ function AppRoot({
             </ElderHealthPage>
           )}
           {elderScreen === 'home_space' && (
-            <ElderHomeSpacePage profile={activeProfile} homeTwinUrl={HOME_TWIN_URL} onAsk={openAssistant} />
+            <ElderHomeSpacePage
+              profile={activeProfile}
+              homeTwinUrl={HOME_TWIN_URL}
+              connection={homeTwin.connection}
+              onRetry={() => void homeTwin.refresh()}
+              onFindItem={(query) => void openHomeTwinLookup(query)}
+              onAsk={openAssistant}
+            />
           )}
           {elderScreen === 'profile' && (
             <ElderSettingsPage
@@ -670,6 +748,15 @@ function AppRoot({
               onClearData={handleClearAllData}
               onSwitchRole={resetRole}
             >
+              <div className={`runtime-banner home-twin-${homeTwin.connection.status}`} role="status">
+                <strong>家庭空间：</strong>
+                <span>{homeTwin.connection.detail}</span>
+                {homeTwin.connection.status === 'offline' && (
+                  <button className="btn-secondary" type="button" onClick={() => void homeTwin.refresh()}>
+                    重试
+                  </button>
+                )}
+              </div>
               <RuntimeModeBanner />
               <DeviceDebugPanel
                 mode={runtimeConfig.deviceMode}
@@ -746,6 +833,7 @@ function AppRoot({
             tasks={tasks}
             homeSafetyActions={homeSafetyActions}
             homeTwinUrl={HOME_TWIN_URL}
+            homeTwinConnection={homeTwin.connection}
             records={familyRecords}
             today={today}
             onTaskStatus={handleTaskStatus}

@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import type { UserRole } from '../types';
+
 interface FirstRunGateProps {
-  onDemo: () => void;
-  onPersonal: () => void;
+  onDemo: (role: UserRole) => void;
+  onPersonal: (role: UserRole) => void;
 }
 
 /**
@@ -9,25 +12,50 @@ interface FirstRunGateProps {
  * 是快速看演示，还是自己真正开始用。两者从此是显式选择，不是同一份写死档案。
  */
 export default function FirstRunGate({ onDemo, onPersonal }: FirstRunGateProps) {
+  const [role, setRole] = useState<UserRole | null>(null);
   return (
     <div className="role-gate">
       <div className="role-card">
         <div className="role-kicker">阿安 · 老人家庭助手</div>
-        <h1>先选一下怎么开始</h1>
-        <p className="role-lead">所有数据都只保存在这台浏览器里，不会上传。</p>
+        <h1>{role ? '选择真实使用或演示' : '你好，我们还不知道你是谁'}</h1>
+        <p className="role-lead">
+          {role ? '真实使用从空白建档；演示档案必须由你主动选择。' : '请先告诉我们你将以哪种身份使用，系统不会猜测。'}
+        </p>
         <div className="role-grid">
-          <button className="role-option" onClick={onDemo}>
-            <span className="role-icon">👵</span>
-            <strong>体验演示档案</strong>
-            <span>王秀兰奶奶 · 预置 21 天数据，快速看完整演示</span>
-          </button>
-          <button className="role-option" onClick={onPersonal}>
-            <span className="role-icon">🙋</span>
-            <strong>这是我自己用</strong>
-            <span>三步建档，从空白开始记录真实情况</span>
-          </button>
+          {!role ? (
+            <>
+              <button className="role-option" onClick={() => setRole('elder')}>
+                <span className="role-icon">本人</span>
+                <strong>我是老人/本人</strong>
+                <span>记录自己的情况并获得帮助</span>
+              </button>
+              <button className="role-option" onClick={() => setRole('family')}>
+                <span className="role-icon">家属</span>
+                <strong>我是家属</strong>
+                <span>绑定并协助一位老人</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="role-option" onClick={() => onPersonal(role)}>
+                <span className="role-icon">真实</span>
+                <strong>创建真实档案</strong>
+                <span>从空白开始，不注入任何预置健康数据</span>
+              </button>
+              <button className="role-option" onClick={() => onDemo(role)}>
+                <span className="role-icon">演示</span>
+                <strong>体验王秀兰演示档案</strong>
+                <span>明确使用预置的模拟数据，仅用于体验</span>
+              </button>
+            </>
+          )}
         </div>
-        <p className="role-note">演示档案里的数据是模拟的；自己用的档案从空白开始，由您和家人的真实记录组成。</p>
+        {role && (
+          <button className="btn-secondary" onClick={() => setRole(null)}>
+            返回选择身份
+          </button>
+        )}
+        <p className="role-note">身份、授权和数据来源都会持续显示；未连接的服务不会伪装成可用。</p>
       </div>
     </div>
   );

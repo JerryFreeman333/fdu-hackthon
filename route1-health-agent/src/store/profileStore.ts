@@ -1,4 +1,4 @@
-import type { ElderProfile } from '../types';
+import type { ElderProfile, UserRole } from '../types';
 import { profile as demoProfile } from '../data/demo';
 
 /** 数据模式：demo = 预置演示档案与合成数据；personal = 用户本人建档，从空白开始（评审 P1-2）。 */
@@ -8,6 +8,8 @@ export interface StoredProfile {
   version: 1;
   profile: ElderProfile;
   dataMode: DataMode;
+  /** 首次由用户明确选择；缺失表示旧档案，必须重新询问。 */
+  preferredRole?: UserRole;
 }
 
 const KEY = 'ankang-route1-profile-v1';
@@ -33,7 +35,13 @@ export function loadStoredProfile(): StoredProfile | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredProfile;
     if (!isValidStoredProfile(parsed)) return null;
-    return { version: 1, profile: parsed.profile, dataMode: parsed.dataMode === 'personal' ? 'personal' : 'demo' };
+    return {
+      version: 1,
+      profile: parsed.profile,
+      dataMode: parsed.dataMode === 'personal' ? 'personal' : 'demo',
+      preferredRole:
+        parsed.preferredRole === 'elder' || parsed.preferredRole === 'family' ? parsed.preferredRole : undefined,
+    };
   } catch {
     return null;
   }
@@ -58,8 +66,8 @@ export function clearStoredProfile(): void {
 }
 
 /** 演示档案（王秀兰奶奶）作为可选的首启入口，不再是唯一身份。 */
-export function demoStoredProfile(): StoredProfile {
-  return { version: 1, profile: { ...demoProfile }, dataMode: 'demo' };
+export function demoStoredProfile(preferredRole?: UserRole): StoredProfile {
+  return { version: 1, profile: { ...demoProfile }, dataMode: 'demo', preferredRole };
 }
 
 /** 建档起点：除了 familySharing 默认 ask，其余字段留白/中性默认。 */

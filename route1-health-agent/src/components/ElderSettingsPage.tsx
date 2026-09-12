@@ -121,10 +121,12 @@ export default function ElderSettingsPage({
         )}
       </section>
 
-      <details className="advanced-details settings-technical">
-        <summary>设备与运行状态</summary>
+      <section className="card settings-technical" aria-label="服务连接状态">
+        <span className="page-kicker">真实服务状态</span>
+        <h2>设备、模型与同步</h2>
+        <p className="muted">这里会如实显示真实连接、演示模式或失败状态。</p>
         {children}
-      </details>
+      </section>
 
       <section className="settings-danger-zone">
         <button className="btn-secondary" type="button" onClick={onSwitchRole}>

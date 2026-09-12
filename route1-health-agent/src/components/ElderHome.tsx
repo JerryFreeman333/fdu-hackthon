@@ -1,15 +1,21 @@
-import type { CareTask, ElderProfile, Finding } from '../types';
+import type { CareTask, ElderProfile, FamilyLink, Finding } from '../types';
+import type { HomeTwinConnection } from '../hooks/useHomeTwinIntegration';
+import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 
 interface ElderHomeProps {
   profile: ElderProfile;
   tasks: CareTask[];
   findings: Finding[];
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
+  onTaskOpen: (task: CareTask) => void;
   onOpenAssistant: () => void;
   onOpenHealth: () => void;
   onOpenHomeSpace: () => void;
   onRequestFamilyShare: () => void;
   onKeepFamilyPrivate: () => void;
+  familyLink: FamilyLink | null;
+  syncStatus: CrossDeviceStatus;
+  homeTwin: HomeTwinConnection;
 }
 
 function taskTime(task: CareTask): string {
@@ -22,11 +28,15 @@ export default function ElderHome({
   tasks,
   findings,
   onTaskStatus,
+  onTaskOpen,
   onOpenAssistant,
   onOpenHealth,
   onOpenHomeSpace,
   onRequestFamilyShare,
   onKeepFamilyPrivate,
+  familyLink,
+  syncStatus,
+  homeTwin,
 }: ElderHomeProps) {
   const activeTasks = tasks
     .filter((task) => task.status !== 'completed' && task.status !== 'dismissed')
@@ -47,6 +57,25 @@ export default function ElderHome({
           <strong>今天</strong>
           <span>
             {new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())}
+          </span>
+        </div>
+      </section>
+
+      <section className="home-service-strip" aria-label="连接状态">
+        <button type="button" onClick={onOpenHomeSpace}>
+          <span className={`service-dot service-${homeTwin.status}`} />
+          <span>
+            <strong>家庭空间</strong>
+            <small>{homeTwin.detail}</small>
+          </span>
+        </button>
+        <div>
+          <span className={`service-dot service-${familyLink?.status === 'active' ? 'connected' : 'offline'}`} />
+          <span>
+            <strong>家庭协同</strong>
+            <small>
+              {familyLink?.status === 'active' ? `${familyLink.displayName} · ${syncStatus.mode}` : '尚未绑定家属'}
+            </small>
           </span>
         </div>
       </section>
@@ -74,6 +103,9 @@ export default function ElderHome({
                   <strong>{task.title}</strong>
                   <small>{task.description}</small>
                 </div>
+                <button className="today-open" type="button" onClick={() => onTaskOpen(task)}>
+                  查看
+                </button>
                 <button className="today-done" type="button" onClick={() => onTaskStatus(task.id, 'completed')}>
                   完成
                 </button>
@@ -85,8 +117,6 @@ export default function ElderHome({
 
       <section className="voice-launch-section" aria-label="AI 助手入口">
         <button className="voice-launch" type="button" onClick={onOpenAssistant} aria-label="打开 AI 助手">
-          <span className="voice-ripple voice-ripple-one" />
-          <span className="voice-ripple voice-ripple-two" />
           <span className="voice-launch-core">
             <span className="voice-mic-mark" aria-hidden="true" />
           </span>

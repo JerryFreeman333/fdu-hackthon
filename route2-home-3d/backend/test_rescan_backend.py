@@ -22,6 +22,29 @@ class RescanBackendTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["hardware"], "adapter-ready")
 
+    def test_route1_integration_contract_and_item_lookup(self) -> None:
+        client = TestClient(app)
+        response = client.get("/api/route2/integration")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ready")
+        self.assertIn(payload["dataMode"], {"demo", "real"})
+        self.assertTrue(payload["items"])
+        self.assertTrue(all(action["source"] == "route2-person-home-risk" for action in payload["actions"]))
+
+        found = client.get("/api/route2/items/find", params={"q": "降压药"})
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.json()["status"], "found")
+        self.assertIn("床头柜", found.json()["message"])
+
+    def test_route1_cannot_resolve_action_without_rescan(self) -> None:
+        client = TestClient(app)
+        action_id = client.get("/api/route2/integration").json()["actions"][0]["id"]
+        rejected = client.post(f"/api/route2/actions/{action_id}/status", params={"status": "resolved"})
+        self.assertEqual(rejected.status_code, 422)
+        accepted = client.post(f"/api/route2/actions/{action_id}/status", params={"status": "done"})
+        self.assertEqual(accepted.status_code, 200)
+
     def test_upload_queues_and_does_not_fake_risk_clearance(self) -> None:
         client = TestClient(app)
         batch_id = "test-batch-001"

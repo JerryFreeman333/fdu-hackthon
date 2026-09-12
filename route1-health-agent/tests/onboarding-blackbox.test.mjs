@@ -91,17 +91,17 @@ async function runOnboardingSuite() {
     page.on('pageerror', (err) => log('pageerror:', err.message));
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 
-    await page.getByText('先选一下怎么开始').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
     check('全新用户首先看到首启选择，而不是写死的演示档案', true);
 
-    await page.getByRole('button', { name: /这是我自己用/ }).click();
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /创建真实档案/ }).click();
     await page.getByText('先认识一下您').waitFor({ state: 'visible', timeout: 5000 });
     await page.locator('#profile-name').fill('李奶奶');
     await page.locator('#profile-med').fill('降压药 每日一次');
     await page.getByRole('button', { name: '添加' }).click();
     await page.locator('#profile-family-phone').fill('13911112222');
     await page.getByRole('button', { name: '好了，开始使用' }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     const headerName = await page.locator('.elder-welcome h1').textContent();
     check('建档后老人端显示用户自己的称呼', headerName?.includes('李奶奶') === true, headerName ?? '');
@@ -112,9 +112,8 @@ async function runOnboardingSuite() {
     await page.getByText('自用模式，不注入演示数据').waitFor({ state: 'visible', timeout: 5000 });
     check('personal 模式明确不注入演示数据', true);
 
-    // 刷新后档案仍在，不回首启（角色选择是会话状态，需重选一次角色）。
+    // 刷新后档案与用户明确选择的角色都仍在，不重复询问。
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /我是老人/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     check(
       '刷新后档案仍在（不回首启）',
@@ -135,8 +134,8 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /体验演示档案/ }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     const headerName = await page.locator('.elder-welcome h1').textContent();
     check('选择演示档案 → 进入王秀兰奶奶的完整演示', headerName?.includes('王秀兰奶奶') === true, headerName ?? '');
@@ -148,13 +147,13 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /体验演示档案/ }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: '我的' }).last().click();
     await page.getByRole('button', { name: '清空本机全部数据' }).click();
-    await page.getByText('先选一下怎么开始').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
     check('清空本机数据后回到首启选择（删档重来）', true);
     await context.close();
   }

@@ -95,16 +95,24 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
   }
 
   function bindFamily(inviteCode: string): boolean {
-    if (!inviteCode || !issuedInviteCode || inviteCode !== issuedInviteCode || !familyLink) return false;
+    const normalized = inviteCode.trim().toUpperCase();
+    // 跨设备家属端没有老人端内存中的 issuedInviteCode；邀请码同时作为 P2P 会话标识。
+    if (!/^AN-\d{4}-\d{4}$/.test(normalized)) return false;
+    if (issuedInviteCode && normalized !== issuedInviteCode) return false;
     const link: FamilyLink = {
-      ...familyLink,
-      displayName: '本地演示家属',
-      maskedContact: '本地设备',
+      ...(familyLink ?? {
+        id: `family-${Date.now()}`,
+        relation: '家属',
+        inviteCode: normalized,
+      }),
+      inviteCode: normalized,
+      displayName: '已输入邀请码的家属',
+      maskedContact: '跨设备连接',
       status: 'active',
     };
     setIssuedInviteCode(null);
     setFamilyLink(link);
-    showToast('家属绑定成功（本地 Demo）。邀请码已失效。');
+    showToast('邀请码已确认，正在建立老人端与家属端连接。');
     return true;
   }
 

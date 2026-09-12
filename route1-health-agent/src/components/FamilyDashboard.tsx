@@ -17,6 +17,7 @@ import {
   type WebhookProvider,
 } from '../adapters/WebhookPushChannel';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
+import type { HomeTwinConnection } from '../hooks/useHomeTwinIntegration';
 
 type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
 
@@ -42,6 +43,7 @@ interface FamilyDashboardProps {
   homeSafetyActions: HomeSafetyAction[];
   /** 路线二 Home Twin 前端入口。开发环境默认 http://localhost:5174。 */
   homeTwinUrl: string;
+  homeTwinConnection: HomeTwinConnection;
   records: DayRecord[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
@@ -728,6 +730,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   return (
     <div className="family-dashboard">
       {syncBanner}
+      <div className={`family-sync-banner family-sync-banner-${props.homeTwinConnection.status}`} role="status">
+        <span className="family-sync-dot" aria-hidden="true" />
+        <span>{props.homeTwinConnection.detail}</span>
+      </div>
       <section className={`family-status card status-${state.tone}`}>
         <div className="eyebrow">{props.profile.name} · 家属端</div>
         <h2>{state.title}</h2>

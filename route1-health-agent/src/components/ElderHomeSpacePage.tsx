@@ -1,8 +1,12 @@
 import type { ElderProfile } from '../types';
+import type { HomeTwinConnection } from '../hooks/useHomeTwinIntegration';
 
 interface ElderHomeSpacePageProps {
   profile: ElderProfile;
   homeTwinUrl: string;
+  connection: HomeTwinConnection;
+  onRetry: () => void;
+  onFindItem: (query: string) => void;
   onAsk: (prompt: string) => void;
 }
 
@@ -18,7 +22,17 @@ function residentHomeUrl(base: string): string {
   }
 }
 
-export default function ElderHomeSpacePage({ profile, homeTwinUrl, onAsk }: ElderHomeSpacePageProps) {
+export default function ElderHomeSpacePage({
+  profile,
+  homeTwinUrl,
+  connection,
+  onRetry,
+  onFindItem,
+  onAsk,
+}: ElderHomeSpacePageProps) {
+  function find(query: string) {
+    onFindItem(query);
+  }
   return (
     <div className="home-space-page">
       <header className="page-title-block">
@@ -32,19 +46,19 @@ export default function ElderHomeSpacePage({ profile, homeTwinUrl, onAsk }: Elde
           <span />
         </div>
         <div>
-          <span className="space-ready">家庭空间已准备好</span>
+          <span className={`space-ready home-twin-${connection.status}`}>{connection.detail}</span>
           <h2>熟悉的家，更容易找到东西</h2>
           <p>位置不确定时，系统会如实告诉您，不会猜一个答案。</p>
         </div>
       </section>
 
       <section className="life-help-grid" aria-label="生活帮助">
-        <button type="button" onClick={() => onAsk('我的常用药放在哪里？')}>
+        <button type="button" onClick={() => void find('常用药')}>
           <span className="life-help-index">01</span>
           <strong>找药</strong>
           <small>{profile.medications.length > 0 ? '查找已记录的常用药' : '先告诉我药物名称'}</small>
         </button>
-        <button type="button" onClick={() => onAsk('帮我找一下眼镜在哪里？')}>
+        <button type="button" onClick={() => void find('眼镜')}>
           <span className="life-help-index">02</span>
           <strong>找东西</strong>
           <small>眼镜、钥匙、手机</small>
@@ -55,6 +69,12 @@ export default function ElderHomeSpacePage({ profile, homeTwinUrl, onAsk }: Elde
           <small>获得简短的家庭提示</small>
         </button>
       </section>
+
+      {connection.status === 'offline' && (
+        <button className="btn-secondary" type="button" onClick={onRetry}>
+          重新连接家庭空间
+        </button>
+      )}
 
       <a className="btn-primary open-home-twin" href={residentHomeUrl(homeTwinUrl)}>
         打开我的家

@@ -2456,6 +2456,83 @@ select:focus-visible {
   font-weight: 800;
 }
 
+.home-service-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.home-service-strip > button,
+.home-service-strip > div {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #dce8f6;
+  border-radius: 16px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+}
+
+.home-service-strip strong,
+.home-service-strip small {
+  display: block;
+}
+.home-service-strip small {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.service-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: #94a3b8;
+}
+.service-connected {
+  background: #22a06b;
+  box-shadow: 0 0 0 4px #dcfce7;
+}
+.service-checking {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px #fef3c7;
+}
+.service-offline {
+  background: #dc5a64;
+  box-shadow: 0 0 0 4px #fee2e2;
+}
+
+.today-open {
+  border: 0;
+  background: #eef6ff;
+  color: #1769aa;
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-weight: 700;
+}
+
+.home-twin-connected {
+  color: #16724f;
+}
+.home-twin-checking {
+  color: #9a6700;
+}
+.home-twin-offline {
+  color: #b4232d;
+}
+
+@media (max-width: 420px) {
+  .home-service-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
 .life-help-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
