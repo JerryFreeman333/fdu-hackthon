@@ -6,9 +6,10 @@ const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const family = await context.newPage();
-  await family.goto((process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/'));
+  await family.goto(process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/');
   await family.evaluate(({ key, profile }) => localStorage.setItem(key, JSON.stringify(profile)), {
-    key: PROFILE_STORAGE_KEY, profile: { ...DEMO_PROFILE_SEED, dataMode: 'demo', preferredRole: 'family' },
+    key: PROFILE_STORAGE_KEY,
+    profile: { ...DEMO_PROFILE_SEED, dataMode: 'demo', preferredRole: 'family' },
   });
   await family.reload();
   await family.getByRole('heading', { name: /王强/ }).waitFor();
@@ -20,7 +21,7 @@ try {
   await family.getByRole('navigation').getByRole('button', { name: '首页', exact: true }).click();
   await family.screenshot({ path: '.test-build/family-management-home.png', fullPage: true });
   const elder = await context.newPage();
-  await elder.goto((process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/'));
+  await elder.goto(process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/');
   await elder.getByRole('button', { name: '切换身份', exact: true }).click();
   await elder.getByRole('button', { name: /我是老人/ }).click();
   const nav = family.getByRole('navigation', { name: '主要导航' });

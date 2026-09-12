@@ -6,11 +6,7 @@ import {
   type HealthKitBridgeDiagnostics,
 } from '../src/adapters/HealthKitDeviceAdapter';
 import { measurementToEvent, mergeHealthEvents } from '../src/pipeline/events';
-import {
-  healthKitRevisionKey,
-  shouldPollHealthKit,
-  shouldRefreshHealthKit,
-} from '../src/healthkit/autoSync';
+import { healthKitRevisionKey, shouldPollHealthKit, shouldRefreshHealthKit } from '../src/healthkit/autoSync';
 
 const validMeasurement = {
   id: 'healthkit-uuid-1',
@@ -97,7 +93,11 @@ test('diagnostics polling uses its lightweight endpoint and preserves revision',
 test('auto-sync gate refreshes only for a changed fresh revision marker', () => {
   const firstKey = healthKitRevisionKey(diagnostics);
   assert.equal(shouldRefreshHealthKit(undefined, diagnostics), true, 'first fresh upload triggers synchronization');
-  assert.equal(shouldRefreshHealthKit(firstKey, diagnostics), false, 'unchanged revision does not repeat synchronization');
+  assert.equal(
+    shouldRefreshHealthKit(firstKey, diagnostics),
+    false,
+    'unchanged revision does not repeat synchronization',
+  );
   assert.equal(shouldRefreshHealthKit(firstKey, { ...diagnostics, revision: 2 }), true, 'changed revision triggers');
   assert.equal(
     shouldRefreshHealthKit(firstKey, { ...diagnostics, freshness: 'stale', revision: 2 }),

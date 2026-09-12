@@ -126,7 +126,9 @@ export default function DeviceDebugPanel({ mode, state, eventCount, findings, pe
           {state.lastCheckedAt && (
             <p className="muted">
               最近检测：{new Date(state.lastCheckedAt).toLocaleString()}
-              {state.lastTrigger ? ` · 最近刷新由${state.lastTrigger === 'automatic' ? '自动检测' : '手动按钮'}触发` : ''}
+              {state.lastTrigger
+                ? ` · 最近刷新由${state.lastTrigger === 'automatic' ? '自动检测' : '手动按钮'}触发`
+                : ''}
             </p>
           )}
           {state.error && (

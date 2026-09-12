@@ -22,7 +22,7 @@ export default function FirstRunGate({ onDemo, onPersonal }: FirstRunGateProps) 
     <div className="role-gate">
       <div className="role-card">
         <div className="role-kicker">阿安 · 老人家庭助手</div>
-            <h1>{role ? '接下来怎么开始？' : '先告诉我们你的身份'}</h1>
+        <h1>{role ? '接下来怎么开始？' : '先告诉我们你的身份'}</h1>
         <p className="role-lead">
           {role ? '真实使用从空白建档；演示档案必须由你主动选择。' : '请先告诉我们你将以哪种身份使用，系统不会猜测。'}
         </p>
@@ -31,14 +31,18 @@ export default function FirstRunGate({ onDemo, onPersonal }: FirstRunGateProps) 
           {!role ? (
             <>
               <button className="role-option role-option-elder" onClick={() => setRole('elder')}>
-                <span className="role-icon" aria-hidden="true">☀️</span>
+                <span className="role-icon" aria-hidden="true">
+                  ☀️
+                </span>
                 <span className="role-option-tag">老人端</span>
                 <strong>我为自己使用</strong>
                 <span>记录健康、用药和日常提醒</span>
                 <span className="role-option-link">进入老人端 →</span>
               </button>
               <button className="role-option role-option-family" onClick={() => setRole('family')}>
-                <span className="role-icon" aria-hidden="true">🤝</span>
+                <span className="role-icon" aria-hidden="true">
+                  🤝
+                </span>
                 <span className="role-option-tag">子女 / 家属端</span>
                 <strong>我来陪伴家人</strong>
                 <span>接收重要变化，协助照护父母</span>
@@ -48,13 +52,17 @@ export default function FirstRunGate({ onDemo, onPersonal }: FirstRunGateProps) 
           ) : (
             <>
               <button className="role-option" onClick={() => onPersonal(role)}>
-                <span className="role-icon" aria-hidden="true">📝</span>
+                <span className="role-icon" aria-hidden="true">
+                  📝
+                </span>
                 <span className="role-option-tag">真实使用</span>
                 <strong>创建真实档案</strong>
                 <span>从空白开始，不注入任何预置健康数据</span>
               </button>
               <button className="role-option" onClick={() => onDemo(role)}>
-                <span className="role-icon" aria-hidden="true">✨</span>
+                <span className="role-icon" aria-hidden="true">
+                  ✨
+                </span>
                 <span className="role-option-tag">演示体验</span>
                 <strong>体验王秀兰演示档案</strong>
                 <span>明确使用预置的模拟数据，仅用于体验</span>

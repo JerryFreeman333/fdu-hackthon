@@ -129,7 +129,8 @@ const server = createServer(async (request, response) => {
       }
       const measurements = dedupeMeasurements(payload.measurements);
       const previous = await loadPayload();
-      const previousRevision = Number.isSafeInteger(previous?.revision) && previous.revision >= 0 ? previous.revision : 0;
+      const previousRevision =
+        Number.isSafeInteger(previous?.revision) && previous.revision >= 0 ? previous.revision : 0;
       const receivedAt = new Date().toISOString();
       const stored = {
         schemaVersion: 1,

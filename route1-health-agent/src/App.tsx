@@ -446,21 +446,60 @@ function AppRoot({
         if (link) showToast('家属已通过邀请码绑定成功。');
       } else if (envelope.type === 'medication.update') {
         if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
-        const payload = envelope.payload as { familyId?: string; mode?: string; name?: string; medicationRecords?: ElderProfile['medicationRecords'] };
+        const payload = envelope.payload as {
+          familyId?: string;
+          mode?: string;
+          name?: string;
+          medicationRecords?: ElderProfile['medicationRecords'];
+        };
         const allowed = (demoMode && demoSharing) || (familySharing === 'granted' && familyLink?.status === 'active');
-        if (!allowed || payload?.mode !== storedProfile.dataMode || payload.familyId !== (demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode) || payload.name !== activeProfile.name) return;
+        if (
+          !allowed ||
+          payload?.mode !== storedProfile.dataMode ||
+          payload.familyId !== (demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode) ||
+          payload.name !== activeProfile.name
+        )
+          return;
         const medicines = payload.medicationRecords;
-        if (!Array.isArray(medicines) || medicines.length > 200 || !medicines.every(m =>
-          m && ['id', 'name', 'dose', 'purpose', 'times'].every(k => typeof m[k as keyof typeof m] === 'string') &&
-          (m.status === 'active' || m.status === 'stopped'))) return;
-        const next = { ...storedProfile, profile: { ...storedProfile.profile, medicationRecords: medicines, medications: medicines.filter(m => m.status === 'active').map(m => m.name) } };
+        if (
+          !Array.isArray(medicines) ||
+          medicines.length > 200 ||
+          !medicines.every(
+            (m) =>
+              m &&
+              ['id', 'name', 'dose', 'purpose', 'times'].every((k) => typeof m[k as keyof typeof m] === 'string') &&
+              (m.status === 'active' || m.status === 'stopped'),
+          )
+        )
+          return;
+        const next = {
+          ...storedProfile,
+          profile: {
+            ...storedProfile.profile,
+            medicationRecords: medicines,
+            medications: medicines.filter((m) => m.status === 'active').map((m) => m.name),
+          },
+        };
         saveStoredProfile(next);
         onProfileChange(next);
         showToast('已收到家人的用药档案更新。');
       }
     });
     return unsubscribe;
-  }, [sync, mergeAcknowledge, mergeRecord, role, showToast, demoMode, demoSharing, familySharing, familyLink, activeProfile.name, storedProfile, onProfileChange]);
+  }, [
+    sync,
+    mergeAcknowledge,
+    mergeRecord,
+    role,
+    showToast,
+    demoMode,
+    demoSharing,
+    familySharing,
+    familyLink,
+    activeProfile.name,
+    storedProfile,
+    onProfileChange,
+  ]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
   // P1：PeerJS 通道只在绑定完成后启用——对端是"通过握手验证的家属"才送确认动作。
@@ -773,14 +812,26 @@ function AppRoot({
     const next: StoredProfile = { ...storedProfile, profile: nextProfile };
     saveStoredProfile(next);
     onProfileChange(next);
-    if (nextProfile.medicationRecords !== storedProfile.profile.medicationRecords &&
-        (demoMode || (familySharing === 'granted' && familyLink?.status === 'active'))) {
-      sync.broadcast('medication.update', {
-        familyId: demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode,
-        mode: storedProfile.dataMode, name: activeProfile.name, medicationRecords: nextProfile.medicationRecords,
-      }, { peer: familyLinkActiveRef.current });
+    if (
+      nextProfile.medicationRecords !== storedProfile.profile.medicationRecords &&
+      (demoMode || (familySharing === 'granted' && familyLink?.status === 'active'))
+    ) {
+      sync.broadcast(
+        'medication.update',
+        {
+          familyId: demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode,
+          mode: storedProfile.dataMode,
+          name: activeProfile.name,
+          medicationRecords: nextProfile.medicationRecords,
+        },
+        { peer: familyLinkActiveRef.current },
+      );
     }
-    showToast(sync.status.mode === 'cross-device' ? '档案已保存，更新已发送到家庭连接。' : '档案已保存在本机，同浏览器家庭页面可同步更新。');
+    showToast(
+      sync.status.mode === 'cross-device'
+        ? '档案已保存，更新已发送到家庭连接。'
+        : '档案已保存在本机，同浏览器家庭页面可同步更新。',
+    );
   }
 
   // 评审 P1-3：老人端 SOS 的微信通知家属动作。发送结果如实提示，不假装成功。
@@ -1075,29 +1126,56 @@ function AppRoot({
         <Suspense fallback={VIEW_FALLBACK}>
           <FamilyDashboard
             demoMode={demoMode}
-            medicationPage={<MedicationPage title="父母的药物档案" profile={activeProfile} onSave={handleProfileSave} onFind={(name) => void openHomeTwinLookup(name)} />}
-            archivePage={<HealthArchivePage owner={activeProfile.name} demoMode={demoMode}
-              onRecognize={(file) => {
-                if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
-                  showToast('真实图片识别服务尚未配置，未写入模拟结果。'); return;
-                }
-                void handlePhotoImport(file, 'report');
-              }}>
-              <ElderHealthPage profile={activeProfile} findings={findings} dataMode={storedProfile.dataMode}
-                onPhotoImport={(file, kind) => {
+            medicationPage={
+              <MedicationPage
+                title="父母的药物档案"
+                profile={activeProfile}
+                onSave={handleProfileSave}
+                onFind={(name) => void openHomeTwinLookup(name)}
+              />
+            }
+            archivePage={
+              <HealthArchivePage
+                owner={activeProfile.name}
+                demoMode={demoMode}
+                onRecognize={(file) => {
                   if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
-                    showToast('真实图片识别服务尚未配置，未写入模拟结果。'); return;
+                    showToast('真实图片识别服务尚未配置，未写入模拟结果。');
+                    return;
                   }
-                  return handlePhotoImport(file, kind);
+                  void handlePhotoImport(file, 'report');
                 }}
-                onCommitPhoto={commitPhotoImport} onCancelPhoto={cancelPhotoImport}
-                pendingPhoto={pendingPhoto} pendingPhotoKind={pendingPhotoKind} pendingPhotoError={pendingPhotoError}>
-                <p>档案保存在当前浏览器，与同机父母端共用。跨设备附件同步尚未接入。</p>
-              </ElderHealthPage>
-            </HealthArchivePage>}
+              >
+                <ElderHealthPage
+                  profile={activeProfile}
+                  findings={findings}
+                  dataMode={storedProfile.dataMode}
+                  onPhotoImport={(file, kind) => {
+                    if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
+                      showToast('真实图片识别服务尚未配置，未写入模拟结果。');
+                      return;
+                    }
+                    return handlePhotoImport(file, kind);
+                  }}
+                  onCommitPhoto={commitPhotoImport}
+                  onCancelPhoto={cancelPhotoImport}
+                  pendingPhoto={pendingPhoto}
+                  pendingPhotoKind={pendingPhotoKind}
+                  pendingPhotoError={pendingPhotoError}
+                >
+                  <p>档案保存在当前浏览器，与同机父母端共用。跨设备附件同步尚未接入。</p>
+                </ElderHealthPage>
+              </HealthArchivePage>
+            }
             profile={demoMode ? { ...activeProfile, familySharing: demoSharing ? 'granted' : 'denied' } : activeProfile}
             familyLink={demoMode ? demoFamilyLink : familyLink}
-            notifications={demoMode ? (demoSharing ? collectFamilyNotifications(findings, 'granted', sharedFindingIds, today) : []) : familyNotifs}
+            notifications={
+              demoMode
+                ? demoSharing
+                  ? collectFamilyNotifications(findings, 'granted', sharedFindingIds, today)
+                  : []
+                : familyNotifs
+            }
             dispatchRecords={dispatchRecords}
             onAcknowledgeDispatch={handleAcknowledge}
             findings={findings}
@@ -1112,7 +1190,10 @@ function AppRoot({
             onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
             onContactElder={contactElder}
             onContactDoctor={contactDoctor}
-            onRevokeSharing={() => { setDemoSharing(false); revokeFamilyShare(); }}
+            onRevokeSharing={() => {
+              setDemoSharing(false);
+              revokeFamilyShare();
+            }}
             onBindFamily={(code) => bindFamily(code, familyLinkTransport as FamilyLinkTransport)}
             onViewChange={setFamilyView}
             view={familyView}
@@ -1126,7 +1207,15 @@ function AppRoot({
       </main>
       <MobileTabBar
         items={FAMILY_TABS}
-        active={familyView === 'profile' || familyView === 'privacy' ? 'profile' : familyView === 'report' ? 'report' : familyView === 'messages' || familyView === 'detail' ? 'messages' : 'home'}
+        active={
+          familyView === 'profile' || familyView === 'privacy'
+            ? 'profile'
+            : familyView === 'report'
+              ? 'report'
+              : familyView === 'messages' || familyView === 'detail'
+                ? 'messages'
+                : 'home'
+        }
         onSelect={setFamilyView}
       />
       {toast && <div className="toast">{toast}</div>}

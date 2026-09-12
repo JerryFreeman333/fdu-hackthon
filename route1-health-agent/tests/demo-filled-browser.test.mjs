@@ -10,7 +10,7 @@ try {
       key: PROFILE_STORAGE_KEY,
       profile: { ...DEMO_PROFILE_SEED, dataMode, preferredRole: 'elder' },
     });
-    await page.goto((process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/'));
+    await page.goto(process.env.TEST_BASE_URL || 'http://127.0.0.1:5173/');
     const nav = page.getByRole('navigation', { name: '主要导航' });
     await nav.getByRole('button', { name: '健康档案' }).click();
     await page.waitForTimeout(250);

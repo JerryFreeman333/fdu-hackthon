@@ -43,8 +43,8 @@ export default function HealthArchivePage({
         const r = db.transaction('files').objectStore('files').getAll();
         r.onsuccess = () => {
           if (active) {
-            const saved = (r.result as Archive[]).filter(a => a.scope === scope || (!a.scope && !demoMode));
-            setItems([...(demoMode ? demoArchives().filter(a => !saved.some(s => s.id === a.id)) : []), ...saved]);
+            const saved = (r.result as Archive[]).filter((a) => a.scope === scope || (!a.scope && !demoMode));
+            setItems([...(demoMode ? demoArchives().filter((a) => !saved.some((s) => s.id === a.id)) : []), ...saved]);
           }
           db.close();
         };
@@ -61,7 +61,9 @@ export default function HealthArchivePage({
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const channel = new BroadcastChannel('ankang-archive-updates');
-    channel.onmessage = e => { if (e.data === scope) setRevision(r => r + 1); };
+    channel.onmessage = (e) => {
+      if (e.data === scope) setRevision((r) => r + 1);
+    };
     return () => channel.close();
   }, [scope]);
   useEffect(() => {
@@ -92,7 +94,7 @@ export default function HealthArchivePage({
         tx.onabort = () => reject(tx.error);
       });
       db.close();
-      setItems((i) => [...i.filter(a => a.id !== entry.id), entry]);
+      setItems((i) => [...i.filter((a) => a.id !== entry.id), entry]);
       setEditingId(null);
       if (typeof BroadcastChannel !== 'undefined') {
         const channel = new BroadcastChannel('ankang-archive-updates');
@@ -126,10 +128,19 @@ export default function HealthArchivePage({
             返回档案
           </button>
           <h2>{selected.name}</h2>
-          <button className="btn-secondary" onClick={() => {
-            setEditingId(selected.id); setName(selected.name); setKind(selected.category);
-            setFile(selected.file); setSelected(null); setUpload(true);
-          }}>编辑档案</button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setEditingId(selected.id);
+              setName(selected.name);
+              setKind(selected.category);
+              setFile(selected.file);
+              setSelected(null);
+              setUpload(true);
+            }}
+          >
+            编辑档案
+          </button>
           <p>
             {selected.category} · {new Date(selected.date).toLocaleDateString()}
           </p>
@@ -197,7 +208,16 @@ export default function HealthArchivePage({
           <button className="btn-primary" disabled={!file || busy}>
             {busy ? '保存中…' : '保存档案'}
           </button>
-          <button type="button" className="btn-secondary" onClick={() => { setUpload(false); setEditingId(null); setFile(null); setName(''); }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setUpload(false);
+              setEditingId(null);
+              setFile(null);
+              setName('');
+            }}
+          >
             取消
           </button>
         </form>

@@ -1,24 +1,904 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>方向 A · 参考图高还原</title>
-  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
-  <style>
-    *{box-sizing:border-box}html,body,#root{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:#101827}body{background:#edf2f9}.board{min-height:960px;padding:34px 30px 18px;background:radial-gradient(circle at 50% -10%,#fff 0,#f5f8fd 38%,#eaf0f8 100%)}.board-head{height:68px;display:flex;align-items:flex-start;justify-content:space-between;max-width:1390px;margin:auto}.board-title{font-size:26px;font-weight:760;letter-spacing:-.02em}.board-note{font-size:14px;color:#6d7889;margin-top:6px}.swatches{display:flex;gap:8px;margin-top:8px}.swatches i{width:22px;height:8px;border-radius:20px}.phones{display:flex;justify-content:center;gap:26px;align-items:flex-start}.phone-label{text-align:center;font-size:14px;color:#687487;margin-bottom:10px;font-weight:650;letter-spacing:.08em}.phone-wrap{transform:scale(.84);transform-origin:top center;width:350px;height:744px}.screen-content{height:100%;overflow:hidden;background:linear-gradient(160deg,#fbfdff 0%,#f3f8ff 52%,#edf5ff 100%);position:relative}.page{height:100%;padding:18px 24px 92px;overflow:hidden}.topline{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.hello h1{font-size:27px;line-height:1.2;margin:0 0 4px;font-weight:790;letter-spacing:-.03em}.sub{color:#7e8897;font-size:14px}.date{text-align:right;color:#657184;font-size:13px;line-height:1.35}.weather{font-size:20px;color:#24324a;font-weight:700}.card{background:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.9);border-radius:22px;box-shadow:0 12px 34px rgba(70,110,165,.08)}.section-head{display:flex;justify-content:space-between;align-items:center}.section-title{font-size:20px;font-weight:780}.link{font-size:13px;color:#7a8494}.tasks{padding:16px 18px;margin-bottom:18px}.task-row{height:54px;display:grid;grid-template-columns:42px 1fr 30px;align-items:center;border-top:1px solid #edf1f6}.task-row:first-of-type{border-top:0}.task-icon{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:15px;font-weight:800}.task-time{font-size:13px;color:#536174}.task-name{font-size:16px;font-weight:660}.tick{width:28px;height:28px;border-radius:50%;background:#e1f7e9;color:#17a150;display:grid;place-items:center;font-weight:900}.chev{font-size:24px;color:#99a3b1}.voice-zone{text-align:center;margin:4px 0 16px}.voice-orb{width:154px;height:154px;border:0;border-radius:50%;background:linear-gradient(145deg,#58c8f4 0%,#2e86f7 75%);box-shadow:0 0 0 18px rgba(68,162,242,.09),0 0 0 38px rgba(88,180,247,.05),0 22px 42px rgba(37,126,231,.25);display:grid;place-items:center;margin:0 auto 14px;color:white;cursor:pointer;transition:.2s}.voice-orb:active{transform:scale(.96)}.mic{width:52px;height:70px;border:7px solid white;border-top:0;border-radius:0 0 28px 28px;position:relative}.mic:before{content:"";position:absolute;width:30px;height:48px;background:white;border-radius:18px;left:4px;top:-22px}.mic:after{content:"";position:absolute;width:36px;height:7px;background:white;border-radius:8px;left:1px;bottom:-18px;box-shadow:15px 10px 0 -1px white}.voice-title{font-size:24px;font-weight:800}.voice-copy{color:#7c8796;font-size:14px;margin-top:4px}.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.quick{padding:14px;border-radius:18px;border:0;text-align:left;background:rgba(255,255,255,.78);font-size:15px;color:#283447;box-shadow:0 9px 24px rgba(77,114,167,.06)}.quick b{display:block;font-size:16px;margin-bottom:3px}.tone-red{background:#fff1f3;color:#ef5470}.tone-blue{background:#edf6ff;color:#258ced}.tone-green{background:#eefaf4;color:#18a06a}.tone-purple{background:#f3f0ff;color:#7259e7}.bottom-nav{position:absolute;left:0;right:0;bottom:0;height:78px;background:rgba(255,255,255,.94);border-top:1px solid #edf1f6;display:grid;grid-template-columns:repeat(4,1fr);padding:8px 10px 10px;backdrop-filter:blur(18px)}.nav-item{border:0;background:none;color:#8993a3;font-size:11px;display:grid;place-items:center;gap:2px;cursor:pointer}.nav-item.active{color:#2588ee;font-weight:750}.nav-dot{width:22px;height:22px;border-radius:8px;background:currentColor;opacity:.9;position:relative}.nav-dot:after{content:"";position:absolute;inset:6px;background:white;border-radius:4px}.chat-page{padding:12px 18px 84px}.chat-head{text-align:center;margin-bottom:18px}.chat-head h2{font-size:21px;margin:0}.chat-head p{font-size:13px;color:#8a93a0;margin:2px}.bubble{max-width:84%;padding:13px 15px;border-radius:19px;font-size:15px;line-height:1.55;margin-bottom:8px;box-shadow:0 7px 22px rgba(66,103,151,.06)}.bubble.user{margin-left:auto;background:#dceeff;border-bottom-right-radius:7px}.bubble.ai{background:white;border-bottom-left-radius:7px}.ai-label{display:flex;gap:8px;align-items:center;color:#398fe8;font-weight:750;font-size:12px;margin:12px 0 6px}.bot{width:27px;height:27px;border-radius:10px;background:linear-gradient(145deg,#a7ddff,#4ba2f3);display:grid;place-items:center;color:white}.receipt{font-size:12px;color:#748296;margin:-2px 0 13px 35px}.suggest-title{display:flex;justify-content:space-between;font-size:14px;font-weight:740;margin:16px 0 8px}.suggest-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.suggest{border:0;border-radius:15px;background:white;padding:11px;text-align:left;font-size:13px;color:#334155;min-height:58px}.composer{position:absolute;left:16px;right:16px;bottom:82px;height:52px;border-radius:27px;background:white;box-shadow:0 8px 30px rgba(59,92,139,.1);display:flex;align-items:center;padding:6px 8px;gap:8px}.composer-mic{width:39px;height:39px;border-radius:50%;border:0;background:#2388ee;color:white;font-weight:900}.composer span{color:#9aa4b2;font-size:13px}.family-page{padding:14px 20px 92px}.bell{width:42px;height:42px;border-radius:15px;background:white;box-shadow:0 8px 24px rgba(56,86,130,.08);display:grid;place-items:center;color:#306fbd;font-size:17px;font-weight:900}.alert-card{padding:18px;background:linear-gradient(135deg,#e9f3ff,#fbfdff);margin-bottom:14px}.alert-card .badge{display:inline-block;background:#fff0dc;color:#a86500;border-radius:20px;padding:5px 10px;font-size:11px;font-weight:760}.alert-card h2{font-size:21px;margin:10px 0 7px}.alert-card p{font-size:13px;line-height:1.55;color:#5f6d7d;margin:0}.action-row{display:flex;gap:8px;margin-top:12px}.primary,.secondary{height:42px;border-radius:13px;padding:0 14px;font-weight:700;font-size:13px;cursor:pointer}.primary{border:0;background:#2c8df4;color:white}.secondary{border:1px solid #d8e3ef;background:white;color:#35445a}.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.feature{height:105px;padding:15px;border-radius:20px;position:relative;overflow:hidden}.feature strong{display:block;font-size:16px;margin-top:14px}.feature small{color:#738093}.feature-mark{position:absolute;right:14px;top:14px;width:34px;height:34px;border-radius:12px;display:grid;place-items:center;color:white;font-weight:850}.feed{padding:15px}.feed-row{display:grid;grid-template-columns:38px 1fr 22px;align-items:center;min-height:57px;border-top:1px solid #edf1f6}.feed-row:first-of-type{border:0}.feed-icon{width:32px;height:32px;border-radius:11px;display:grid;place-items:center;font-size:12px;font-weight:800}.feed-title{font-size:13px;font-weight:700}.feed-sub{font-size:11px;color:#8a94a3}
-  </style>
-</head>
-<body><div id="root"></div>
-<script type="text/babel">
-const iosFrameStyles={wrapper:{display:'inline-block',padding:12,background:'#000',borderRadius:60,boxShadow:'0 0 0 2px #1f2937,0 20px 60px rgba(0,0,0,.3)',position:'relative'},screen:{position:'relative',borderRadius:48,overflow:'hidden',background:'#fff'},statusBar:{position:'absolute',top:0,left:0,right:0,height:54,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 32px',fontSize:16,fontWeight:600,fontFamily:'-apple-system,"SF Pro Text",sans-serif',zIndex:20,pointerEvents:'none'},dynamicIsland:{position:'absolute',top:12,left:'50%',transform:'translateX(-50%)',width:124,height:36,background:'#000',borderRadius:999,zIndex:30},statusIcons:{display:'flex',alignItems:'center',gap:6},signalIcon:{display:'flex',alignItems:'flex-end',gap:2,height:12},signalBar:{width:3,background:'currentColor',borderRadius:1},batteryIcon:{width:26,height:12,border:'1.5px solid currentColor',borderRadius:3,padding:1,position:'relative',opacity:.8},batteryCap:{position:'absolute',top:3,right:-3,width:2,height:6,background:'currentColor',borderRadius:'0 1px 1px 0'},content:{position:'absolute',top:54,left:0,right:0,bottom:34,overflow:'auto'},homeIndicator:{position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',width:140,height:5,background:'rgba(0,0,0,.3)',borderRadius:999,zIndex:10}};
-function IosFrame({children,width=393,height=852,time='9:41',battery=88}){return <div style={iosFrameStyles.wrapper}><div style={{...iosFrameStyles.screen,width,height}}><div style={iosFrameStyles.statusBar}><span>{time}</span><div style={iosFrameStyles.statusIcons}><div style={iosFrameStyles.signalIcon}>{[4,6,9,11].map(h=><i key={h} style={{...iosFrameStyles.signalBar,height:h}}/>)}</div><svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.5a1 1 0 100-2 1 1 0 000 2z" fill="currentColor"/><path d="M3 7.5a7 7 0 0110 0M1 4.5a11 11 0 0114 0" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round"/></svg><div style={iosFrameStyles.batteryIcon}><div style={{width:`${battery}%`,height:'100%',background:'currentColor',borderRadius:1}}/><div style={iosFrameStyles.batteryCap}/></div></div></div><div style={iosFrameStyles.dynamicIsland}/><div style={iosFrameStyles.content}>{children}</div><div style={iosFrameStyles.homeIndicator}/></div></div>}
-function Nav({active='首页'}){return <nav className="bottom-nav">{['首页','健康','助手','我的'].map(x=><button key={x} className={'nav-item '+(active===x?'active':'')}><i className="nav-dot"/>{x}</button>)}</nav>}
-function ElderHome(){return <div className="screen-content"><main className="page"><div className="topline"><div className="hello"><h1>上午好，王奶奶</h1><div className="sub">愿您今天过得舒心些</div></div><div className="date">9月12日<br/><span className="weather">24°C</span> 晴</div></div><section className="card tasks"><div className="section-head"><div className="section-title">今日待办</div><div className="link">查看全部 ›</div></div><div className="task-row"><span className="task-icon tone-red">药</span><div><span className="task-time">08:30　</span><span className="task-name">服用氨氯地平</span></div><span className="tick">✓</span></div><div className="task-row"><span className="task-icon tone-blue">诊</span><div><span className="task-time">今天　</span><span className="task-name">联系女儿说明近况</span></div><span className="chev">›</span></div></section><section className="voice-zone"><button className="voice-orb" onClick={e=>e.currentTarget.style.boxShadow='0 0 0 28px rgba(68,162,242,.12),0 22px 42px rgba(37,126,231,.25)'}><i className="mic"/></button><div className="voice-title">有什么事，和我说说</div><div className="voice-copy">我在这里，随时听您说</div></section><div className="quick-grid"><button className="quick"><b>我的健康</b><span className="sub">查看个人变化趋势</span></button><button className="quick"><b>隐私设置</b><span className="sub">管理家属共享</span></button></div></main><Nav/></div>}
-function Chat(){return <div className="screen-content"><main className="page chat-page"><header className="chat-head"><h2>AI 助手</h2><p>有事情，和我说说</p></header><div className="bubble user">早上脚踝有点肿，鞋都紧了。</div><div className="ai-label"><i className="bot">A</i>安康助手</div><div className="bubble ai">我先帮您记下来。最近有几项变化叠在一起，我建议今天和女儿联系一下。</div><div className="receipt">已记录 · 仅在您允许后与家属协同</div><div className="bubble user">那我现在该做什么？</div><div className="ai-label"><i className="bot">A</i>安康助手</div><div className="bubble ai">先坐下休息，今天别太累。如果呼吸明显困难或突然加重，请立即联系家人或拨打急救电话。</div><div className="suggest-title"><span>您还可以问</span><span className="link">换一批</span></div><div className="suggest-grid"><button className="suggest">我最近的血压怎么样？</button><button className="suggest">帮我记录今晚吃药</button><button className="suggest">为什么建议联系女儿？</button><button className="suggest">这个不要告诉家属</button></div><div className="composer"><button className="composer-mic">◉</button><span>按住说话，或输入文字</span></div></main><Nav active="助手"/></div>}
-function Family(){return <div className="screen-content"><main className="page family-page"><div className="topline"><div className="hello"><h1>您好，李芳</h1><div className="sub">今天有一件事值得关注</div></div><div className="bell">1</div></div><section className="card alert-card"><span className="badge">需要联系</span><h2>妈妈最近有几项变化叠在一起</h2><p>活动量下降、走路容易喘、夜间醒来增加，今天又记录到脚踝肿。</p><div className="action-row"><button className="primary">联系妈妈</button><button className="secondary">联系社区医生</button></div></section><div className="feature-grid"><section className="feature tone-red"><span className="feature-mark" style={{background:'#f06b82'}}>药</span><strong>用药与医护</strong><small>今日服药待确认</small></section><section className="feature tone-blue"><span className="feature-mark" style={{background:'#458fee'}}>报</span><strong>本周周报</strong><small>查看个人基线变化</small></section><section className="feature tone-green"><span className="feature-mark" style={{background:'#39b786'}}>家</span><strong>居家安全</strong><small>床到卫生间路线</small></section><section className="feature tone-purple"><span className="feature-mark" style={{background:'#7664df'}}>权</span><strong>共享与隐私</strong><small>按老人授权展示</small></section></div><section className="card feed"><div className="section-head"><div className="section-title" style={{fontSize:17}}>近期动态</div><div className="link">查看全部 ›</div></div><div className="feed-row"><span className="feed-icon tone-red">!</span><div><div className="feed-title">收到一条需要确认的提醒</div><div className="feed-sub">今天 08:05 · 等待家属知悉</div></div><span className="chev">›</span></div><div className="feed-row"><span className="feed-icon tone-green">3D</span><div><div className="feed-title">居家安全行动待处理</div><div className="feed-sub">固定床到卫生间路线上的地毯</div></div><span className="chev">›</span></div></section></main><nav className="bottom-nav">{['首页','周报','消息','我的'].map(x=><button key={x} className={'nav-item '+(x==='首页'?'active':'')}><i className="nav-dot"/>{x}</button>)}</nav></div>}
-function App(){return <div className="board"><header className="board-head"><div><div className="board-title">方向 A · 参考图高还原</div><div className="board-note">保留语音球、雾面卡片与家属功能宫格，内容替换为仓库真实状态</div></div><div className="swatches"><i style={{background:'#f5f9ff'}}/><i style={{background:'#2e8cf3'}}/><i style={{background:'#f06b82'}}/><i style={{background:'#39b786'}}/></div></header><div className="phones">{[["老人首页",<ElderHome/>],["AI 助手",<Chat/>],["家属首页",<Family/>]].map(([label,content])=><div key={label}><div className="phone-label">{label}</div><div className="phone-wrap"><IosFrame>{content}</IosFrame></div></div>)}</div></div>}
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-</script></body></html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>方向 A · 参考图高还原</title>
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        min-height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        color: #101827;
+      }
+      body {
+        background: #edf2f9;
+      }
+      .board {
+        min-height: 960px;
+        padding: 34px 30px 18px;
+        background: radial-gradient(circle at 50% -10%, #fff 0, #f5f8fd 38%, #eaf0f8 100%);
+      }
+      .board-head {
+        height: 68px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        max-width: 1390px;
+        margin: auto;
+      }
+      .board-title {
+        font-size: 26px;
+        font-weight: 760;
+        letter-spacing: -0.02em;
+      }
+      .board-note {
+        font-size: 14px;
+        color: #6d7889;
+        margin-top: 6px;
+      }
+      .swatches {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .swatches i {
+        width: 22px;
+        height: 8px;
+        border-radius: 20px;
+      }
+      .phones {
+        display: flex;
+        justify-content: center;
+        gap: 26px;
+        align-items: flex-start;
+      }
+      .phone-label {
+        text-align: center;
+        font-size: 14px;
+        color: #687487;
+        margin-bottom: 10px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+      }
+      .phone-wrap {
+        transform: scale(0.84);
+        transform-origin: top center;
+        width: 350px;
+        height: 744px;
+      }
+      .screen-content {
+        height: 100%;
+        overflow: hidden;
+        background: linear-gradient(160deg, #fbfdff 0%, #f3f8ff 52%, #edf5ff 100%);
+        position: relative;
+      }
+      .page {
+        height: 100%;
+        padding: 18px 24px 92px;
+        overflow: hidden;
+      }
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 18px;
+      }
+      .hello h1 {
+        font-size: 27px;
+        line-height: 1.2;
+        margin: 0 0 4px;
+        font-weight: 790;
+        letter-spacing: -0.03em;
+      }
+      .sub {
+        color: #7e8897;
+        font-size: 14px;
+      }
+      .date {
+        text-align: right;
+        color: #657184;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .weather {
+        font-size: 20px;
+        color: #24324a;
+        font-weight: 700;
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        border-radius: 22px;
+        box-shadow: 0 12px 34px rgba(70, 110, 165, 0.08);
+      }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .section-title {
+        font-size: 20px;
+        font-weight: 780;
+      }
+      .link {
+        font-size: 13px;
+        color: #7a8494;
+      }
+      .tasks {
+        padding: 16px 18px;
+        margin-bottom: 18px;
+      }
+      .task-row {
+        height: 54px;
+        display: grid;
+        grid-template-columns: 42px 1fr 30px;
+        align-items: center;
+        border-top: 1px solid #edf1f6;
+      }
+      .task-row:first-of-type {
+        border-top: 0;
+      }
+      .task-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .task-time {
+        font-size: 13px;
+        color: #536174;
+      }
+      .task-name {
+        font-size: 16px;
+        font-weight: 660;
+      }
+      .tick {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #e1f7e9;
+        color: #17a150;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+      }
+      .chev {
+        font-size: 24px;
+        color: #99a3b1;
+      }
+      .voice-zone {
+        text-align: center;
+        margin: 4px 0 16px;
+      }
+      .voice-orb {
+        width: 154px;
+        height: 154px;
+        border: 0;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #58c8f4 0%, #2e86f7 75%);
+        box-shadow:
+          0 0 0 18px rgba(68, 162, 242, 0.09),
+          0 0 0 38px rgba(88, 180, 247, 0.05),
+          0 22px 42px rgba(37, 126, 231, 0.25);
+        display: grid;
+        place-items: center;
+        margin: 0 auto 14px;
+        color: white;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .voice-orb:active {
+        transform: scale(0.96);
+      }
+      .mic {
+        width: 52px;
+        height: 70px;
+        border: 7px solid white;
+        border-top: 0;
+        border-radius: 0 0 28px 28px;
+        position: relative;
+      }
+      .mic:before {
+        content: '';
+        position: absolute;
+        width: 30px;
+        height: 48px;
+        background: white;
+        border-radius: 18px;
+        left: 4px;
+        top: -22px;
+      }
+      .mic:after {
+        content: '';
+        position: absolute;
+        width: 36px;
+        height: 7px;
+        background: white;
+        border-radius: 8px;
+        left: 1px;
+        bottom: -18px;
+        box-shadow: 15px 10px 0 -1px white;
+      }
+      .voice-title {
+        font-size: 24px;
+        font-weight: 800;
+      }
+      .voice-copy {
+        color: #7c8796;
+        font-size: 14px;
+        margin-top: 4px;
+      }
+      .quick-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .quick {
+        padding: 14px;
+        border-radius: 18px;
+        border: 0;
+        text-align: left;
+        background: rgba(255, 255, 255, 0.78);
+        font-size: 15px;
+        color: #283447;
+        box-shadow: 0 9px 24px rgba(77, 114, 167, 0.06);
+      }
+      .quick b {
+        display: block;
+        font-size: 16px;
+        margin-bottom: 3px;
+      }
+      .tone-red {
+        background: #fff1f3;
+        color: #ef5470;
+      }
+      .tone-blue {
+        background: #edf6ff;
+        color: #258ced;
+      }
+      .tone-green {
+        background: #eefaf4;
+        color: #18a06a;
+      }
+      .tone-purple {
+        background: #f3f0ff;
+        color: #7259e7;
+      }
+      .bottom-nav {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 78px;
+        background: rgba(255, 255, 255, 0.94);
+        border-top: 1px solid #edf1f6;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        padding: 8px 10px 10px;
+        backdrop-filter: blur(18px);
+      }
+      .nav-item {
+        border: 0;
+        background: none;
+        color: #8993a3;
+        font-size: 11px;
+        display: grid;
+        place-items: center;
+        gap: 2px;
+        cursor: pointer;
+      }
+      .nav-item.active {
+        color: #2588ee;
+        font-weight: 750;
+      }
+      .nav-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 8px;
+        background: currentColor;
+        opacity: 0.9;
+        position: relative;
+      }
+      .nav-dot:after {
+        content: '';
+        position: absolute;
+        inset: 6px;
+        background: white;
+        border-radius: 4px;
+      }
+      .chat-page {
+        padding: 12px 18px 84px;
+      }
+      .chat-head {
+        text-align: center;
+        margin-bottom: 18px;
+      }
+      .chat-head h2 {
+        font-size: 21px;
+        margin: 0;
+      }
+      .chat-head p {
+        font-size: 13px;
+        color: #8a93a0;
+        margin: 2px;
+      }
+      .bubble {
+        max-width: 84%;
+        padding: 13px 15px;
+        border-radius: 19px;
+        font-size: 15px;
+        line-height: 1.55;
+        margin-bottom: 8px;
+        box-shadow: 0 7px 22px rgba(66, 103, 151, 0.06);
+      }
+      .bubble.user {
+        margin-left: auto;
+        background: #dceeff;
+        border-bottom-right-radius: 7px;
+      }
+      .bubble.ai {
+        background: white;
+        border-bottom-left-radius: 7px;
+      }
+      .ai-label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        color: #398fe8;
+        font-weight: 750;
+        font-size: 12px;
+        margin: 12px 0 6px;
+      }
+      .bot {
+        width: 27px;
+        height: 27px;
+        border-radius: 10px;
+        background: linear-gradient(145deg, #a7ddff, #4ba2f3);
+        display: grid;
+        place-items: center;
+        color: white;
+      }
+      .receipt {
+        font-size: 12px;
+        color: #748296;
+        margin: -2px 0 13px 35px;
+      }
+      .suggest-title {
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        font-weight: 740;
+        margin: 16px 0 8px;
+      }
+      .suggest-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .suggest {
+        border: 0;
+        border-radius: 15px;
+        background: white;
+        padding: 11px;
+        text-align: left;
+        font-size: 13px;
+        color: #334155;
+        min-height: 58px;
+      }
+      .composer {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 82px;
+        height: 52px;
+        border-radius: 27px;
+        background: white;
+        box-shadow: 0 8px 30px rgba(59, 92, 139, 0.1);
+        display: flex;
+        align-items: center;
+        padding: 6px 8px;
+        gap: 8px;
+      }
+      .composer-mic {
+        width: 39px;
+        height: 39px;
+        border-radius: 50%;
+        border: 0;
+        background: #2388ee;
+        color: white;
+        font-weight: 900;
+      }
+      .composer span {
+        color: #9aa4b2;
+        font-size: 13px;
+      }
+      .family-page {
+        padding: 14px 20px 92px;
+      }
+      .bell {
+        width: 42px;
+        height: 42px;
+        border-radius: 15px;
+        background: white;
+        box-shadow: 0 8px 24px rgba(56, 86, 130, 0.08);
+        display: grid;
+        place-items: center;
+        color: #306fbd;
+        font-size: 17px;
+        font-weight: 900;
+      }
+      .alert-card {
+        padding: 18px;
+        background: linear-gradient(135deg, #e9f3ff, #fbfdff);
+        margin-bottom: 14px;
+      }
+      .alert-card .badge {
+        display: inline-block;
+        background: #fff0dc;
+        color: #a86500;
+        border-radius: 20px;
+        padding: 5px 10px;
+        font-size: 11px;
+        font-weight: 760;
+      }
+      .alert-card h2 {
+        font-size: 21px;
+        margin: 10px 0 7px;
+      }
+      .alert-card p {
+        font-size: 13px;
+        line-height: 1.55;
+        color: #5f6d7d;
+        margin: 0;
+      }
+      .action-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .primary,
+      .secondary {
+        height: 42px;
+        border-radius: 13px;
+        padding: 0 14px;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .primary {
+        border: 0;
+        background: #2c8df4;
+        color: white;
+      }
+      .secondary {
+        border: 1px solid #d8e3ef;
+        background: white;
+        color: #35445a;
+      }
+      .feature-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .feature {
+        height: 105px;
+        padding: 15px;
+        border-radius: 20px;
+        position: relative;
+        overflow: hidden;
+      }
+      .feature strong {
+        display: block;
+        font-size: 16px;
+        margin-top: 14px;
+      }
+      .feature small {
+        color: #738093;
+      }
+      .feature-mark {
+        position: absolute;
+        right: 14px;
+        top: 14px;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 850;
+      }
+      .feed {
+        padding: 15px;
+      }
+      .feed-row {
+        display: grid;
+        grid-template-columns: 38px 1fr 22px;
+        align-items: center;
+        min-height: 57px;
+        border-top: 1px solid #edf1f6;
+      }
+      .feed-row:first-of-type {
+        border: 0;
+      }
+      .feed-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .feed-title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .feed-sub {
+        font-size: 11px;
+        color: #8a94a3;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const iosFrameStyles = {
+        wrapper: {
+          display: 'inline-block',
+          padding: 12,
+          background: '#000',
+          borderRadius: 60,
+          boxShadow: '0 0 0 2px #1f2937,0 20px 60px rgba(0,0,0,.3)',
+          position: 'relative',
+        },
+        screen: { position: 'relative', borderRadius: 48, overflow: 'hidden', background: '#fff' },
+        statusBar: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 54,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px',
+          fontSize: 16,
+          fontWeight: 600,
+          fontFamily: '-apple-system,"SF Pro Text",sans-serif',
+          zIndex: 20,
+          pointerEvents: 'none',
+        },
+        dynamicIsland: {
+          position: 'absolute',
+          top: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 124,
+          height: 36,
+          background: '#000',
+          borderRadius: 999,
+          zIndex: 30,
+        },
+        statusIcons: { display: 'flex', alignItems: 'center', gap: 6 },
+        signalIcon: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 12 },
+        signalBar: { width: 3, background: 'currentColor', borderRadius: 1 },
+        batteryIcon: {
+          width: 26,
+          height: 12,
+          border: '1.5px solid currentColor',
+          borderRadius: 3,
+          padding: 1,
+          position: 'relative',
+          opacity: 0.8,
+        },
+        batteryCap: {
+          position: 'absolute',
+          top: 3,
+          right: -3,
+          width: 2,
+          height: 6,
+          background: 'currentColor',
+          borderRadius: '0 1px 1px 0',
+        },
+        content: { position: 'absolute', top: 54, left: 0, right: 0, bottom: 34, overflow: 'auto' },
+        homeIndicator: {
+          position: 'absolute',
+          bottom: 10,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 140,
+          height: 5,
+          background: 'rgba(0,0,0,.3)',
+          borderRadius: 999,
+          zIndex: 10,
+        },
+      };
+      function IosFrame({ children, width = 393, height = 852, time = '9:41', battery = 88 }) {
+        return (
+          <div style={iosFrameStyles.wrapper}>
+            <div style={{ ...iosFrameStyles.screen, width, height }}>
+              <div style={iosFrameStyles.statusBar}>
+                <span>{time}</span>
+                <div style={iosFrameStyles.statusIcons}>
+                  <div style={iosFrameStyles.signalIcon}>
+                    {[4, 6, 9, 11].map((h) => (
+                      <i key={h} style={{ ...iosFrameStyles.signalBar, height: h }} />
+                    ))}
+                  </div>
+                  <svg width="16" height="12" viewBox="0 0 16 12">
+                    <path d="M8 11.5a1 1 0 100-2 1 1 0 000 2z" fill="currentColor" />
+                    <path
+                      d="M3 7.5a7 7 0 0110 0M1 4.5a11 11 0 0114 0"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div style={iosFrameStyles.batteryIcon}>
+                    <div
+                      style={{ width: `${battery}%`, height: '100%', background: 'currentColor', borderRadius: 1 }}
+                    />
+                    <div style={iosFrameStyles.batteryCap} />
+                  </div>
+                </div>
+              </div>
+              <div style={iosFrameStyles.dynamicIsland} />
+              <div style={iosFrameStyles.content}>{children}</div>
+              <div style={iosFrameStyles.homeIndicator} />
+            </div>
+          </div>
+        );
+      }
+      function Nav({ active = '首页' }) {
+        return (
+          <nav className="bottom-nav">
+            {['首页', '健康', '助手', '我的'].map((x) => (
+              <button key={x} className={'nav-item ' + (active === x ? 'active' : '')}>
+                <i className="nav-dot" />
+                {x}
+              </button>
+            ))}
+          </nav>
+        );
+      }
+      function ElderHome() {
+        return (
+          <div className="screen-content">
+            <main className="page">
+              <div className="topline">
+                <div className="hello">
+                  <h1>上午好，王奶奶</h1>
+                  <div className="sub">愿您今天过得舒心些</div>
+                </div>
+                <div className="date">
+                  9月12日
+                  <br />
+                  <span className="weather">24°C</span> 晴
+                </div>
+              </div>
+              <section className="card tasks">
+                <div className="section-head">
+                  <div className="section-title">今日待办</div>
+                  <div className="link">查看全部 ›</div>
+                </div>
+                <div className="task-row">
+                  <span className="task-icon tone-red">药</span>
+                  <div>
+                    <span className="task-time">08:30　</span>
+                    <span className="task-name">服用氨氯地平</span>
+                  </div>
+                  <span className="tick">✓</span>
+                </div>
+                <div className="task-row">
+                  <span className="task-icon tone-blue">诊</span>
+                  <div>
+                    <span className="task-time">今天　</span>
+                    <span className="task-name">联系女儿说明近况</span>
+                  </div>
+                  <span className="chev">›</span>
+                </div>
+              </section>
+              <section className="voice-zone">
+                <button
+                  className="voice-orb"
+                  onClick={(e) =>
+                    (e.currentTarget.style.boxShadow =
+                      '0 0 0 28px rgba(68,162,242,.12),0 22px 42px rgba(37,126,231,.25)')
+                  }
+                >
+                  <i className="mic" />
+                </button>
+                <div className="voice-title">有什么事，和我说说</div>
+                <div className="voice-copy">我在这里，随时听您说</div>
+              </section>
+              <div className="quick-grid">
+                <button className="quick">
+                  <b>我的健康</b>
+                  <span className="sub">查看个人变化趋势</span>
+                </button>
+                <button className="quick">
+                  <b>隐私设置</b>
+                  <span className="sub">管理家属共享</span>
+                </button>
+              </div>
+            </main>
+            <Nav />
+          </div>
+        );
+      }
+      function Chat() {
+        return (
+          <div className="screen-content">
+            <main className="page chat-page">
+              <header className="chat-head">
+                <h2>AI 助手</h2>
+                <p>有事情，和我说说</p>
+              </header>
+              <div className="bubble user">早上脚踝有点肿，鞋都紧了。</div>
+              <div className="ai-label">
+                <i className="bot">A</i>安康助手
+              </div>
+              <div className="bubble ai">我先帮您记下来。最近有几项变化叠在一起，我建议今天和女儿联系一下。</div>
+              <div className="receipt">已记录 · 仅在您允许后与家属协同</div>
+              <div className="bubble user">那我现在该做什么？</div>
+              <div className="ai-label">
+                <i className="bot">A</i>安康助手
+              </div>
+              <div className="bubble ai">
+                先坐下休息，今天别太累。如果呼吸明显困难或突然加重，请立即联系家人或拨打急救电话。
+              </div>
+              <div className="suggest-title">
+                <span>您还可以问</span>
+                <span className="link">换一批</span>
+              </div>
+              <div className="suggest-grid">
+                <button className="suggest">我最近的血压怎么样？</button>
+                <button className="suggest">帮我记录今晚吃药</button>
+                <button className="suggest">为什么建议联系女儿？</button>
+                <button className="suggest">这个不要告诉家属</button>
+              </div>
+              <div className="composer">
+                <button className="composer-mic">◉</button>
+                <span>按住说话，或输入文字</span>
+              </div>
+            </main>
+            <Nav active="助手" />
+          </div>
+        );
+      }
+      function Family() {
+        return (
+          <div className="screen-content">
+            <main className="page family-page">
+              <div className="topline">
+                <div className="hello">
+                  <h1>您好，李芳</h1>
+                  <div className="sub">今天有一件事值得关注</div>
+                </div>
+                <div className="bell">1</div>
+              </div>
+              <section className="card alert-card">
+                <span className="badge">需要联系</span>
+                <h2>妈妈最近有几项变化叠在一起</h2>
+                <p>活动量下降、走路容易喘、夜间醒来增加，今天又记录到脚踝肿。</p>
+                <div className="action-row">
+                  <button className="primary">联系妈妈</button>
+                  <button className="secondary">联系社区医生</button>
+                </div>
+              </section>
+              <div className="feature-grid">
+                <section className="feature tone-red">
+                  <span className="feature-mark" style={{ background: '#f06b82' }}>
+                    药
+                  </span>
+                  <strong>用药与医护</strong>
+                  <small>今日服药待确认</small>
+                </section>
+                <section className="feature tone-blue">
+                  <span className="feature-mark" style={{ background: '#458fee' }}>
+                    报
+                  </span>
+                  <strong>本周周报</strong>
+                  <small>查看个人基线变化</small>
+                </section>
+                <section className="feature tone-green">
+                  <span className="feature-mark" style={{ background: '#39b786' }}>
+                    家
+                  </span>
+                  <strong>居家安全</strong>
+                  <small>床到卫生间路线</small>
+                </section>
+                <section className="feature tone-purple">
+                  <span className="feature-mark" style={{ background: '#7664df' }}>
+                    权
+                  </span>
+                  <strong>共享与隐私</strong>
+                  <small>按老人授权展示</small>
+                </section>
+              </div>
+              <section className="card feed">
+                <div className="section-head">
+                  <div className="section-title" style={{ fontSize: 17 }}>
+                    近期动态
+                  </div>
+                  <div className="link">查看全部 ›</div>
+                </div>
+                <div className="feed-row">
+                  <span className="feed-icon tone-red">!</span>
+                  <div>
+                    <div className="feed-title">收到一条需要确认的提醒</div>
+                    <div className="feed-sub">今天 08:05 · 等待家属知悉</div>
+                  </div>
+                  <span className="chev">›</span>
+                </div>
+                <div className="feed-row">
+                  <span className="feed-icon tone-green">3D</span>
+                  <div>
+                    <div className="feed-title">居家安全行动待处理</div>
+                    <div className="feed-sub">固定床到卫生间路线上的地毯</div>
+                  </div>
+                  <span className="chev">›</span>
+                </div>
+              </section>
+            </main>
+            <nav className="bottom-nav">
+              {['首页', '周报', '消息', '我的'].map((x) => (
+                <button key={x} className={'nav-item ' + (x === '首页' ? 'active' : '')}>
+                  <i className="nav-dot" />
+                  {x}
+                </button>
+              ))}
+            </nav>
+          </div>
+        );
+      }
+      function App() {
+        return (
+          <div className="board">
+            <header className="board-head">
+              <div>
+                <div className="board-title">方向 A · 参考图高还原</div>
+                <div className="board-note">保留语音球、雾面卡片与家属功能宫格，内容替换为仓库真实状态</div>
+              </div>
+              <div className="swatches">
+                <i style={{ background: '#f5f9ff' }} />
+                <i style={{ background: '#2e8cf3' }} />
+                <i style={{ background: '#f06b82' }} />
+                <i style={{ background: '#39b786' }} />
+              </div>
+            </header>
+            <div className="phones">
+              {[
+                ['老人首页', <ElderHome />],
+                ['AI 助手', <Chat />],
+                ['家属首页', <Family />],
+              ].map(([label, content]) => (
+                <div key={label}>
+                  <div className="phone-label">{label}</div>
+                  <div className="phone-wrap">
+                    <IosFrame>{content}</IosFrame>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>

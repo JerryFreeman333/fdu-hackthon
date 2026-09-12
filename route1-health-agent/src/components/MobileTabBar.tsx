@@ -1,5 +1,13 @@
 export type MobileTabIcon =
-  'home' | 'medication' | 'health' | 'assistant' | 'space' | 'tasks' | 'report' | 'messages' | 'profile';
+  | 'home'
+  | 'medication'
+  | 'health'
+  | 'assistant'
+  | 'space'
+  | 'tasks'
+  | 'report'
+  | 'messages'
+  | 'profile';
 
 export interface MobileTabItem<T extends string> {
   id: T;

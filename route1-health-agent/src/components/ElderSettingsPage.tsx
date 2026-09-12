@@ -131,7 +131,9 @@ export default function ElderSettingsPage({
           <>
             <p>请让家属输入：</p>
             <strong className="invite-code">{familyLink.inviteCode}</strong>
-            <button className="btn-secondary" type="button" onClick={onGenerateInvite}>重新生成邀请码</button>
+            <button className="btn-secondary" type="button" onClick={onGenerateInvite}>
+              重新生成邀请码
+            </button>
             <p className="muted">
               {syncStatus.mode === 'failed' ? '暂时没连上，您的记录仍安全保存在本机。' : '输入后会建立家庭协同。'}
             </p>
