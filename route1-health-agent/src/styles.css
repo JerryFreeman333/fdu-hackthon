@@ -809,3 +809,62 @@ button {
   font-size: 1.4rem;
   color: var(--muted, #6b7280);
 }
+
+/* ---------- 紧急求助（评审 P0-1：安全指导出现的地方必须有可按的电话） ---------- */
+.sos-card {
+  border: 2px solid #c0392b;
+  background: #fff7f5;
+}
+.sos-card h3 {
+  color: #c0392b;
+}
+.safety-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.safety-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 12px 24px;
+  border-radius: 14px;
+  border: 2px solid #c0392b;
+  background: #c0392b;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.safety-btn:hover {
+  background: #a93226;
+  border-color: #a93226;
+}
+.safety-btn:focus-visible {
+  outline: 3px solid #2c5d4a;
+  outline-offset: 2px;
+}
+.safety-btn-urgent {
+  background: #96281b;
+  font-size: 22px;
+}
+.safety-btn-missing {
+  border-style: dashed;
+  background: transparent;
+  color: #8a6d6a;
+  font-weight: 600;
+  cursor: default;
+  font-size: 16px;
+}
+.chat-bubble .safety-actions {
+  margin-top: 12px;
+}
+.chat-bubble .safety-btn {
+  min-height: 48px;
+  font-size: 17px;
+  padding: 10px 18px;
+}

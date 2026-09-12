@@ -183,6 +183,10 @@ export function useElderChat({
   async function runElderTurn(text: string, elderMessage: ChatMessage, priorChat: ChatMessage[]) {
     const intent = parsePrivacyIntent(text);
     const sharingHistoryQuery = sharingHistoryRequested(text);
+    // 存在未解决的紧急发现时，任何回复旁边都保留紧急联系行动条：
+    // 老人此时最需要的是"马上能按的电话"，不是先组织语言。
+    const hasUrgentFinding = findings.some((finding) => finding.severity === 'urgent');
+    let forceSafetyActions = false;
     // LLM 仲裁（标签 + 肯否）在串行队列内进行：慢响应只拖慢当前回合，不阻塞上屏，也不会并发打乱顺序。
     const understanding = await buildUnderstanding(text, priorChat, intent);
     const acceptedClaims = acceptedSelfClaims(understanding);
@@ -215,6 +219,7 @@ export function useElderChat({
     } else if (understanding.correction && acceptedClaims.length === 0 && familyClaims.length === 0) {
       agentText = '好的，我只会撤销刚才那句话对应的健康事实，不会碰其他已经记录的事情。您可以告诉我正确的情况。';
     } else if (hasDeathReport(understanding)) {
+      forceSafetyActions = true;
       agentText =
         '我听见您在说一位家人的情况可能非常严重。它不是普通跌倒提醒，我先不把它记到您的健康档案。请您确认：这是已经确认发生的事情，还是您在担心可能出现这种情况？如果现场需要即时处理，请先联系当地专业急救或公安人员。';
     } else if (isCurrentReassurance(text)) {
@@ -249,7 +254,10 @@ export function useElderChat({
     }
 
     if (intent === 'no_record') {
-      setChat((current) => [...current, msg('agent', agentText, now, persisted)]);
+      setChat((current) => [
+        ...current,
+        msg('agent', agentText, now, persisted, { safetyAction: forceSafetyActions || hasUrgentFinding }),
+      ]);
       showToast('这段内容不会保存到健康记录或家属端。');
       return;
     }
@@ -314,7 +322,12 @@ export function useElderChat({
 
     if (acceptedClaims.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [
+        ...current,
+        msg('agent', finalFamilyText, now, persisted, {
+          safetyAction: forceSafetyActions || hasUrgentFinding,
+        }),
+      ]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
@@ -368,7 +381,12 @@ export function useElderChat({
 
     if (incomingEvents.length === 0) {
       const finalFamilyText = familyAcknowledgement || agentText;
-      setChat((current) => [...current, msg('agent', finalFamilyText, now, persisted)]);
+      setChat((current) => [
+        ...current,
+        msg('agent', finalFamilyText, now, persisted, {
+          safetyAction: forceSafetyActions || hasUrgentFinding,
+        }),
+      ]);
       showToast(finalFamilyText.replace(/\n/g, ' '));
       return;
     }
@@ -443,7 +461,12 @@ export function useElderChat({
       sharingReceipt,
     ].filter(Boolean);
     const finalAgentText = receiptParts.join('\n');
-    setChat((current) => [...current, msg('agent', finalAgentText, now, persisted)]);
+    setChat((current) => [
+      ...current,
+      msg('agent', finalAgentText, now, persisted, {
+        safetyAction: forceSafetyActions || hasSafetyGuidance || hasUrgentFinding,
+      }),
+    ]);
 
     showToast(finalAgentText.replace(/\n/g, ' '));
 

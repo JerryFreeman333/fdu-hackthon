@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ElderProfile } from '../types';
+import SafetyActions from './SafetyActions';
 
 interface ChatViewProps {
   id?: string;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
   quickInputs: string[];
+  profile: ElderProfile;
 }
 
 type SpeechRecognitionResultEvent = Event & {
@@ -49,7 +51,7 @@ function voiceMessage(state: VoiceState): string {
   }
 }
 
-export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProps) {
+export default function ChatView({ id, chat, onSend, quickInputs, profile }: ChatViewProps) {
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -154,6 +156,7 @@ export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProp
                   🔊 朗读
                 </button>
               )}
+              {m.role === 'agent' && m.safetyAction && <SafetyActions profile={profile} />}
             </div>
           </div>
         ))}
