@@ -222,9 +222,22 @@ export interface ChatMessage {
    * text 始终保留全量拼接文本，供 toast、检索与既有断言使用。
    */
   blocks?: ChatMessageBlock[];
+  /** Agent 工具返回的可执行目标；例如打开路线二定位到某个药品。 */
+  toolTarget?: { url: string; label: string; source: 'route2-home-twin' };
+}
+
+export interface MedicationRecord {
+  id: string;
+  name: string;
+  dose: string;
+  purpose: string;
+  times: string;
+  status: 'active' | 'stopped';
 }
 
 export interface ElderProfile {
+  sex?: 'male' | 'female' | 'unspecified';
+  medicationRecords?: MedicationRecord[];
   name: string;
   age: number;
   conditions: string[];

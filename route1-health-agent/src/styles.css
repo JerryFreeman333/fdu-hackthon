@@ -700,6 +700,27 @@ button {
   color: var(--ink-soft);
   margin-top: 4px;
 }
+
+.chat-tool-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 11px 13px;
+  border: 1px solid #cfe3fb;
+  border-radius: 13px;
+  background: #f2f8ff;
+  color: #176fbd;
+  text-decoration: none;
+  font-weight: 750;
+}
+
+.chat-tool-target small {
+  color: #74859a;
+  font-size: 11px;
+  font-weight: 600;
+}
 .chat-quick {
   display: flex;
   flex-wrap: wrap;
@@ -2961,5 +2982,253 @@ select:focus-visible {
   .action-story > div {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+}
+.flow-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+}
+.flow-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0;
+}
+.flow-heading button {
+  border: 0;
+  background: transparent;
+  color: #287ccc;
+  font: inherit;
+  padding: 12px;
+}
+.flow-heading h1 {
+  font-size: 24px;
+}
+.flow-form {
+  display: grid;
+  gap: 20px;
+}
+.flow-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 18px;
+}
+.flow-form input,
+.flow-form select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dce6ef;
+  border-radius: 12px;
+  padding: 14px;
+  background: white;
+  color: #172537;
+  font: inherit;
+  box-sizing: border-box;
+}
+.flow-segments {
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  background: #eaf1fc;
+  border-radius: 16px;
+  margin-bottom: 20px;
+}
+.flow-segments button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #69798e;
+  padding: 13px 3px;
+  border-radius: 12px;
+  font: inherit;
+}
+.flow-segments button[aria-pressed='true'] {
+  color: #287ccc;
+  background: white;
+  box-shadow: 0 2px 8px #6495c51a;
+}
+.medicine-list {
+  display: grid;
+  gap: 14px;
+}
+.medicine-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  color: #172537;
+  font: inherit;
+  border: 1px solid #edf2f7;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.medicine-row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.medicine-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 19px;
+}
+.medicine-row small {
+  display: block;
+  margin-top: 8px;
+  line-height: 1.6;
+  color: #6b7b8e;
+}
+.medicine-symbol {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 58px;
+  flex: 0 0 52px;
+  border-radius: 16px;
+  background: #fff0f3;
+  color: #ea7390;
+  font-size: 32px;
+}
+.medicine-detail dl {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.medicine-detail dt {
+  color: #758297;
+  margin-top: 12px;
+}
+.medicine-detail dd {
+  margin: 0;
+  font-size: 20px;
+  white-space: pre-wrap;
+}
+.flow-wide {
+  width: 100%;
+  margin-top: 20px;
+  min-height: 54px;
+}
+.archive-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.archive-category {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: #203048;
+  border: 1px solid #eaf0f7;
+  cursor: pointer;
+}
+.archive-category > span {
+  grid-row: span 2;
+  font-size: 30px;
+  color: #419cdc;
+}
+.archive-category small {
+  color: #7b899b;
+}
+.archive-category[aria-pressed='true'] {
+  outline: 2px solid #489bef;
+}
+.archive-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+  margin: 20px auto;
+}
+.archive-health {
+  margin-top: 26px;
+}
+.archive-health > summary {
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 19px;
+}
+.hold-talk {
+  text-align: center;
+}
+.hold-mic {
+  width: 180px;
+  height: 180px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: linear-gradient(145deg, #61c7f5, #2d82f4);
+  box-shadow:
+    0 0 0 12px #70bdf21a,
+    0 0 0 26px #70bdf20b;
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+.hold-mic svg {
+  width: 76px;
+  height: 76px;
+  fill: white;
+}
+.hold-mic svg path {
+  fill: none;
+  stroke: white;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.hold-mic.is-listening {
+  background: #176acb;
+  box-shadow: 0 0 0 18px #70bdf22e;
+}
+.hold-talk p {
+  min-height: 24px;
+  margin: 32px 0 12px;
+  color: #61738c;
+}
+.hold-mic:focus-visible {
+  outline: 4px solid #f3b83f;
+  outline-offset: 6px;
+}
+.hold-talk-compact .hold-mic {
+  width: 52px;
+  height: 52px;
+  box-shadow: none;
+  margin-top: 12px;
+}
+.hold-talk-compact .hold-mic svg {
+  width: 26px;
+  height: 26px;
+}
+.hold-talk-compact p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+.voice-launch-section {
+  padding: 42px 16px 24px;
+}
+.role-card > .btn-secondary {
+  margin-top: 18px;
+}
+@media (max-width: 480px) {
+  .archive-category {
+    padding: 16px 12px;
+  }
+  .archive-category strong {
+    font-size: 16px;
+  }
+  .hold-mic {
+    width: 158px;
+    height: 158px;
+  }
+  .medicine-row {
+    padding: 18px 14px;
   }
 }

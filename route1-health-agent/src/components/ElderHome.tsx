@@ -1,6 +1,7 @@
 import type { CareTask, ElderProfile, FamilyLink, Finding } from '../types';
 import type { HomeTwinConnection } from '../hooks/useHomeTwinIntegration';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
+import HoldToTalk from './HoldToTalk';
 
 interface ElderHomeProps {
   profile: ElderProfile;
@@ -8,7 +9,7 @@ interface ElderHomeProps {
   findings: Finding[];
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
   onTaskOpen: (task: CareTask) => void;
-  onOpenAssistant: () => void;
+  onOpenAssistant: (text?: string) => void;
   onOpenHealth: () => void;
   onOpenHomeSpace: () => void;
   onRequestFamilyShare: () => void;
@@ -34,9 +35,6 @@ export default function ElderHome({
   onOpenHomeSpace,
   onRequestFamilyShare,
   onKeepFamilyPrivate,
-  familyLink,
-  syncStatus,
-  homeTwin,
 }: ElderHomeProps) {
   const activeTasks = tasks
     .filter((task) => task.status !== 'completed' && task.status !== 'dismissed')
@@ -51,7 +49,7 @@ export default function ElderHome({
     <div className="elder-home-page">
       <section className="elder-welcome">
         <div>
-          <span className="page-kicker">早上好</span>
+          <span className="page-kicker">您好</span>
           <h1>{profile.name}</h1>
           <p>{gentleChanges.length > 0 ? '最近有一点变化，我会帮您安静留意。' : '今天也会陪您把事情一件件做好。'}</p>
         </div>
@@ -63,23 +61,26 @@ export default function ElderHome({
         </div>
       </section>
 
-      <section className="home-service-strip" aria-label="连接状态">
-        <button type="button" onClick={onOpenHomeSpace}>
-          <span className={`service-dot service-${homeTwin.status}`} />
-          <span>
-            <strong>家庭空间</strong>
-            <small>{homeTwin.detail}</small>
-          </span>
+      <section className="voice-launch-section" aria-label="AI 助手入口">
+        <HoldToTalk onText={onOpenAssistant} />
+        <h2>有事，和我说说</h2>
+        <p>身体不舒服、想记事情、找东西，都可以说</p>
+        <button className="btn-secondary" onClick={() => onOpenAssistant()}>
+          打字聊天
         </button>
-        <div>
-          <span className={`service-dot service-${familyLink?.status === 'active' ? 'connected' : 'offline'}`} />
-          <span>
-            <strong>家庭协同</strong>
-            <small>
-              {familyLink?.status === 'active' ? `${familyLink.displayName} · ${syncStatus.mode}` : '尚未绑定家属'}
-            </small>
-          </span>
-        </div>
+      </section>
+
+      <section className="home-shortcuts" aria-label="常用入口">
+        <button className="home-shortcut home-shortcut-health" type="button" onClick={onOpenHealth}>
+          <span className="shortcut-symbol shortcut-heart" aria-hidden="true" />
+          <strong>我的健康</strong>
+          <span>{importantChanges.length > 0 ? `${importantChanges.length} 项变化需要留意` : '查看状态和记录'}</span>
+        </button>
+        <button className="home-shortcut home-shortcut-space" type="button" onClick={onOpenHomeSpace}>
+          <span className="shortcut-symbol shortcut-home" aria-hidden="true" />
+          <strong>家庭空间</strong>
+          <span>找东西、找药、问路线</span>
+        </button>
       </section>
 
       <section className="card today-card">
@@ -117,37 +118,11 @@ export default function ElderHome({
         )}
       </section>
 
-      <section className="voice-launch-section" aria-label="AI 助手入口">
-        <button className="voice-launch" type="button" onClick={onOpenAssistant} aria-label="打开 AI 助手">
-          <span className="voice-launch-core">
-            <svg className="voice-mic-icon" viewBox="0 0 48 48" aria-hidden="true">
-              <rect x="17" y="7" width="14" height="24" rx="7" />
-              <path d="M11 24v2a13 13 0 0 0 26 0v-2M24 39v5M17 44h14" />
-            </svg>
-          </span>
-        </button>
-        <h2>有事，和我说说</h2>
-        <p>身体不舒服、想记事情、找东西，都可以说</p>
-      </section>
-
-      <section className="home-shortcuts" aria-label="常用入口">
-        <button className="home-shortcut home-shortcut-health" type="button" onClick={onOpenHealth}>
-          <span className="shortcut-symbol shortcut-heart" aria-hidden="true" />
-          <strong>我的健康</strong>
-          <span>{importantChanges.length > 0 ? `${importantChanges.length} 项变化需要留意` : '查看状态和记录'}</span>
-        </button>
-        <button className="home-shortcut home-shortcut-space" type="button" onClick={onOpenHomeSpace}>
-          <span className="shortcut-symbol shortcut-home" aria-hidden="true" />
-          <strong>我的家</strong>
-          <span>找东西、找药、问路线</span>
-        </button>
-      </section>
-
       {familyAsk && (
         <section className="card consent-prompt">
           <span className="page-kicker">由您决定</span>
-          <h2>这件事，要让家属知道吗？</h2>
-          <p>发现了一项持续变化。普通聊天不会直接转给家属，只有得到您的允许才会共享。</p>
+          <h2>要把以下健康变化告诉家属吗？</h2>
+          <p>{importantChanges.map((finding) => finding.title).join('；')}。普通聊天不会直接转给家属。</p>
           <div className="consent-actions">
             <button className="btn-primary" onClick={onRequestFamilyShare}>
               告诉家属

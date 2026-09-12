@@ -1,4 +1,5 @@
-export type MobileTabIcon = 'home' | 'health' | 'assistant' | 'space' | 'tasks' | 'report' | 'messages' | 'profile';
+export type MobileTabIcon =
+  'home' | 'medication' | 'health' | 'assistant' | 'space' | 'tasks' | 'report' | 'messages' | 'profile';
 
 export interface MobileTabItem<T extends string> {
   id: T;
@@ -14,6 +15,12 @@ interface MobileTabBarProps<T extends string> {
 
 function TabIcon({ name }: { name: MobileTabIcon }) {
   const paths: Record<MobileTabIcon, React.ReactNode> = {
+    medication: (
+      <>
+        <path d="M5 19a5 5 0 0 1 0-7l7-7a5 5 0 0 1 7 7l-7 7a5 5 0 0 1-7 0Z" />
+        <path d="m8 9 7 7" />
+      </>
+    ),
     home: <path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z" />,
     health: <path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10Z" />,
     assistant: (

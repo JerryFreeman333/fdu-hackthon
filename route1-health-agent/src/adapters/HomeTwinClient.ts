@@ -45,7 +45,7 @@ export class HomeTwinClient {
 
   async findItem(query: string): Promise<HomeTwinItemResult> {
     const response = await request(this.url(`/api/route2/items/find?q=${encodeURIComponent(query)}`));
-    if (!response.ok) throw new Error(`找药服务返回 ${response.status}`);
+    if (!response.ok) throw new Error(`家庭物品查询返回 ${response.status}`);
     return (await response.json()) as HomeTwinItemResult;
   }
 

@@ -33,6 +33,7 @@ export default function ElderSettingsPage({
   children,
 }: ElderSettingsPageProps) {
   const [editing, setEditing] = useState(false);
+  const [loginNotice, setLoginNotice] = useState(false);
 
   if (editing) {
     return (
@@ -65,6 +66,16 @@ export default function ElderSettingsPage({
       </header>
 
       <section className="settings-list card">
+        <button type="button" onClick={() => setLoginNotice(true)}>
+          <span>
+            <strong>账号与登录</strong>
+            <small>当前为本机档案 · 微信尚未登录</small>
+          </span>
+          <b>›</b>
+        </button>
+        {loginNotice && (
+          <p role="status">微信授权后端尚未配置，当前无法真实登录。您的本机档案可以继续使用，不代表已开通云端同步。</p>
+        )}
         <button type="button" onClick={() => setEditing(true)}>
           <span>
             <strong>个人资料</strong>

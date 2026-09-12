@@ -45,6 +45,8 @@ import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
 import { lazy, Suspense } from 'react';
 import ElderHome from './components/ElderHome';
+import MedicationPage from './components/MedicationPage';
+import HealthArchivePage from './components/HealthArchivePage';
 import ElderAssistantPage from './components/ElderAssistantPage';
 import ElderHealthPage from './components/ElderHealthPage';
 import ElderHomeSpacePage from './components/ElderHomeSpacePage';
@@ -67,17 +69,22 @@ import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
 import { useFontScale } from './hooks/useFontScale';
 import { useHomeTwinIntegration } from './hooks/useHomeTwinIntegration';
+import { HomeTwinClient } from './adapters/HomeTwinClient';
+import { HomeTwinFindItemTool } from './agent-tools/HomeTwinTool';
+import { AgentToolRegistry } from './agent-tools/registry';
+import { routeAgentToolIntent } from './agent-tools/intentRouter';
+import type { AgentToolInvocation } from './agent-tools/types';
 
 const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-route1-health-records-v2'];
 const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
-type ElderTab = 'home' | 'health' | 'home_space' | 'profile';
-type ElderScreen = ElderTab | 'assistant';
+type ElderTab = 'home' | 'medications' | 'health' | 'profile';
+type ElderScreen = ElderTab | 'assistant' | 'home_space';
 type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
 
 const ELDER_TABS: readonly MobileTabItem<ElderTab>[] = [
   { id: 'home', label: '首页', icon: 'home' },
-  { id: 'health', label: '健康', icon: 'health' },
-  { id: 'home_space', label: '我的家', icon: 'space' },
+  { id: 'medications', label: '药物', icon: 'medication' },
+  { id: 'health', label: '健康档案', icon: 'report' },
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
@@ -219,10 +226,16 @@ function AppRoot({
   const [role, setRole] = useState<UserRole | null>(storedProfile.preferredRole ?? null);
   const [familyView, setFamilyView] = useState<FamilyView>('home');
   const [elderScreen, setElderScreen] = useState<ElderScreen>('home');
+  const [spaceResult, setSpaceResult] = useState<{ message: string; url?: string } | null>(null);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
   const homeTwin = useHomeTwinIntegration(HOME_TWIN_API_URL);
+  const agentTools = useMemo(
+    () =>
+      new AgentToolRegistry().register(new HomeTwinFindItemTool(new HomeTwinClient(HOME_TWIN_API_URL), HOME_TWIN_URL)),
+    [],
+  );
 
   useEffect(() => {
     if (homeTwin.connection.status !== 'connected') return;
@@ -383,10 +396,8 @@ function AppRoot({
   });
 
   function handleElderSend(text: string) {
-    if (/(找|在哪|哪里).*(药|眼镜|钥匙)|(药|眼镜|钥匙).*(在哪|哪里)/.test(text)) {
-      const query = text.includes('眼镜') ? '眼镜' : text.includes('钥匙') ? '钥匙' : '常用药';
-      return openHomeTwinLookup(query);
-    }
+    const invocation = routeAgentToolIntent(text);
+    if (invocation) return runAgentTool(invocation, text);
     return handleHealthChatSend(text);
   }
 
@@ -551,22 +562,21 @@ function AppRoot({
     if (prompt) void handleElderSend(prompt);
   }
 
-  async function openHomeTwinLookup(query: string) {
+  async function runAgentTool(invocation: AgentToolInvocation, originalText: string) {
     setElderScreen('assistant');
     window.scrollTo({ top: 0, behavior: 'auto' });
     const time = chatClockLabel(today, new Date());
-    setChat((current) => [...current, msg('elder', `帮我找${query}`, time, true)]);
-    if (homeTwin.connection.status !== 'connected') {
+    setChat((current) => [...current, msg('elder', originalText, time, true)]);
+    try {
+      const result = await agentTools.execute(invocation);
+      setSpaceResult({ message: result.message, url: result.target?.url });
+      setElderScreen('home_space');
       setChat((current) => [
         ...current,
-        msg('agent', `${homeTwin.connection.detail}。我不会猜测物品位置，请先恢复家庭空间连接。`, time, true),
+        msg('agent', result.message, time, true, {
+          ...(result.target ? { toolTarget: { ...result.target, source: 'route2-home-twin' as const } } : {}),
+        }),
       ]);
-      return;
-    }
-    try {
-      const result = await homeTwin.findItem(query);
-      const source = result.dataMode === 'real' ? '真实家庭空间记录' : '演示家庭空间数据';
-      setChat((current) => [...current, msg('agent', `${result.message}\n数据来源：${source}。`, time, true)]);
     } catch (error) {
       setChat((current) => [
         ...current,
@@ -580,11 +590,26 @@ function AppRoot({
     }
   }
 
+  function openHomeTwinLookup(query: string) {
+    return runAgentTool({ name: 'home.find_item', input: { query } }, `帮我找${query}`);
+  }
+
   // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
   // clearAllLocalData 会连本机档案一起清掉，reload 后回到首启选择。
-  function handleClearAllData() {
+  async function handleClearAllData() {
     if (!window.confirm('确定清空这台浏览器里的全部记录吗？\n聊天、健康记录、通知台账和设置都会删除，并回到初始选择。'))
       return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('ankang-health-attachments');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => reject(new Error('请先关闭其他打开档案的标签页'));
+      });
+    } catch {
+      showToast('附件未能清空，请关闭其他标签页后重试。未清除其他记录。');
+      return;
+    }
     clearAllLocalData(healthRecordStore);
     window.location.reload();
   }
@@ -684,12 +709,16 @@ function AppRoot({
               onTaskStatus={handleTaskStatus}
               onTaskOpen={(task) =>
                 task.kind === 'medication_check'
-                  ? void openHomeTwinLookup('常用药')
+                  ? navigateElder('medications')
                   : openAssistant(`请帮我处理这个待办：${task.title}。${task.description}`)
               }
-              onOpenAssistant={() => openAssistant()}
+              onOpenAssistant={openAssistant}
               onOpenHealth={() => navigateElder('health')}
-              onOpenHomeSpace={() => navigateElder('home_space')}
+              onOpenHomeSpace={() => {
+                setSpaceResult(null);
+                setElderScreen('home_space');
+                window.scrollTo(0, 0);
+              }}
               onRequestFamilyShare={requestFamilyShare}
               onKeepFamilyPrivate={keepFamilyPrivate}
               familyLink={familyLink}
@@ -708,32 +737,79 @@ function AppRoot({
               onEmergency={() => setEmergencyOpen(true)}
             />
           )}
-          {elderScreen === 'health' && (
-            <ElderHealthPage
+          {elderScreen === 'medications' && (
+            <MedicationPage
               profile={activeProfile}
-              findings={findings}
-              dataMode={storedProfile.dataMode}
-              onPhotoImport={handlePhotoImport}
-              onCommitPhoto={commitPhotoImport}
-              onCancelPhoto={cancelPhotoImport}
-              pendingPhoto={pendingPhoto}
-              pendingPhotoKind={pendingPhotoKind}
-              pendingPhotoError={pendingPhotoError}
+              onSave={handleProfileSave}
+              onFind={(name) => void openHomeTwinLookup(name)}
+            />
+          )}
+          {elderScreen === 'health' && (
+            <HealthArchivePage
+              onRecognize={(file) => {
+                if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
+                  showToast('真实识别服务尚未配置，未写入模拟结果。');
+                  return;
+                }
+                void handlePhotoImport(file, 'report');
+              }}
             >
-              <Suspense fallback={VIEW_FALLBACK}>
-                <ProfileView records={records} observations={observations} findings={findings} today={today} />
-              </Suspense>
-            </ElderHealthPage>
+              <ElderHealthPage
+                profile={activeProfile}
+                findings={findings}
+                dataMode={storedProfile.dataMode}
+                onPhotoImport={(file, kind) => {
+                  if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
+                    showToast('真实图片识别服务尚未配置，未进行识别，也未写入模拟结果。');
+                    return;
+                  }
+                  return handlePhotoImport(file, kind);
+                }}
+                onCommitPhoto={commitPhotoImport}
+                onCancelPhoto={cancelPhotoImport}
+                pendingPhoto={pendingPhoto}
+                pendingPhotoKind={pendingPhotoKind}
+                pendingPhotoError={pendingPhotoError}
+              >
+                <Suspense fallback={VIEW_FALLBACK}>
+                  <ProfileView records={records} observations={observations} findings={findings} today={today} />
+                </Suspense>
+              </ElderHealthPage>
+              <DeviceDebugPanel
+                mode={runtimeConfig.deviceMode}
+                state={deviceSync}
+                eventCount={events.length}
+                findings={findings}
+                personTwin={agentContext.personTwin}
+                onSync={() => void syncDevice('manual')}
+              />
+            </HealthArchivePage>
           )}
           {elderScreen === 'home_space' && (
-            <ElderHomeSpacePage
-              profile={activeProfile}
-              homeTwinUrl={HOME_TWIN_URL}
-              connection={homeTwin.connection}
-              onRetry={() => void homeTwin.refresh()}
-              onFindItem={(query) => void openHomeTwinLookup(query)}
-              onAsk={openAssistant}
-            />
+            <>
+              <button className="btn-secondary" onClick={() => navigateElder('home')}>
+                返回首页
+              </button>
+              {spaceResult && (
+                <section className="card" role="status">
+                  <h2>家庭空间查询结果</h2>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{spaceResult.message}</p>
+                  {spaceResult.url && (
+                    <a className="btn-primary" href={spaceResult.url}>
+                      打开路线二中的物品位置
+                    </a>
+                  )}
+                </section>
+              )}
+              <ElderHomeSpacePage
+                profile={activeProfile}
+                homeTwinUrl={HOME_TWIN_URL}
+                connection={homeTwin.connection}
+                onRetry={() => void homeTwin.refresh()}
+                onFindItem={(query) => void openHomeTwinLookup(query)}
+                onAsk={openAssistant}
+              />
+            </>
           )}
           {elderScreen === 'profile' && (
             <ElderSettingsPage
@@ -770,7 +846,11 @@ function AppRoot({
           )}
         </main>
         {elderScreen !== 'assistant' && (
-          <MobileTabBar items={ELDER_TABS} active={elderScreen} onSelect={navigateElder} />
+          <MobileTabBar
+            items={ELDER_TABS}
+            active={elderScreen === 'home_space' ? 'home' : elderScreen}
+            onSelect={navigateElder}
+          />
         )}
         {emergencyOpen && (
           <div className="emergency-backdrop" role="presentation" onClick={() => setEmergencyOpen(false)}>

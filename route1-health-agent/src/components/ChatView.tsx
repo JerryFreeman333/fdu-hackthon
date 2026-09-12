@@ -106,8 +106,8 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
         (_, index) => event.results[index]?.[0]?.transcript ?? '',
       ).join('');
       if (transcript.trim()) {
-        setText(transcript.trim());
-        inputRef.current?.focus();
+        // 语音输入是聊天的主要入口：识别完成后直接发送，避免用户误以为只填入了一个看不见的草稿。
+        send(transcript.trim());
         setVoiceState('ready');
       }
     };
@@ -181,6 +181,12 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
                 </button>
               )}
               {m.role === 'agent' && m.safetyAction && <SafetyActions profile={profile} />}
+              {m.role === 'agent' && m.toolTarget && (
+                <a className="chat-tool-target" href={m.toolTarget.url} target="_blank" rel="noreferrer">
+                  <span>{m.toolTarget.label}</span>
+                  <small>来自家庭空间</small>
+                </a>
+              )}
             </div>
           </div>
         ))}
@@ -203,7 +209,7 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
           aria-label={voiceState === 'unsupported' ? '网页语音输入不可用' : '语音输入'}
           disabled={voiceState === 'unsupported'}
         >
-          {voiceState === 'listening' ? '停止' : '🎙️'}
+          {voiceState === 'listening' ? '停止并发送' : '开始说话'}
         </button>
         <input
           ref={inputRef}

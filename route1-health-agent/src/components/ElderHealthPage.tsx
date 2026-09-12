@@ -77,7 +77,9 @@ export default function ElderHealthPage({
         <p className="muted">
           {dataMode === 'demo'
             ? '当前为演示解析，结果会明确标记为示例；确认后才写入记录。'
-            : '识别结果会先让您确认，确认后才写入健康记录。'}
+            : import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()
+              ? '识别结果会先让您确认，确认后才写入健康记录。'
+              : '真实识别服务尚未配置。可以先保存原始附件，不会写入模拟识别结果。'}
         </p>
         <div className="capture-actions">
           <select
