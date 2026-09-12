@@ -8,6 +8,7 @@ import { SYMPTOM_LABELS } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
+import { buildMedicationCareView } from '../engine/medicationCare';
 import { familyStatus } from '../engine/dashboardStatus';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 
@@ -36,9 +37,16 @@ interface FamilyDashboardProps {
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
-  onViewChange: (view: 'home' | 'detail' | 'report') => void;
-  view: 'home' | 'detail' | 'report';
+  onViewChange: (view: 'home' | 'detail' | 'report' | 'medication') => void;
+  view: 'home' | 'detail' | 'report' | 'medication';
 }
+
+const MEDICATION_STATUS_BADGES: Record<CareTask['status'], string> = {
+  pending: 'badge badge-watch',
+  in_progress: 'badge badge-info',
+  completed: 'badge badge-ok',
+  dismissed: 'badge badge-muted',
+};
 
 function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
   if (status.mode === 'cross-device') {
@@ -241,6 +249,105 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             </div>
           )}
         </section>
+      </div>
+    );
+  }
+
+  if (props.view === 'medication') {
+    if (!canViewSharedDetail) {
+      return (
+        <div className="card privacy-card">
+          <h3>当前未共享用药信息</h3>
+          <p>老人尚未授权家属查看详细用药信息，需要了解情况请直接联系老人。</p>
+          <button className="btn-primary" onClick={props.onContactElder}>
+            联系老人
+          </button>
+        </div>
+      );
+    }
+    const medicationCare = buildMedicationCareView({
+      medications: props.profile.medications,
+      tasks: props.tasks,
+      today: props.today,
+      familySharing: props.profile.familySharing,
+      communityDoctorPhone: props.profile.communityDoctorPhone,
+      notifications: props.notifications,
+    });
+    return (
+      <div className="family-detail">
+        <div className="family-back">
+          <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+            ← 返回
+          </button>
+        </div>
+        <section className="card">
+          <div className="eyebrow">用药与医护</div>
+          <h3>老人正在吃什么药</h3>
+          <p className="muted">只显示老人档案里的当前用药，不代表用药建议；不推断用途或副作用。</p>
+          {medicationCare.medications.length === 0 ? (
+            <p className="family-empty">暂无药品档案。</p>
+          ) : (
+            <div className="family-feed">
+              {medicationCare.medications.map((medication) => (
+                <div className="family-item medication-card" key={medication.raw}>
+                  {medication.dose || medication.frequency ? (
+                    <>
+                      <b>{medication.name}</b>
+                      <div className="medication-meta">
+                        {medication.dose && <span>剂量：{medication.dose}</span>}
+                        {medication.frequency && <span>频次：{medication.frequency}</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <b>{medication.raw}</b>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="card">
+          <div className="eyebrow">今日服药</div>
+          <h3>今天的服药确认</h3>
+          {!medicationCare.hasTodayRecord ? (
+            <p className="family-empty">今天暂无服药确认记录。</p>
+          ) : (
+            <div className="family-feed">
+              {medicationCare.todayStatuses.map((entry) => (
+                <div className="family-item" key={entry.id}>
+                  <span className={MEDICATION_STATUS_BADGES[entry.status]}>{entry.label}</span>
+                  <span className="medication-meta">状态来自老人端的今日服药确认任务。</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        {medicationCare.needsAttention && (
+          <section className="card">
+            <div className="eyebrow">需要家属处理</div>
+            <div className="care-path">
+              <b>建议行动：</b>
+              {medicationCare.attentionMessage}
+            </div>
+            <div className="family-actions">
+              <button className="btn-primary" onClick={props.onContactElder}>
+                📞 联系老人
+              </button>
+            </div>
+          </section>
+        )}
+        {medicationCare.showDoctorEntry && (
+          <section className="card">
+            <div className="eyebrow">社区医生</div>
+            <h3>医护入口</h3>
+            <p className="muted">如需确认用药调整、异常症状或是否需要就医，请联系医生或药师。</p>
+            <div className="family-actions">
+              <button className="btn-primary" onClick={props.onContactDoctor}>
+                📞 联系社区医生
+              </button>
+            </div>
+          </section>
+        )}
       </div>
     );
   }
@@ -451,6 +558,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
       <div className="family-secondary-nav">
         <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
           健康共享摘要
+        </button>
+        <button className="btn-secondary" onClick={() => props.onViewChange('medication')}>
+          用药与医护
         </button>
         <button className="btn-secondary" onClick={() => props.onViewChange('report')}>
           家属周报

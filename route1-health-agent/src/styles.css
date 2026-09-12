@@ -394,6 +394,28 @@ button {
   color: var(--ink-soft);
   padding: 10px 0;
 }
+.medication-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.medication-meta {
+  color: var(--ink-soft);
+  font-size: 14px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.badge-ok {
+  background: #f8fbf8;
+  color: var(--brand-dark);
+  border: 1px solid #d8e4da;
+}
+.badge-muted {
+  background: #f3f5f7;
+  color: var(--ink-soft);
+  border: 1px solid #6b7a8a;
+}
 .family-sync-banner {
   display: flex;
   align-items: flex-start;

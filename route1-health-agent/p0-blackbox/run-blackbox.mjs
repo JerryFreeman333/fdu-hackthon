@@ -306,6 +306,65 @@ async function caseFamilySessionReset(browser) {
   }
 }
 
+async function caseFamilyMedicationView(browser) {
+  const context = await browser.newContext();
+  try {
+    const page = await newPage(context);
+    await chooseRole(page, '我是老人');
+    await elderChat(page, '我刚刚摔倒了');
+
+    const share = page.locator('button', {
+      hasText: '同意以后需要时告诉家属',
+    });
+    await share.waitFor();
+    await share.click();
+    assert(
+      (await bodyText(page)).includes('已允许必要的家属协同'),
+      'family sharing was not granted',
+    );
+
+    const invite = await generateInvite(page);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await bindFamily(page, invite);
+
+    const medTab = page.locator('.family-secondary-nav button', { hasText: '用药与医护' });
+    await medTab.waitFor();
+    await medTab.click();
+    await page.waitForTimeout(300);
+    const medText = (await bodyText(page)) ?? '';
+    assert(medText.includes('氨氯地平'), 'granted family cannot see the medication list');
+    assert(medText.includes('待确认'), 'today medication task did not display 待确认');
+    assert(
+      medText.includes('今天的服药还没有确认'),
+      'unconfirmed medication did not ask the family to reach out',
+    );
+    assert(medText.includes('联系社区医生'), 'community doctor entry is missing');
+
+    // 撤销授权后，用药页必须 fail-closed：只显示隐私卡，不泄露任何药名。
+    await page.locator('button', { hasText: '← 返回' }).click();
+    await page.waitForTimeout(200);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await chooseRole(page, '我是老人');
+    const revoke = page.locator('button', { hasText: '暂停家属共享' });
+    await revoke.waitFor();
+    await revoke.click();
+    await page.waitForTimeout(300);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await chooseRole(page, '我是家属');
+    await page.waitForTimeout(500);
+    await page.locator('.family-secondary-nav button', { hasText: '用药与医护' }).click();
+    await page.waitForTimeout(300);
+    const revokedText = (await bodyText(page)) ?? '';
+    assert(
+      revokedText.includes('老人尚未授权家属查看详细用药信息') && !revokedText.includes('氨氯地平'),
+      'medication view did not fail closed after revocation',
+    );
+    return 'PASS family medication view';
+  } finally {
+    await context.close();
+  }
+}
+
 async function runCase(test, browser) {
   return withFailFastTimeout(test(browser), CASE_TIMEOUT_MS, test.name);
 }
@@ -316,6 +375,7 @@ const cases = [
   caseFamilySmoke,
   caseFamilyBinding,
   caseFamilyRevocation,
+  caseFamilyMedicationView,
   caseOneTimeSharePersistence,
   casePhotoDemoImport,
   caseFamilySessionReset,

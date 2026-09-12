@@ -72,7 +72,7 @@ export default function App() {
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report'>('home');
+  const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
   const [toast, setToast] = useState<string | null>(null);
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const { fontScale, setFontScale } = useFontScale();

@@ -12,6 +12,13 @@ const PORT = Number(process.env.BROWSER_SMOKE_PORT ?? 4173);
 
 let serverProcess = null;
 
+const results = [];
+
+function check(name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  log(`${ok ? '\u2713' : '\u2717'} ${name}${detail ? ' \u2014 ' + detail : ''}`);
+}
+
 function log(...args) {
   console.log('[browser-smoke]', ...args);
 }
@@ -75,20 +82,13 @@ async function fetchReady() {
   throw new Error('preview server \u672a\u5c31\u7ee7');
 }
 
-async function runSmoke() {
-  const browser = await chromium.launch({ headless: true });
+async function runSmoke(browser) {
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
   page.on('console', (msg) => {
     if (msg.type() === 'error') log('console.error:', msg.text());
   });
   page.on('pageerror', (err) => log('pageerror:', err.message));
-
-  const results = [];
-  function check(name, ok, detail = '') {
-    results.push({ name, ok, detail });
-    log(`${ok ? '\u2713' : '\u2717'} ${name}${detail ? ' \u2014 ' + detail : ''}`);
-  }
 
   try {
     await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
@@ -188,27 +188,104 @@ async function runSmoke() {
   } finally {
     await page.screenshot({ path: resolve(ROOT, 'tests', 'browser-smoke.png'), fullPage: true }).catch(() => {});
     await context.close();
-    await browser.close();
   }
+}
 
-  const passed = results.filter((r) => r.ok).length;
-  const total = results.length;
-  log(`\u603b\u8ba1: ${passed}/${total} \u901a\u8fc7`);
-  if (passed < total) {
-    process.exit(1);
+// 用药与医护（子女端新模块）：授权 → 可见药品/今日状态/医护入口；撤销授权 → fail-closed。
+async function runFamilyMedicationScenario(browser) {
+  log('开始 用药与医护 家属端场景');
+  const context = await browser.newContext({ locale: 'zh-CN' });
+  const page = await context.newPage();
+  const text = () => page.locator('body').innerText();
+  try {
+    await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+
+    // 老人端：报告跌倒触发家属协同卡片，并授权持久共享
+    await page.getByRole('button', { name: /我是老人/ }).click();
+    await page.waitForTimeout(1000);
+    const chatInput = page.locator('#elder-chat input.chat-input');
+    await chatInput.waitFor({ timeout: 5000 });
+    await chatInput.fill('我刚刚摔倒了');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+
+    const shareBtn = page.locator('button', { hasText: '同意以后需要时告诉家属' });
+    await shareBtn.waitFor({ timeout: 8000 });
+    check('老人端出现家属授权卡片', await shareBtn.isVisible());
+    await shareBtn.click();
+    await page.waitForTimeout(500);
+
+    await page.locator('button', { hasText: '生成家属邀请码' }).click();
+    await page.waitForTimeout(500);
+    const match = (await text()).match(/AN-\d{4}-\d{4}/);
+    check('老人端生成邀请码', !!match);
+    if (!match) return;
+
+    // 切到家属端并绑定
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.getByRole('button', { name: /我是家属/ }).click();
+    const inviteInput = page.locator('.family-dashboard input.chat-input');
+    await inviteInput.waitFor({ timeout: 5000 });
+    await inviteInput.fill(match[0]);
+    await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
+    await page.waitForTimeout(800);
+
+    // 进入"用药与医护"
+    const medTab = page.locator('.family-secondary-nav button', { hasText: '用药与医护' });
+    check('家属端出现用药与医护入口', await medTab.isVisible({ timeout: 5000 }).catch(() => false));
+    if (!(await medTab.isVisible().catch(() => false))) return;
+    await medTab.click();
+    await page.waitForTimeout(500);
+    const medText = await text();
+    check('已授权家属可见药品档案', medText.includes('氨氯地平') && medText.includes('美托洛尔'));
+    check('pending 显示为待确认', medText.includes('待确认'));
+    check('未确认时提示联系老人', medText.includes('今天的服药还没有确认'));
+    check('已配置时显示联系社区医生入口', medText.includes('联系社区医生'));
+
+    // 撤销授权后必须 fail-closed
+    await page.locator('button', { hasText: '← 返回' }).click();
+    await page.waitForTimeout(300);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.getByRole('button', { name: /我是老人/ }).click();
+    const revokeBtn = page.locator('button', { hasText: '暂停家属共享' });
+    await revokeBtn.waitFor({ timeout: 5000 });
+    check('老人端可暂停家属共享', await revokeBtn.isVisible());
+    await revokeBtn.click();
+    await page.waitForTimeout(500);
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.getByRole('button', { name: /我是家属/ }).click();
+    await page.waitForTimeout(800);
+    await page.locator('.family-secondary-nav button', { hasText: '用药与医护' }).click();
+    await page.waitForTimeout(500);
+    const revokedText = await text();
+    check(
+      '未授权时用药页 fail-closed',
+      revokedText.includes('老人尚未授权家属查看详细用药信息') && !revokedText.includes('氨氯地平'),
+    );
+  } finally {
+    await page.screenshot({ path: resolve(ROOT, 'tests', 'family-medication.png'), fullPage: true }).catch(() => {});
+    await context.close();
   }
 }
 
 async function main() {
   await ensureBuild();
+  const browser = await chromium.launch({ headless: true });
   try {
     await startPreview();
     await fetchReady();
     log(`preview \u670d\u52a1\u5df2\u5c31\u7ee7 (http://localhost:${PORT})`);
-    await runSmoke();
+    await runSmoke(browser);
+    await runFamilyMedicationScenario(browser);
   } finally {
+    await browser.close().catch(() => {});
     stopPreview();
     await wait(200);
+  }
+  const passed = results.filter((r) => r.ok).length;
+  const total = results.length;
+  log(`\u603b\u8ba1: ${passed}/${total} \u901a\u8fc7`);
+  if (passed < total) {
+    process.exit(1);
   }
 }
 
