@@ -1,0 +1,19 @@
+html:has(.capture-home), body:has(.capture-home) { height:auto; min-height:100%; margin:0; overflow:auto; background:#f3f8ff; color:#20324b; font-family:system-ui,sans-serif; }
+.capture-home { max-width:640px; padding:24px 20px 56px; margin:auto; line-height:1.7; }
+.capture-home header { display:flex; justify-content:space-between; margin-bottom:32px; }
+.capture-home a { color:#247cdc; }
+.capture-home h1 { font-size:28px; line-height:1.4; }
+.capture-home p { color:#64758b; }
+.capture-card { padding:24px; background:white; border:1px solid #e2ecf8; border-radius:24px; margin:24px 0; }
+.capture-home button { padding:13px 19px; font:inherit; border:0; border-radius:14px; background:#3088ef; color:white; cursor:pointer; }
+.capture-home button:disabled { opacity:.5; cursor:wait; }
+.capture-home [hidden] { display:none!important; }
+.capture-steps,.capture-actions { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0; }
+.capture-steps button { background:#e9f2ff; color:#286ec1; }
+.capture-steps button[aria-current] { background:#3088ef; color:white; }
+#capture-video { width:100%; max-height:330px; background:#eaf1fa; border-radius:16px; }
+.capture-file { display:block; padding:16px 0; }
+.capture-file input { display:block; width:100%; margin:12px 0; }
+#capture-progress { width:100%; }
+.capture-model { position:fixed; inset:0; z-index:100; background:#111; }
+.capture-close { position:absolute; top:20px; left:20px; z-index:1000; padding:16px; }

@@ -276,7 +276,9 @@ async function main() {
   });
 }
 
-main().catch((err) => {
+(new URLSearchParams(window.location.search).get('demo') === '1'
+  ? main()
+  : import('./captureHome').then(module => module.captureHome())).catch((err) => {
   console.error(err);
   const message = err instanceof Error ? err.message : String(err);
   setHint('初始化失败: ' + message);

@@ -37,8 +37,8 @@ export default function ElderHomeSpacePage({
     <div className="home-space-page">
       <header className="page-title-block">
         <span className="page-kicker">我的家</span>
-        <h1>想找什么，直接告诉我</h1>
-        <p>您只看简单结果，房间模型和复杂判断会交给系统与家人处理。</p>
+        <h1>先把您的家记录下来</h1>
+        <p>进入家庭空间后，按指引打开摄像头拍摄房间，上传视频建立自己的模型。已创建的空间可以继续查看进度和结果。</p>
       </header>
 
       <section className="space-hero card">
@@ -47,8 +47,8 @@ export default function ElderHomeSpacePage({
         </div>
         <div>
           <span className={`space-ready home-twin-${connection.status}`}>{connection.detail}</span>
-          <h2>熟悉的家，更容易找到东西</h2>
-          <p>位置不确定时，系统会如实告诉您，不会猜一个答案。</p>
+          <h2>拍摄房间，建立家庭空间</h2>
+          <p>打开摄像头 → 按指引拍摄 → 上传建模 → 查看自己的房间</p>
         </div>
       </section>
 
@@ -77,7 +77,7 @@ export default function ElderHomeSpacePage({
       )}
 
       <a className="btn-primary open-home-twin" href={residentHomeUrl(homeTwinUrl)}>
-        打开我的家
+        进入家庭空间 · 拍摄或查看
       </a>
       <p className="home-space-note">当前页面不会向老人展示风险分数、算法名称或复杂 3D 操作。</p>
     </div>

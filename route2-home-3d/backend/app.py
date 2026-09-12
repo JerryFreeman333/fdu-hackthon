@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from .capture import BrowserUploadCaptureSource, CaptureFile
 from .processor import ProcessResult, build_processor
+from .home_capture import router as home_capture_router
 
 APP_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = APP_ROOT.parent
@@ -32,6 +33,7 @@ SUPPORTED_SUFFIXES = {
 BATCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 
 app = FastAPI(title="Route 2 Rescan Backend", version="0.1.0")
+app.include_router(home_capture_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv(
@@ -220,6 +222,7 @@ def health() -> dict[str, str]:
         "status": "ok",
         "processor": os.getenv("ROUTE2_PROCESSOR_MODE", "queue"),
         "hardware": "adapter-ready",
+        "homeCapture": "enabled" if os.getenv("ROUTE2_ENABLE_PIPELINE", "0") == "1" else "waiting-worker",
     }
 
 

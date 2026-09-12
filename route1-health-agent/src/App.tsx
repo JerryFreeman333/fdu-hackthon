@@ -95,7 +95,7 @@ const FAMILY_TABS: readonly MobileTabItem<'home' | 'tasks' | 'report' | 'profile
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
-const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || 'http://localhost:5174';
+const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || `${window.location.protocol}//${window.location.hostname}:5174`;
 const HOME_TWIN_API_URL = import.meta.env.VITE_HOME_TWIN_API_URL?.trim() || 'http://localhost:8010';
 
 function clearLegacyHealthStorage() {
