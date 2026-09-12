@@ -5,37 +5,34 @@ import { formatLocalDate } from '../data/demo';
 import { chatClockLabel } from '../engine/clock';
 import type { HealthEvent } from '../pipeline/events';
 import { appendHealthEvents, labResultToEvent, measurementToEvent } from '../pipeline/events';
-import { selectImageParser } from '../adapters/parserSelector';
+import { selectImageParser, demoPhotoRefusal } from '../adapters/parserSelector';
 import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import { createHttpLlmAdapter, generateAgentReply, msg, QUICK_INPUTS, ruleBasedAdapter } from '../engine/agent';
 import { understandElderInput, type StructuredElderInput } from '../engine/understanding';
-import {
-  canUseLlmUnderstanding,
-  resolveUnderstandingLlmConfig,
-  understandElderInputWithLlm,
-} from '../engine/llmUnderstanding';
+import { canUseLlmUnderstanding, understandElderInputWithLlm } from '../engine/llmUnderstanding';
 import { parsePrivacyIntent } from '../engine/privacy';
 import { planElderTurn } from '../engine/elderTurn';
 import { removeCorrectedChatHealthEvents, removeCorrectedFamilyEvents } from '../engine/correction';
 import { recordSharingAudit } from '../engine/sharingAudit';
 import { createTurnQueue, type TurnQueue } from '../engine/turnQueue';
+import { appConfig } from '../config/appConfig';
+import type { DataMode } from '../store/profileStore';
 
 const DEMO_ELDER_ID = 'demo-elder-route1';
 // 回复层 LLM 超时（P1-4）：默认收窄到 12s，可用 VITE_AGENT_LLM_TIMEOUT_MS 调整。
 // 超时或失败都会降级到规则回复，老人最迟十几秒内一定得到回应；视觉上的即时
 // 反馈由"正在听你说…"占位气泡保证（见 handleElderSend）。
-const AGENT_LLM_TIMEOUT_MS = Number(import.meta.env.VITE_AGENT_LLM_TIMEOUT_MS);
-const llmAdapter = import.meta.env.VITE_AGENT_LLM_ENDPOINT
-  ? createHttpLlmAdapter(
-      import.meta.env.VITE_AGENT_LLM_ENDPOINT,
-      Number.isFinite(AGENT_LLM_TIMEOUT_MS) && AGENT_LLM_TIMEOUT_MS >= 1000 ? AGENT_LLM_TIMEOUT_MS : 12000,
-    )
+// 环境读取统一走 appConfig（P2：单一配置入口）。
+const llmAdapter = appConfig.agentLlmEndpoint
+  ? createHttpLlmAdapter(appConfig.agentLlmEndpoint, appConfig.agentLlmTimeoutMs)
   : ruleBasedAdapter;
 
 interface UseElderChatOptions {
   /** 注入的"今天"（评审 P1-4）：来自 App 的时钟服务，跨午夜后新回合归到新的一天。 */
   today: string;
+  /** 数据模式（P0 门控）：personal 模式下没有真实视觉服务时拒绝演示识别入库。 */
+  dataMode: DataMode;
   familySharing: ElderProfile['familySharing'];
   events: HealthEvent[];
   chat: ChatMessage[];
@@ -66,6 +63,7 @@ function localIsoTimestamp(): string {
 
 export function useElderChat({
   today,
+  dataMode,
   familySharing,
   events,
   chat,
@@ -120,7 +118,7 @@ export function useElderChat({
     priorChat: ChatMessage[],
     intent: ReturnType<typeof parsePrivacyIntent>,
   ): Promise<StructuredElderInput> {
-    const config = resolveUnderstandingLlmConfig(import.meta.env);
+    const config = appConfig.understandingLlm;
     if (canUseLlmUnderstanding(intent, config !== null)) {
       return understandElderInputWithLlm(text, today, priorChat, config as NonNullable<typeof config>);
     }
@@ -215,9 +213,14 @@ export function useElderChat({
     setPendingPhotoError(null);
     try {
       const capturedAt = localIsoTimestamp();
-      const { parser, mode } = selectImageParser({
-        endpointOverride: import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim() || undefined,
-      });
+      const { parser, mode } = selectImageParser({ endpointOverride: appConfig.healthVisionEndpoint ?? undefined });
+      // P0 门控：personal 模式 + 无真实视觉服务 → 拒绝演示识别。
+      // 假数值一旦确认就进入真实档案并触发检测/家属通知，比"不能用"危险得多。
+      const refusal = demoPhotoRefusal(dataMode, mode);
+      if (refusal) {
+        setPendingPhotoError(refusal);
+        return;
+      }
       const parsed = await parser.parse(file, { userId: DEMO_ELDER_ID, capturedAt, kind });
       if (parsed.measurements.length === 0 && parsed.labResults.length === 0) {
         setPendingPhotoError('这张图片没有识别到可记录的健康数值，请换一张。');

@@ -33,6 +33,17 @@ export interface CrossDeviceStatus {
 
 type Handler = (envelope: CrossTabMessageEnvelope) => void;
 
+/**
+ * P1（评审安全项）：广播的通道选择。
+ * - local：BroadcastChannel（与本浏览器 IndexedDB 同一信任域），默认开；
+ * - peer：PeerJS 对端。绑定握手完成前，对端是"陌生人"——老人端的信号摘要、
+ *   告警台账默认不发往 PeerJS，发送方须显式传 { peer: true } 打开。
+ */
+export interface BroadcastChannelOpts {
+  local?: boolean;
+  peer?: boolean;
+}
+
 const CHANNEL_NAME = 'ankang-route1-cross-tab';
 const TAB_ID_KEY = 'ankang-route1-tab-id';
 const PING_INTERVAL_MS = 15000;
@@ -68,7 +79,7 @@ interface UseCrossDeviceSyncOptions {
 }
 
 export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyncOptions): {
-  broadcast: (type: CrossTabMessageEnvelope['type'], payload: unknown) => void;
+  broadcast: (type: CrossTabMessageEnvelope['type'], payload: unknown, opts?: BroadcastChannelOpts) => void;
   /** 只在本浏览器的 tab 之间广播（不进 PeerJS）：健康事件与 IndexedDB 同一信任域，不落到别的设备。 */
   broadcastLocal: (type: CrossTabMessageEnvelope['type'], payload: unknown) => void;
   subscribe: (handler: Handler) => () => void;
@@ -94,7 +105,7 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
     const listener = (event: MessageEvent<CrossTabMessageEnvelope>) => {
       const envelope = event.data;
       if (!envelope || envelope.tabId === tabIdRef.current) return;
-      for (const handler of handlersRef.current) handler(envelope);
+      for (const handler of handlersRef.current) handler({ ...envelope, via: 'local' });
     };
     channel.addEventListener('message', listener);
     return () => {
@@ -113,7 +124,7 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
     const handleMessage = (raw: unknown) => {
       const envelope = raw as CrossTabMessageEnvelope;
       if (!envelope || envelope.tabId === tabIdRef.current) return;
-      for (const handler of handlersRef.current) handler(envelope);
+      for (const handler of handlersRef.current) handler({ ...envelope, via: 'peer' });
     };
 
     const wireUp = async () => {
@@ -191,7 +202,9 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
   }, [peerId, endpoint, role]);
 
   const broadcast = useCallback(
-    (type: CrossTabMessageEnvelope['type'], payload: unknown) => {
+    (type: CrossTabMessageEnvelope['type'], payload: unknown, opts?: BroadcastChannelOpts) => {
+      const toLocal = opts?.local ?? true;
+      const toPeer = opts?.peer ?? true;
       const envelope: CrossTabMessageEnvelope = {
         tabId: tabIdRef.current,
         fromRole: role,
@@ -199,20 +212,22 @@ export function useCrossDeviceSync({ role, peerId, endpoint }: UseCrossDeviceSyn
         payload,
         at: new Date().toISOString(),
       };
-      const signature = JSON.stringify({ type, payload });
+      // 去重签名必须包含通道选择：绑定完成瞬间"同一 payload"要从"仅本地"
+      // 扩展为"本地+对端"，若签名忽略通道，这次首次跨设备同步会被误判为重复。
+      const signature = JSON.stringify({ type, payload, toLocal, toPeer });
       if (signature === lastBroadcastSignatureRef.current) return;
       lastBroadcastSignatureRef.current = signature;
 
       // 同浏览器 tab
       const channel = channelRef.current;
-      if (channel) {
+      if (toLocal && channel) {
         try {
           channel.postMessage(envelope);
         } catch {}
       }
       // 跨设备 P2P
       const handle = peerHandleRef.current as HostHandle | GuestHandle | null;
-      if (handle && 'broadcast' in handle) {
+      if (toPeer && handle && 'broadcast' in handle) {
         try {
           handle.broadcast(envelope);
         } catch {}

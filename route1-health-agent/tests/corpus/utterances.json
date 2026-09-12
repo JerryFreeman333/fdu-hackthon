@@ -7,6 +7,8 @@
     "  family         说的是家里人的情况，不得写进本人档案，但必须生成家属事实；",
     "  no-record      老人明确要求不记录，事件与家属事实都必须为零；",
     "  conversational 寒暄/报平安，不得生成事件，回复不得为空。",
+    "  gradual        渐进/慢性劳损句式：症状照常留痕，但不得触发急救级神经标签（neuroChange）",
+    "                 与急救话术——这是产品主打的『活动耐量下降』场景，误报急救比漏报更伤信任；",
     "本文件只冻结『管线性质』（记不记、归谁、有没有回应），不冻结具体文案；",
     "新增语料时先手工确认期望再入库，入库后所有黑盒/单测必须保持全绿。"
   ],
@@ -116,6 +118,36 @@
     {
       "text": "没什么事",
       "category": "conversational"
+    },
+    {
+      "text": "我这两天走路的时候腿没劲，上到三楼要歇两次",
+      "category": "gradual",
+      "expect": {
+        "minEvents": 1,
+        "forbiddenTags": ["neuroChange"]
+      },
+      "note": "P0-1 现场实测误报句：慢性活动耐量下降，必须记疲劳、不得触发卒中急救"
+    },
+    {
+      "text": "最近上楼梯有点喘，歇一歇就缓过来",
+      "category": "gradual",
+      "expect": {
+        "minEvents": 1,
+        "forbiddenTags": ["neuroChange"]
+      }
+    },
+    {
+      "text": "这段时间总觉得累，下午要歇一会儿",
+      "category": "gradual",
+      "expect": {
+        "minEvents": 1,
+        "forbiddenTags": ["neuroChange"]
+      }
+    },
+    {
+      "text": "突然腿没劲，站不住了",
+      "category": "self-occurred",
+      "note": "急性真阳性对照：突发单侧/双侧肢体无力必须保持卒中级响应"
     }
   ]
 }

@@ -162,7 +162,11 @@ function AppRoot({
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
-  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
+  // P0 门控：居家安全演示行动只属于演示模式。personal 模式从没扫描过用户的家，
+  // "移除地毯/电缆"这类任务属于编造的居家风险（评审 P1-2 原则同样适用于本模块）。
+  const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() =>
+    storedProfile.dataMode === 'demo' ? initialHomeSafetyActions() : [],
+  );
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
   const [toast, setToast] = useState<string | null>(null);
@@ -195,6 +199,13 @@ function AppRoot({
     shareFindingIds,
     shareFamilyEventIds,
   } = useFamilyBinding({ showToast, today });
+
+  // P1（评审安全项）：绑定握手是否已完成。PeerJS 对端在握手完成前是陌生人，
+  // 老人端的信号摘要/告警台账不发往 PeerJS；陌生人对端发来的确认/台账一律忽略。
+  // 订阅回调需要在重渲染间读到最新值，走 ref（与 familyLinkRequestRef 同款模式）。
+  const familyLinkActive = familyLink?.status === 'active';
+  const familyLinkActiveRef = useRef(familyLinkActive);
+  familyLinkActiveRef.current = familyLinkActive;
 
   const activeProfile: ElderProfile = useMemo(
     () => ({ ...storedProfile.profile, familySharing }),
@@ -291,9 +302,14 @@ function AppRoot({
   useEffect(() => {
     const unsubscribe = sync.subscribe((envelope: CrossTabMessageEnvelope) => {
       if (envelope.type === 'dispatch.acknowledge') {
+        // P1（评审安全项）：未绑定会话的 PeerJS 对端是陌生人——陌生人发来的确认
+        // 可能消音紧急告警，一律忽略。同浏览器 BroadcastChannel 与 IndexedDB
+        // 同一信任域，不受此限。
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
         const payload = envelope.payload as { findingId: string };
         mergeAcknowledge(payload.findingId);
       } else if (envelope.type === 'dispatch.append') {
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
         const record = envelope.payload as import('./engine/notify').FamilyNotificationRecord;
         mergeRecord(record);
       } else if (envelope.type === 'events.append') {
@@ -303,6 +319,8 @@ function AppRoot({
         const incoming = Array.isArray(payload?.events) ? (payload.events as HealthEvent[]) : [];
         if (incoming.length > 0) setEvents((current) => mergeHealthEvents(current, incoming));
       } else if (envelope.type === 'signals.summary') {
+        // P1：陌生人（未绑定 PeerJS 对端）报来的信号摘要不接受，防止伪造"有急事被挡住"。
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
         const payload = envelope.payload as { today?: string; signalCount?: number; gatedAlertCount?: number };
         if (
           typeof payload?.today === 'string' &&
@@ -324,11 +342,14 @@ function AppRoot({
           return;
         if (role !== 'elder') return;
         const link = familyLinkRequestRef.current(payload.code);
+        // 回执只走请求来的通道（P1）：同浏览器 tab 的请求只回 BroadcastChannel，
+        // 陌生人拨入的 PeerJS 请求只回 PeerJS——绑定回执不向无关通道广播。
         sync.broadcast(
           'family.link',
           link
             ? { kind: 'accepted', requestId: payload.requestId, link }
             : { kind: 'rejected', requestId: payload.requestId, reason: 'code_mismatch' },
+          envelope.via === 'peer' ? { local: false, peer: true } : { local: true, peer: false },
         );
         if (link) showToast('家属已通过邀请码绑定成功。');
       }
@@ -337,33 +358,57 @@ function AppRoot({
   }, [sync, mergeAcknowledge, mergeRecord, role, showToast]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
+  // P1：PeerJS 通道只在绑定完成后启用——对端是"通过握手验证的家属"才送确认动作。
   const handleAcknowledge = useCallback(
     (findingId: string) => {
       acknowledgeDispatch(findingId);
-      sync.broadcast('dispatch.acknowledge', { findingId });
+      sync.broadcast('dispatch.acknowledge', { findingId }, { peer: familyLinkActiveRef.current });
     },
     [acknowledgeDispatch, sync],
   );
 
   // 把本地新派发的台账广播给其它 tab：另一 tab 的 findings 签名未变，
   // 不会重跑派发引擎，所以不会重复触发系统通知，只接收并合并台账。
+  // P1：台账含告警正文，PeerJS 通道只在绑定完成后启用，未绑定对端拿不到内容。
   const lastBroadcastRecordIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const currentIds = new Set(dispatchRecords.map((record) => record.findingId));
     for (const record of dispatchRecords) {
       if (!lastBroadcastRecordIdsRef.current.has(record.findingId)) {
-        sync.broadcast('dispatch.append', record);
+        sync.broadcast('dispatch.append', record, { peer: familyLinkActiveRef.current });
       }
     }
     lastBroadcastRecordIdsRef.current = currentIds;
   }, [dispatchRecords, sync]);
 
+  // P1：绑定完成瞬间，把既有台账完整补发给刚通过握手的家属端——
+  // 绑定前生成的记录此前只走了本地通道，跨设备的家属端还一无所知。
+  const lastPeerLedgerSyncRef = useRef(false);
+  useEffect(() => {
+    if (!familyLinkActive) {
+      lastPeerLedgerSyncRef.current = false;
+      return;
+    }
+    if (lastPeerLedgerSyncRef.current) return;
+    lastPeerLedgerSyncRef.current = true;
+    for (const record of dispatchRecords) {
+      sync.broadcast('dispatch.append', record, { local: false, peer: true });
+    }
+  }, [familyLinkActive, dispatchRecords, sync]);
+
   // 老人端广播今日信号摘要（P0-1 配套，只有数量没有内容，隐私安全）。
-  // broadcast 内部按签名去重：数值不变时不会反复发。
+  // broadcast 内部按签名去重（签名含通道选择）：数值不变时不会反复发；
+  // P1：PeerJS 通道只在绑定完成后启用，未绑定对端拿不到任何信号量。
   useEffect(() => {
     if (role !== 'elder') return;
-    sync.broadcast('signals.summary', { today, signalCount: todaySignalCount, gatedAlertCount });
-  }, [role, sync, today, todaySignalCount, gatedAlertCount]);
+    sync.broadcast(
+      'signals.summary',
+      { today, signalCount: todaySignalCount, gatedAlertCount },
+      {
+        peer: familyLinkActive,
+      },
+    );
+  }, [role, sync, today, todaySignalCount, gatedAlertCount, familyLinkActive]);
 
   // 家属端可见的信号量取"本 tab 计算"与"老人端广播"的较大值：
   // 同浏览器双 tab 靠 events.append 已能对齐；跨设备时本 tab 没有事件流，
@@ -383,6 +428,7 @@ function AppRoot({
     quickInputs,
   } = useElderChat({
     today,
+    dataMode: storedProfile.dataMode,
     familySharing,
     events,
     chat,
@@ -494,8 +540,15 @@ function AppRoot({
   }
 
   function contactElder() {
-    showToast(`正在拨打：${activeProfile.familyContact}`);
-    if (activeProfile.familyPhone) window.location.href = `tel:${activeProfile.familyPhone}`;
+    // P1 修复（评审：家属端"联系老人"拨的是家属自己的号码）：老人电话是档案里
+    // 独立的 elderPhone 字段；没有就如实提示补填，绝不把 familyPhone 冒充老人号码。
+    const phone = activeProfile.elderPhone?.trim();
+    if (!phone) {
+      showToast('档案里还没有老人的电话。请到「编辑我的档案」补上，即可一键拨打。');
+      return;
+    }
+    showToast(`正在拨打老人的电话：${phone}`);
+    window.location.href = `tel:${phone}`;
   }
 
   function contactDoctor() {

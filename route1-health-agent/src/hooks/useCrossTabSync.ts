@@ -48,6 +48,12 @@ export interface CrossTabMessageEnvelope {
   type: CrossTabMessage['type'];
   payload: unknown;
   at: string;
+  /**
+   * P1（评审安全项）：消息来自哪条通道。BroadcastChannel 与本浏览器 IndexedDB
+   * 同一信任域；PeerJS 对端在绑定握手完成前是"陌生人"。接收端据此执行门控：
+   * 陌生人发来的确认/台账消息一律忽略。
+   */
+  via?: 'local' | 'peer';
 }
 
 type Handler = (envelope: CrossTabMessageEnvelope) => void;

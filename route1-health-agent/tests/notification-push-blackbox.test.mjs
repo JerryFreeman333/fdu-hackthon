@@ -184,7 +184,7 @@ async function runSmoke() {
     await wait(600);
     // 邀请码是 AN-YYYY-NNNN 格式
     const inviteCode = await page.evaluate(() => {
-      const match = document.body.innerText.match(/AN-\d{4}-\d{4}/);
+      const match = document.body.innerText.match(/AN-\d{4}-[A-Z2-9]{10}/);
       return match ? match[0] : null;
     });
     check('老人端生成邀请码', !!inviteCode, inviteCode || '未找到');

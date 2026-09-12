@@ -35,6 +35,7 @@ export const profile: ElderProfile = {
   medications: ['氨氯地平 5mg 每日一次', '美托洛尔 23.75mg 每日一次'],
   familyContact: '女儿 李芳 138****6677',
   familyPhone: '13800006677',
+  elderPhone: '13800008888',
   communityDoctorPhone: '021-55661234',
   mobility: 'uses_cane',
   usesCane: true,

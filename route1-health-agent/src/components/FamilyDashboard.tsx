@@ -132,12 +132,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   if (props.view === 'detail') {
     if (!canViewSharedDetail) {
       return (
-        <div className="card privacy-card">
-          <h3>当前未共享详细健康资料</h3>
-          <p>老人尚未授权家属查看详细健康资料。需要了解情况，请直接联系老人。</p>
-          <button className="btn-primary" onClick={props.onContactElder}>
-            联系老人
-          </button>
+        <div className="family-detail">
+          {/* P1（评审 UX）：未授权分支必须有返回入口，否则家属整个仪表盘成为死胡同 */}
+          <div className="family-back">
+            <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+              ← 返回
+            </button>
+          </div>
+          <div className="card privacy-card">
+            <h3>当前未共享详细健康资料</h3>
+            <p>老人尚未授权家属查看详细健康资料。需要了解情况，请直接联系老人。</p>
+            <button className="btn-primary" onClick={props.onContactElder}>
+              联系老人
+            </button>
+          </div>
         </div>
       );
     }
@@ -210,12 +218,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   if (props.view === 'report') {
     if (!canViewSharedDetail) {
       return (
-        <div className="card privacy-card">
-          <h3>当前未共享家属周报</h3>
-          <p>老人尚未授权家属查看周报。需要了解情况，请直接联系老人。</p>
-          <button className="btn-primary" onClick={props.onContactElder}>
-            联系老人
-          </button>
+        <div className="family-detail">
+          {/* P1（评审 UX）：未授权分支必须有返回入口，否则家属整个仪表盘成为死胡同 */}
+          <div className="family-back">
+            <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+              ← 返回
+            </button>
+          </div>
+          <div className="card privacy-card">
+            <h3>当前未共享家属周报</h3>
+            <p>老人尚未授权家属查看周报。需要了解情况，请直接联系老人。</p>
+            <button className="btn-primary" onClick={props.onContactElder}>
+              联系老人
+            </button>
+          </div>
         </div>
       );
     }
@@ -277,12 +293,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   if (props.view === 'medication') {
     if (!canViewSharedDetail) {
       return (
-        <div className="card privacy-card">
-          <h3>当前未共享用药信息</h3>
-          <p>老人尚未授权家属查看详细用药信息，需要了解情况请直接联系老人。</p>
-          <button className="btn-primary" onClick={props.onContactElder}>
-            联系老人
-          </button>
+        <div className="family-detail">
+          {/* P1（评审 UX）：未授权分支必须有返回入口，否则家属整个仪表盘成为死胡同 */}
+          <div className="family-back">
+            <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+              ← 返回
+            </button>
+          </div>
+          <div className="card privacy-card">
+            <h3>当前未共享用药信息</h3>
+            <p>老人尚未授权家属查看详细用药信息，需要了解情况请直接联系老人。</p>
+            <button className="btn-primary" onClick={props.onContactElder}>
+              联系老人
+            </button>
+          </div>
         </div>
       );
     }
@@ -453,7 +477,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void bind();
               }}
-              placeholder="例如 AN-2026-1234"
+              placeholder="例如 AN-2026-K7QXW2RN9M"
             />
             <button className="btn-primary" onClick={() => void bind()} disabled={binding}>
               {binding ? '绑定中…' : '绑定'}

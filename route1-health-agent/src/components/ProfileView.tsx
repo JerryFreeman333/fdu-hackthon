@@ -86,6 +86,9 @@ export default function ProfileView({
                 {profile.familyPhone ? `${profile.familyContact || '已留电话'} ${profile.familyPhone}` : '（未填写）'}
               </li>
               <li>
+                <b>老人电话</b>：{profile.elderPhone ?? '（未填写；家属端"联系老人"需要它）'}
+              </li>
+              <li>
                 <b>社区医生</b>：{profile.communityDoctorPhone ?? '（未填写）'}
               </li>
             </ul>

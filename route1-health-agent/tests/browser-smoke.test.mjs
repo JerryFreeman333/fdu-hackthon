@@ -219,7 +219,7 @@ async function runFamilyMedicationScenario(browser) {
 
     await page.locator('button', { hasText: '生成家属邀请码' }).click();
     await page.waitForTimeout(500);
-    const match = (await text()).match(/AN-\d{4}-\d{4}/);
+    const match = (await text()).match(/AN-\d{4}-[A-Z2-9]{10}/);
     check('老人端生成邀请码', !!match);
     if (!match) return;
 

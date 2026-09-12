@@ -21,6 +21,7 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
   const [medInput, setMedInput] = useState('');
   const [familyContact, setFamilyContact] = useState(initial.familyContact);
   const [familyPhone, setFamilyPhone] = useState(initial.familyPhone);
+  const [elderPhone, setElderPhone] = useState(initial.elderPhone ?? '');
   const [doctorPhone, setDoctorPhone] = useState(initial.communityDoctorPhone ?? '');
   const [error, setError] = useState<string | null>(null);
 
@@ -37,11 +38,20 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
       setError('怎么称呼您？填一个称呼就好，例如"王奶奶"。');
       return;
     }
+    // P1（评审 UX）：忘了点"添加"的药品不能静默丢掉——提交时自动收编输入框里的内容。
+    const pendingMedication = medInput.trim();
+    const finalMedications =
+      pendingMedication && !medications.includes(pendingMedication) ? [...medications, pendingMedication] : medications;
     const trimmedFamilyPhone = familyPhone.trim();
+    const trimmedElderPhone = elderPhone.trim();
     const trimmedDoctorPhone = doctorPhone.trim();
     const phonePattern = /^[\d\s+\-()]{5,25}$/;
     if (trimmedFamilyPhone && !phonePattern.test(trimmedFamilyPhone)) {
       setError('家属电话看起来不太对，请检查一下（只填数字、空格、+、-）。');
+      return;
+    }
+    if (trimmedElderPhone && !phonePattern.test(trimmedElderPhone)) {
+      setError('老人电话看起来不太对，请检查一下（只填数字、空格、+、-）。');
       return;
     }
     if (trimmedDoctorPhone && !phonePattern.test(trimmedDoctorPhone)) {
@@ -53,9 +63,10 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
       ...initial,
       name: trimmedName,
       age: Number.isFinite(age) && age > 0 && age < 150 ? Math.round(age) : 0,
-      medications,
+      medications: finalMedications,
       familyContact: familyContact.trim() || trimmedFamilyPhone || '',
       familyPhone: trimmedFamilyPhone,
+      elderPhone: trimmedElderPhone || undefined,
       communityDoctorPhone: trimmedDoctorPhone || undefined,
     });
   }
@@ -137,6 +148,16 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
           value={familyPhone}
           onChange={(event) => setFamilyPhone(event.target.value)}
           placeholder="例如：13800006677"
+          autoComplete="off"
+        />
+        <label htmlFor="profile-elder-phone">老人电话（可不填；家属端"联系老人"会拨这个号码）</label>
+        <input
+          id="profile-elder-phone"
+          className="form-input"
+          inputMode="tel"
+          value={elderPhone}
+          onChange={(event) => setElderPhone(event.target.value)}
+          placeholder="例如：13800008888"
           autoComplete="off"
         />
         <label htmlFor="profile-doctor-phone">社区医生电话（可不填）</label>

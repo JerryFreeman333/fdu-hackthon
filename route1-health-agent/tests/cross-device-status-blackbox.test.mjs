@@ -157,7 +157,7 @@ async function runSmoke() {
     await inviteBtn.click({ timeout: 3000 }).catch(() => {});
     await wait(800);
     const inviteCode = await page.evaluate(() => {
-      const m = document.body.innerText.match(/AN-\d{4}-\d{4}/);
+      const m = document.body.innerText.match(/AN-\d{4}-[A-Z2-9]{10}/);
       return m ? m[0] : null;
     });
     check('老人端生成邀请码', !!inviteCode, inviteCode || '未找到');

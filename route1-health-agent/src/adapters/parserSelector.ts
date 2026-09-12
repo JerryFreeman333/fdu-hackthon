@@ -58,3 +58,13 @@ export function selectImageParser(options: SelectImageParserOptions = {}): Selec
   }
   return { parser: new DemoImageHealthParser(), mode: 'demo' };
 }
+
+/**
+ * P0 门控：personal 模式（真实档案）下没有真实视觉服务时，演示识别必须被拒绝。
+ * 假数值一旦被确认就会写进真实档案、进入个人基线并可能触发家属通知——
+ * 这比"拍照不能用"危险得多。返回 null 表示放行，返回文案表示拒绝并如实说明原因。
+ */
+export function demoPhotoRefusal(dataMode: 'demo' | 'personal', mode: 'real-http' | 'demo'): string | null {
+  if (dataMode !== 'personal' || mode !== 'demo') return null;
+  return '当前版本还不能真正读出照片里的数值，所以这次不会写入任何数据，避免示例数值混进您的真实档案。想记录数值，直接在对话里告诉我（例如"血压 135/85"），我会帮您记下来。';
+}

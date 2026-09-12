@@ -75,11 +75,16 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'neuroChange',
+    // P0 收紧：这是急救级标签，误报的代价是老人恐慌 + 家属狼来了。
+    // 旧双向模式 (腿)(突然)?没劲 让慢性活动耐量下降（"走路腿没劲、上三楼要歇两次"）
+    // 命中卒中规则并触发急救回复（评审现场实测误报）。单侧无力、口齿、嘴角、
+    // 视力症状本身就是急症指征，保持无条件命中；双侧肢体症状必须携带急性时间词。
     patterns: [
       /说话(不清楚|含糊|不利索)/,
       /(嘴角|嘴).{0,3}(歪|偏)/,
       /(一侧|半边|一边).{0,4}(无力|没劲|发麻|麻木)/,
-      /(手脚|胳膊|腿).{0,4}(突然)?(无力|没劲|发麻|麻木)/,
+      /(?:突然|忽然|猛然|一下子|刚刚|刚才)[^。？\n]{0,8}(?:手脚|两条?腿|两只?手|胳膊|腿|半边身子)[^。？\n]{0,4}(?:无力|没劲|发麻|麻木)/,
+      /(?:手脚|两条?腿|两只?手|胳膊|腿|半边身子)[^。？\n]{0,2}(?:突然|忽然|猛然|一下子)[^。？\n]{0,2}(?:无力|没劲|发麻|麻木)/,
       /突然看不清/,
     ],
     replies: ['先别走动，立即联系家里人并寻求急救。这类突然出现的情况不适合在家继续观察。'],
@@ -143,6 +148,18 @@ const INTENT_RULES: IntentRule[] = [
 export interface ParsedInput {
   tags: SymptomTag[];
   matchedTexts: string[];
+}
+
+/**
+ * 慢性/劳损语境且无急性时间词（P0-1 配套）。
+ * "走路腿没劲、上楼要歇"是活动耐量问题，不是卒中；LLM 补标的 neuroChange
+ * 在这类子句上不可信——急救级标签的补标必须有急性证据兜底。规则层用
+ * 急性时间词门控（见 INTENT_RULES.neuroChange），本函数给 LLM 合并层做同一件事。
+ */
+export function isChronicWithoutAcuteOnset(clause: string): boolean {
+  const chronic = /(?:最近|这两天|这几天|这阵子|这段时间|走路|上楼|爬楼|活动)/.test(clause);
+  const acute = /(?:突然|忽然|猛然|一下子|刚刚|刚才)/.test(clause);
+  return chronic && !acute;
 }
 
 export function parseElderInput(text: string): ParsedInput {

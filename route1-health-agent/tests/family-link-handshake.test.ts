@@ -15,7 +15,7 @@ import {
   type LinkPeerConnection,
 } from '../src/engine/familyLinkHandshake';
 
-const CODE = 'AN-2026-3858';
+const CODE = 'AN-2026-K7QXW2RN9M';
 const LINK: FamilyLinkPayload = {
   id: 'family-1',
   relation: '家属',
@@ -262,4 +262,33 @@ void test('L2 超时本身不返回失败（等 L3 定论）', async () => {
   // 最终失败原因必须来自 L3，而不是把 L2 超时当成"码不对"
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'unreachable');
+});
+
+// ---------------------------------------------------------------------------
+// P1（评审安全项）：邀请码熵。旧 4 位数字码（10^4）在公共信令上可被脚本
+// 枚举拨号；新码 32 字符表 10 位（50bit），枚举不再可行。
+// ---------------------------------------------------------------------------
+import { createInviteCode } from '../src/hooks/useFamilyBinding';
+
+const INVITE_CODE_PATTERN = /^AN-\d{4}-[A-Z2-9]{10}$/;
+
+void test('邀请码格式：年段 + 10 位无歧义大写字符', () => {
+  for (let i = 0; i < 50; i += 1) {
+    const code = createInviteCode('2026-09-12');
+    assert.match(code, INVITE_CODE_PATTERN, `格式不符：${code}`);
+  }
+});
+
+void test('邀请码不含易混字符（I/L/O/0/1，仅检查随机后缀）', () => {
+  for (let i = 0; i < 50; i += 1) {
+    const code = createInviteCode('2026-09-12');
+    const suffix = code.split('-')[2] ?? '';
+    assert.doesNotMatch(suffix, /[ILO01]/, `后缀包含易混字符：${code}`);
+  }
+});
+
+void test('邀请码具有随机性（连续生成不重复）', () => {
+  const codes = new Set<string>();
+  for (let i = 0; i < 100; i += 1) codes.add(createInviteCode('2026-09-12'));
+  assert.ok(codes.size > 90, `100 次生成应几乎不重复，实际唯一值 ${codes.size}`);
 });

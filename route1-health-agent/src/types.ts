@@ -236,6 +236,11 @@ export interface ElderProfile {
   medications: string[];
   familyContact: string;
   familyPhone: string;
+  /**
+   * 老人自己的电话（P1 修复，评审"联系老人拨的是家属自己号码"）：
+   * 家属端"联系老人"必须拨它。缺省时按钮如实提示补填，不再假装拨号。
+   */
+  elderPhone?: string;
   communityDoctorPhone?: string;
   mobility: MobilityStatus;
   usesCane: boolean;

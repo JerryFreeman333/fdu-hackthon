@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile } from '../types';
+import { understandingLlmConfigured } from '../config/appConfig';
 import SafetyActions from './SafetyActions';
 import type { DataMode } from '../store/profileStore';
 
@@ -149,6 +150,9 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
           {deviceNote === 'demo'
             ? '现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。'
             : '您说的话和记录都只保存在这台设备里。'}
+          {deviceNote === 'personal' &&
+            understandingLlmConfigured() &&
+            '已开启「智能理解」：您说的话会发送给 AI 服务商来听懂口语，被识别为隐私的内容不会发送。'}
         </div>
       </div>
 

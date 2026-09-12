@@ -74,7 +74,7 @@ async function generateInvite(page) {
   const button = page.locator('button', { hasText: '生成家属邀请码' });
   await button.waitFor();
   await button.click();
-  const match = (await bodyText(page)).match(/AN-\d{4}-\d{4}/);
+  const match = (await bodyText(page)).match(/AN-\d{4}-[A-Z2-9]{10}/);
   assert(match, 'elder invite code was not generated');
   return match[0];
 }

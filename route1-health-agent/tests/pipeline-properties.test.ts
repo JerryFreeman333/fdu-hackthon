@@ -27,7 +27,7 @@ interface CorpusExpectation {
 
 interface CorpusUtterance {
   text: string;
-  category: 'self-occurred' | 'negated' | 'family' | 'no-record' | 'conversational' | 'mixed';
+  category: 'self-occurred' | 'negated' | 'family' | 'no-record' | 'conversational' | 'mixed' | 'gradual';
   subject?: string;
   expect?: CorpusExpectation;
 }
@@ -57,7 +57,7 @@ async function planOf(text: string) {
 
 test('语料非空且分类合法', () => {
   assert.ok(corpus.length >= 20, '语料至少要覆盖 20 句真实口语');
-  const allowed = new Set(['self-occurred', 'negated', 'family', 'no-record', 'conversational', 'mixed']);
+  const allowed = new Set(['self-occurred', 'negated', 'family', 'no-record', 'conversational', 'mixed', 'gradual']);
   for (const item of corpus) {
     assert.ok(allowed.has(item.category), `未知 category：${item.category}（${item.text}）`);
   }
@@ -166,4 +166,35 @@ test('性质七：混合句式——该记的记、该否的否', async () => {
       }
     }
   }
+});
+
+test('性质八：渐进/慢性句式——症状照常留痕，但绝不触发急救级神经标签与急救话术', async () => {
+  for (const item of corpus.filter((entry) => entry.category === 'gradual')) {
+    const plan = await planOf(item.text);
+    for (const event of plan.eventsToAppend) {
+      if (event.type !== 'observation') continue;
+      const tags = event.observation.tags ?? [];
+      assert.ok(
+        !tags.includes('neuroChange'),
+        `「${item.text}」是慢性/劳损描述，不得被记成突发神经异常（实际标签：${tags.join(',')}）`,
+      );
+    }
+    assert.doesNotMatch(
+      plan.replyText,
+      /寻求急救|立即联系家里人|不适合在家继续观察/,
+      `「${item.text}」的回复不得给出急救指令（实际：${plan.replyText}）`,
+    );
+    if (typeof item.expect?.minEvents === 'number') {
+      assert.ok(plan.eventsToAppend.length >= item.expect.minEvents, `「${item.text}」的真实症状必须照常留痕`);
+    }
+  }
+});
+
+test('性质八（对照）：急性肢体无力必须保持卒中级响应，收紧不得误杀真阳性', async () => {
+  const acuteText = '突然腿没劲，站不住了';
+  const understanding = understandElderInput(acuteText, TODAY, []);
+  const acuteTags = understanding.claims.flatMap((claim) => claim.tags);
+  assert.ok(acuteTags.includes('neuroChange'), `急性句式必须命中 neuroChange，实际：${acuteTags.join(',')}`);
+  const plan = await planOf(acuteText);
+  assert.match(plan.replyText, /急救/, '急性句式的回复必须包含急救指导');
 });

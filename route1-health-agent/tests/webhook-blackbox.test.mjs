@@ -123,11 +123,11 @@ async function runWebhookSuite() {
       .first()
       .click({ timeout: 5000 });
     await page
-      .getByText(/AN-\d{4}-\d{4}/)
+      .getByText(/AN-\d{4}-[A-Z2-9]{10}/)
       .first()
       .waitFor({ state: 'visible', timeout: 5000 });
     const inviteCode = await page.evaluate(() => {
-      const match = document.body.innerText.match(/AN-\d{4}-\d{4}/);
+      const match = document.body.innerText.match(/AN-\d{4}-[A-Z2-9]{10}/);
       return match ? match[0] : null;
     });
     check('老人端同意共享并生成邀请码', Boolean(inviteCode), inviteCode ?? '未找到');

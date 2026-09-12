@@ -13,6 +13,11 @@
     "noEmitOnError": true
   },
   "include": ["tests/**/*.ts", "src/**/*.ts"],
-  "exclude": ["src/hooks/useElderChat.ts", "src/hooks/useCrossDeviceSync.ts", "src/adapters/PeerJSCrossDevice.ts"],
+  "exclude": [
+    "src/hooks/useElderChat.ts",
+    "src/hooks/useCrossDeviceSync.ts",
+    "src/adapters/PeerJSCrossDevice.ts",
+    "src/config/appConfig.ts"
+  ],
   "types": ["node"]
 }

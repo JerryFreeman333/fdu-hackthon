@@ -13,7 +13,7 @@
  */
 import type Peer from 'peerjs';
 import type { DataConnection } from 'peerjs';
-import { DEFAULT_ICE_SERVERS, parseIceServers, parseSignalingUrl } from './signalingConfig';
+import { appConfig } from '../config/appConfig';
 
 /** 只声明本适配器实际用到的 PeerJS 选项，避免与版本类型耦合。 */
 interface PeerClientOptions {
@@ -39,24 +39,22 @@ function loadPeerConstructor(): Promise<PeerConstructor> {
 }
 
 /**
- * 信令与 ICE 选项：
+ * 信令与 ICE 选项（P2：环境读取收敛到 appConfig）：
  * - 配置了 VITE_PEER_SIGNALING_URL → 指向自建/国内可达信令（大陆网络风险缓解）；
  * - VITE_PEER_ICE_SERVERS → 完全自定义 ICE（如加 TURN）；
  * - 默认 Google + 腾讯公共 STUN 并列，任一可达即可。
  */
 function peerOptions(): PeerClientOptions | null {
-  const signalingRaw = import.meta.env?.VITE_PEER_SIGNALING_URL;
-  const iceServers = parseIceServers(import.meta.env?.VITE_PEER_ICE_SERVERS) ?? DEFAULT_ICE_SERVERS;
-  const parsed = signalingRaw ? parseSignalingUrl(signalingRaw) : null;
-  if (!parsed && signalingRaw?.trim()) {
+  const { signalingRaw, signaling, iceServers } = appConfig.peer;
+  if (signalingRaw && !signaling) {
     console.warn('[peerjs] VITE_PEER_SIGNALING_URL 无法解析，回退官方公共信令');
   }
   const options: PeerClientOptions = { config: { iceServers } };
-  if (parsed) {
-    options.host = parsed.host;
-    options.port = parsed.port;
-    options.path = parsed.path;
-    options.secure = parsed.secure;
+  if (signaling) {
+    options.host = signaling.host;
+    options.port = signaling.port;
+    options.path = signaling.path;
+    options.secure = signaling.secure;
   }
   return options;
 }

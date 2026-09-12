@@ -125,7 +125,7 @@ async function runSmoke() {
     await inviteBtn.click({ timeout: 5000 });
     await wait(400);
     const inviteCode = await elderTab.evaluate(() => {
-      const m = document.body.innerText.match(/AN-\d{4}-\d{4}/);
+      const m = document.body.innerText.match(/AN-\d{4}-[A-Z2-9]{10}/);
       return m ? m[0] : null;
     });
     check('老人端生成邀请码', !!inviteCode, inviteCode || '未找到');
@@ -142,7 +142,7 @@ async function runSmoke() {
     await inviteInput.waitFor({ timeout: 5000 });
 
     // 错误码：老人端 tab 在场 → 必须收到明确的 rejected，而不是干等
-    await inviteInput.fill('AN-0000-9999');
+    await inviteInput.fill('AN-0000-ZZZZZZZZZZ');
     await familyTab.locator('.family-dashboard button', { hasText: '绑定' }).click();
     await familyTab.getByText('邀请码不对或已失效').waitFor({ state: 'visible', timeout: 8000 });
     check('输错邀请码得到明确报错（不是"已失效"死路）', true);

@@ -264,7 +264,11 @@ export default function ElderHome({
           <div className="section-head">
             <div>
               <h3>记录一下血压、体重或报告</h3>
-              <span className="muted">这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。</span>
+              <span className="muted">
+                {dataMode === 'demo'
+                  ? '这是 Demo，照片不会真的被自动读出内容；上传后会写入明确标注的示例数据。'
+                  : '当前版本还不能真正读出照片内容。想记录数值，直接在对话里告诉我（例如"血压 135/85"）更快。'}
+              </span>
             </div>
           </div>
           <div className="chat-input-row">

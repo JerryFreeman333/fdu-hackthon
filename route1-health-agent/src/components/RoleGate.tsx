@@ -8,7 +8,7 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
   return (
     <div className="role-gate">
       <div className="role-card">
-        <div className="role-kicker">阿安 · 老人家庭助手</div>
+        <div className="role-kicker">安康助手 · 老人家庭助手</div>
         <h1>有事情，直接告诉我</h1>
         <p className="role-lead">身体不舒服、忘了吃药、想记件事情，或者想让家里人知道，都可以直接跟我说。</p>
         <div className="role-grid">

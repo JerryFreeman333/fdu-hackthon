@@ -28,13 +28,26 @@ function localIsoTimestamp(): string {
   )}`;
 }
 
-function createInviteCode(today: string): string {
-  // Demo 级别的 4 位数字邀请码：仅用于单设备演示绑定，真实产品必须由服务端签发高熵授权。
-  const random =
-    typeof crypto !== 'undefined' && 'getRandomValues' in crypto
-      ? crypto.getRandomValues(new Uint32Array(1))[0] % 10000
-      : Math.floor(Math.random() * 10000);
-  return `AN-${today.slice(0, 4)}-${random.toString().padStart(4, '0')}`;
+/** 邀请码后缀字母表：去掉 I/L/O/0/1 等易混字符，方便老人口头转述。 */
+const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+/**
+ * P1（评审安全项）：邀请码是跨设备协同的唯一凭证——peer ID 由它直接推导，
+ * 挂在公共信令上可被枚举拨号。旧的 4 位数字码（10^4）分钟级可穷举，
+ * 连上后即可接收健康告警内容、发送确认消音。改为 32 字符表 10 位（50bit 随机，
+ * 2^32 恰好被 32 整除、无取模偏差），枚举不再可行。服务端签发授权仍是正式版要求。
+ * 导出仅供测试断言格式与熵（调用方一律走 generateInvite）。
+ */
+export function createInviteCode(today: string): string {
+  const random = new Uint32Array(10);
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    crypto.getRandomValues(random);
+  } else {
+    for (let i = 0; i < random.length; i += 1) random[i] = Math.floor(Math.random() * 0x100000000);
+  }
+  let suffix = '';
+  for (const value of random) suffix += INVITE_ALPHABET[value % INVITE_ALPHABET.length];
+  return `AN-${today.slice(0, 4)}-${suffix}`;
 }
 
 interface UseFamilyBindingOptions {

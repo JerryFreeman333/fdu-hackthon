@@ -22,7 +22,7 @@
 import type { ChatMessage, ClaimStatus, SymptomTag } from '../types';
 import { SYMPTOM_LABELS } from '../types';
 import { extractHealthValues } from './extract';
-import { parseElderInput } from './agent';
+import { isChronicWithoutAcuteOnset, parseElderInput } from './agent';
 import {
   splitClauses,
   statusFromText,
@@ -251,7 +251,11 @@ export async function understandElderInputWithLlm(
     const parsed = parseElderInput(clause);
     const hasHealthValue = extractHealthValues(clause).length > 0;
     const ruleStatus = statusFromText(clause, parsed.tags, hasHealthValue);
-    const addedTags = (judgment.tags ?? []).filter((tag) => !parsed.tags.includes(tag));
+    // P0-1：LLM 补标只增不删，但 neuroChange 是急救级标签——慢性/劳损语境
+    // （走路、上楼、最近）且无急性时间词的子句，LLM 补标不可信，必须丢弃。
+    const addedTags = (judgment.tags ?? [])
+      .filter((tag) => !parsed.tags.includes(tag))
+      .filter((tag) => tag !== 'neuroChange' || !isChronicWithoutAcuteOnset(clause));
     if (addedTags.length > 0) {
       if (!tagOverrides.has(clause)) tagOverrides.set(clause, mergeClauseTags(parsed.tags, judgment.tags));
       // 规则状态对它没看见的症状没有发言权：肯否以 LLM 为准（强词汇信号除外），并固定下来。

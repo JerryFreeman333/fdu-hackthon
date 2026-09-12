@@ -80,7 +80,7 @@ Phase 4  Agent 解释 + 帮助行动 + 家庭协同
 - 今天还没有任何信号时，显示"还没说话"，而不是"没事"；
 - 跨设备时老人端会把"今日信号量 / 被挡住数量"（**只有数量，没有内容**）广播给家属端，另一台手机上的家属端也能如实显示"有信号被挡住"，而不是"今天还没有任何健康信号"。
 
-家庭绑定是**一次以邀请码为共享密钥的握手**（评审 P0-2 修复）：家属端输入邀请码，**拥有邀请码的老人端**校验并应答——同一浏览器跨 tab 走 BroadcastChannel（约 1 秒），两台真设备走 PeerJS 数据通道；全部失败时按原因如实报错（码不对 / 联系不上老人端），老人端始终可以"重新生成邀请码"，不再有"让老人重新生成却没有重新生成按钮"的死局。细节见 `docs/route1-p0-2-family-binding-plan.md`。邀请码仍是 demo 级 4 位数字、会话内存态：真实产品需要后端账号体系、二维码/手机号验证及服务端签发的高熵授权。
+家庭绑定是**一次以邀请码为共享密钥的握手**（评审 P0-2 修复）：家属端输入邀请码，**拥有邀请码的老人端**校验并应答——同一浏览器跨 tab 走 BroadcastChannel（约 1 秒），两台真设备走 PeerJS 数据通道；全部失败时按原因如实报错（码不对 / 联系不上老人端），老人端始终可以"重新生成邀请码"，不再有"让老人重新生成却没有重新生成按钮"的死局。细节见 `docs/route1-p0-2-family-binding-plan.md`。邀请码为高熵随机码（32 字符表 10 位、50bit，去易混字符），会话内存态：脚本枚举已不可行；真实产品仍需要后端账号体系、二维码/手机号验证及服务端签发的授权。配套地，未完成绑定握手的 PeerJS 对端视为陌生人：收不到信号摘要与告警台账，其发来的确认/台账消息也会被忽略。
 
 ### 本地持久化与多设备边界
 
@@ -321,7 +321,7 @@ interface DeviceAdapter {
 
 真实 HealthKit、Health Connect、蓝牙设备或厂商 SDK 后续只需要实现 Adapter；Detection、Person Twin、Agent 不应该依赖具体硬件。
 
-图像识别保留 `ImageHealthParser` 接口：默认使用明确标注的 Demo parser（不读取图片内容，写入示例数据）；配置 `VITE_HEALTH_VISION_ENDPOINT` 指向服务端视觉代理后，走 `RealImageHealthParser` + `HttpVisionProvider` 真实解析。无论哪种 parser，识别结果都必须经用户在界面上确认，才会进入健康事件流；Provider 按 mg/dL 返回的血糖会自动换算为 mmol/L。
+图像识别保留 `ImageHealthParser` 接口：默认使用明确标注的 Demo parser（不读取图片内容，写入示例数据）；配置 `VITE_HEALTH_VISION_ENDPOINT` 指向服务端视觉代理后，走 `RealImageHealthParser` + `HttpVisionProvider` 真实解析。personal（真实档案）模式下没有真实视觉服务时，demo 识别会被直接拒绝并引导改用对话口述数值，避免示例数值混进真实档案（评审 P0）；无论哪种 parser，识别结果都必须经用户在界面上确认，才会进入健康事件流；Provider 按 mg/dL 返回的血糖会自动换算为 mmol/L。
 
 ## 医疗安全边界
 
