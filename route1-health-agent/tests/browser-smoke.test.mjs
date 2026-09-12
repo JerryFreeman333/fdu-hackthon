@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { seedDemoProfile } from './helpers/demo-seed.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -85,6 +86,7 @@ async function fetchReady() {
 async function runSmoke(browser) {
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
+  seedDemoProfile(page);
   page.on('console', (msg) => {
     if (msg.type() === 'error') log('console.error:', msg.text());
   });
@@ -196,6 +198,7 @@ async function runFamilyMedicationScenario(browser) {
   log('开始 用药与医护 家属端场景');
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
+  seedDemoProfile(page);
   const text = () => page.locator('body').innerText();
   try {
     await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });

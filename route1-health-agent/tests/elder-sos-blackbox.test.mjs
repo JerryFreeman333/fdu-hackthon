@@ -11,6 +11,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { seedDemoProfile } from './helpers/demo-seed.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -82,6 +83,7 @@ async function runSosSuite() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
+  seedDemoProfile(page);
   page.on('pageerror', (err) => log('pageerror:', err.message));
 
   try {

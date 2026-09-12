@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
-import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { TODAY, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { demoStoredProfile, loadStoredProfile, saveStoredProfile, type StoredProfile } from './store/profileStore';
+import FirstRunGate from './components/FirstRunGate';
+import OnboardingFlow from './components/OnboardingFlow';
 import { demoHomeSafetyActions } from './data/demoHomeSafetyActions';
 import {
   legacySnapshotToEvents,
@@ -69,28 +72,43 @@ function buildSeedSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealt
   return { events, familyEvents: [], chat: seedChat };
 }
 
+/** personal 模式的起点：一切从空白开始，检测只对真实输入发声（评审 P1-2）。 */
+function emptySnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
+  return { events: [], familyEvents: [], chat: [] };
+}
+
 function initialHomeSafetyActions(): HomeSafetyAction[] {
   clearLegacyHomeSafetyStorage();
   return demoHomeSafetyActions.map((action) => ({ ...action }));
 }
 
 export default function App() {
-  // 启动先水合本地持久化的历史数据，再进入主界面：
+  // 启动先水合本地持久化的历史数据与本机档案，再进入主界面：
   // 否则首帧的 save 会把 IndexedDB 里的历史快照覆盖成种子数据。
   const [initial, setInitial] = useState<ReturnType<typeof buildSeedSnapshot> | null>(null);
+  const [storedProfile, setStoredProfile] = useState<StoredProfile | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const stored = loadStoredProfile();
       const restored = await healthRecordStore.hydrate();
       if (cancelled) return;
-      setInitial(restored ? healthRecordStore.load() : buildSeedSnapshot());
+      setStoredProfile(stored);
+      setProfileReady(true);
+      // 有历史数据一律优先采用（那是用户自己的记录）；无历史时才按数据模式装载：
+      // demo = 合成种子，personal = 从空白开始（评审 P0-4/P1-2：身份与数据模式是显式选择）。
+      if (restored) setInitial(healthRecordStore.load());
+      else if (stored?.dataMode === 'demo') setInitial(buildSeedSnapshot());
+      else setInitial(emptySnapshot());
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (!initial) {
+  if (!profileReady || !initial) {
     return (
       <div className="app">
         <div className="boot-splash" role="status">
@@ -99,10 +117,43 @@ export default function App() {
       </div>
     );
   }
-  return <AppRoot initial={initial} />;
+  if (!storedProfile) {
+    if (onboarding) {
+      return (
+        <OnboardingFlow
+          onComplete={(profile) => {
+            const next: StoredProfile = { version: 1, profile, dataMode: 'personal' };
+            saveStoredProfile(next);
+            setStoredProfile(next);
+          }}
+        />
+      );
+    }
+    return (
+      <FirstRunGate
+        onDemo={() => {
+          const next = demoStoredProfile();
+          saveStoredProfile(next);
+          setStoredProfile(next);
+          if (initial.events.length === 0 && initial.chat.length === 0) setInitial(buildSeedSnapshot());
+        }}
+        onPersonal={() => setOnboarding(true)}
+      />
+    );
+  }
+  return <AppRoot initial={initial} storedProfile={storedProfile} onProfileChange={setStoredProfile} />;
 }
 
-function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> }) {
+function AppRoot({
+  initial,
+  storedProfile,
+  onProfileChange,
+}: {
+  initial: ReturnType<typeof buildSeedSnapshot>;
+  storedProfile: StoredProfile;
+  onProfileChange: (next: StoredProfile) => void;
+}) {
+  const demoMode = storedProfile.dataMode === 'demo';
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
@@ -132,7 +183,10 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
     shareFamilyEventIds,
   } = useFamilyBinding({ showToast });
 
-  const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
+  const activeProfile: ElderProfile = useMemo(
+    () => ({ ...storedProfile.profile, familySharing }),
+    [storedProfile, familySharing],
+  );
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations, measurements } = healthData;
   const familyRecords = useMemo(
@@ -241,27 +295,30 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
     setFamilyEvents,
     setChat,
     showToast,
-    onMedicationMissed: () => ensureMedicationCheck(profile.medications),
+    onMedicationMissed: () => ensureMedicationCheck(activeProfile.medications),
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
 
   useEffect(() => {
+    // 模拟设备数据只属于演示模式；personal 模式不注入任何合成数据（评审 P1-2）。
+    if (!demoMode) return;
     let cancelled = false;
     const from = seedRecords[0]?.date ?? TODAY;
-    demoDeviceAdapter.getMeasurements(profile.name, from, TODAY).then((deviceMeasurements) => {
+    demoDeviceAdapter.getMeasurements(activeProfile.name, from, TODAY).then((deviceMeasurements) => {
       if (cancelled) return;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [demoMode, activeProfile.name]);
 
   useEffect(() => {
-    // 开应用就生成今天的"💊 今天的药"任务；老人不用等 chat 触发。
-    ensureMedicationCheck(profile.medications);
-  }, [profile.medications, ensureMedicationCheck]);
+    // 开应用就生成今天的"💊 今天的药"任务；没有录入用药时不制造噪声。
+    if (activeProfile.medications.length === 0) return;
+    ensureMedicationCheck(activeProfile.medications);
+  }, [activeProfile.medications, ensureMedicationCheck]);
 
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
@@ -297,11 +354,20 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
   }
 
   // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
+  // clearAllLocalData 会连本机档案一起清掉，reload 后回到首启选择。
   function handleClearAllData() {
     if (!window.confirm('确定清空这台浏览器里的全部记录吗？\n聊天、健康记录、通知台账和设置都会删除，并回到初始选择。'))
       return;
     clearAllLocalData(healthRecordStore);
     window.location.reload();
+  }
+
+  // 编辑档案（评审 P0-4）：保存到本机档案存储并即时生效。
+  function handleProfileSave(nextProfile: ElderProfile) {
+    const next: StoredProfile = { ...storedProfile, profile: nextProfile };
+    saveStoredProfile(next);
+    onProfileChange(next);
+    showToast('档案已更新。');
   }
 
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
@@ -376,6 +442,7 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
             onRevokeFamilyShare={revokeFamilyShare}
             onGenerateInvite={generateInvite}
             syncStatus={sync.status}
+            dataMode={storedProfile.dataMode}
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
@@ -385,6 +452,9 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
                 observations={observations}
                 findings={findings}
                 today={TODAY}
+                profile={activeProfile}
+                dataMode={storedProfile.dataMode}
+                onProfileSave={handleProfileSave}
                 onClearData={handleClearAllData}
               />
             </Suspense>

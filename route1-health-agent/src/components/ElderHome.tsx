@@ -6,6 +6,7 @@ import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
 import SafetyActions, { familyCallLabel } from './SafetyActions';
+import type { DataMode } from '../store/profileStore';
 
 interface ElderHomeProps {
   profile: ElderProfile;
@@ -27,6 +28,8 @@ interface ElderHomeProps {
   onRevokeFamilyShare: () => void;
   onGenerateInvite: () => void;
   syncStatus?: import('../hooks/useCrossDeviceSync').CrossDeviceStatus;
+  /** 数据模式：决定"数据从哪儿来"卡片的文案（评审 P1-2）。 */
+  dataMode?: DataMode;
 }
 
 export default function ElderHome({
@@ -49,6 +52,7 @@ export default function ElderHome({
   onRevokeFamilyShare,
   onGenerateInvite,
   syncStatus,
+  dataMode = 'demo',
 }: ElderHomeProps) {
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
@@ -100,7 +104,14 @@ export default function ElderHome({
         <SafetyActions profile={profile} />
       </section>
 
-      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} profile={profile} />
+      <ChatView
+        id="elder-chat"
+        chat={chat}
+        onSend={onSend}
+        quickInputs={quickInputs}
+        profile={profile}
+        deviceNote={dataMode}
+      />
 
       <section className="card task-card">
         <div className="section-head">
@@ -274,7 +285,12 @@ export default function ElderHome({
         <ul className="data-source-list">
           <li>
             <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
-            <span className="muted">— 来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）</span>
+            <span className="muted">
+              —{' '}
+              {dataMode === 'demo'
+                ? '来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）'
+                : '当前版本未接入真实硬件；接入后会自动进入同一基线与检测'}
+            </span>
           </li>
           <li>
             <b>📷 血压 / 体重 / 血糖 / 体检报告</b>

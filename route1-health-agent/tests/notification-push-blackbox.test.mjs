@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+import { seedDemoProfile } from './helpers/demo-seed.mjs';
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.NOTIF_SMOKE_PORT ?? 4174);
@@ -88,6 +89,7 @@ async function runSmoke() {
   await context.grantPermissions(['notifications'], { origin: `http://localhost:${PORT}` });
 
   const page = await context.newPage();
+  seedDemoProfile(page);
   page.on('console', (msg) => {
     if (msg.type() === 'error') log('console.error:', msg.text());
   });
