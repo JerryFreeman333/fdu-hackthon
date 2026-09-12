@@ -949,3 +949,35 @@ button {
 .onboarding-card .role-lead {
   font-size: 17px;
 }
+.sos-notify-btn {
+  margin-top: 12px;
+  font-size: 17px;
+}
+.webhook-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 460px;
+}
+.webhook-form label {
+  font-weight: 700;
+  margin-top: 6px;
+}
+.webhook-form input,
+.webhook-form select {
+  min-height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-family: inherit;
+}
+.webhook-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.webhook-settings-card {
+  border: 1.5px solid #cfe3d6;
+  background: #f7fcf9;
+}

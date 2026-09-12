@@ -7,7 +7,7 @@
 import type { FamilySharing, Finding } from '../types';
 import { collectFamilyNotifications, type FamilyNotification } from './escalate';
 
-export type DeliveryChannel = 'in_app' | 'browser_push';
+export type DeliveryChannel = 'in_app' | 'browser_push' | 'webhook_push';
 export type DeliveryStatus = 'sent' | 'failed' | 'unavailable';
 
 export interface DeliveryAttempt {
@@ -129,12 +129,13 @@ export function countUnacknowledged(records: FamilyNotificationRecord[]): number
 const CHANNEL_LABELS: Record<DeliveryChannel, string> = {
   in_app: '通知中心',
   browser_push: '系统通知',
+  webhook_push: '微信推送',
 };
 
 /** 把投递台账压缩成一句家属能看懂的送达状态，不夸大也不含糊。 */
 export function describeDeliveries(record: FamilyNotificationRecord): string {
   const parts: string[] = [];
-  for (const channel of ['in_app', 'browser_push'] as const) {
+  for (const channel of ['in_app', 'browser_push', 'webhook_push'] as const) {
     const attempt = record.deliveries.find((item) => item.channel === channel);
     if (!attempt) continue;
     if (attempt.status === 'sent') parts.push(`${CHANNEL_LABELS[channel]}已送达`);
