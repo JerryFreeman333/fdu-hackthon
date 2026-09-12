@@ -1,5 +1,7 @@
 # 安康 Agent（A1 路线一：先认识老人）
 
+[![route1-health-agent-ci](https://github.com/JerryFreeman333/fdu-hackthon/actions/workflows/route1-ci.yml/badge.svg)](https://github.com/JerryFreeman333/fdu-hackthon/actions/workflows/route1-ci.yml)
+
 > 不是把老人变成“健康数据”，而是让 Agent 逐步认识一个老人平时是什么状态，只在出现有意义的变化时帮助他，并把真正需要家属介入的事情说明白。
 
 这是 fdu-hackthon A1 的**第一阶段 MVP**。产品路线不是停在健康聊天，而是：
@@ -18,6 +20,15 @@ Phase 4  Agent 解释 + 帮助行动 + 家庭协同
 
 ## 当前产品体验
 
+### 首次启动：演示 / 自用二选一
+
+第一次打开会先问"这是演示还是自己用"（`components/FirstRunGate.tsx`）：
+
+- **演示模式**：一键装载王秀兰奶奶的合成档案与设备数据，体验完整故事线，不混入任何真实输入；
+- **自用模式（personal）**：走轻量建档（称呼、年龄、基础病、用药、家属与社区医生电话、行动能力），一切从空白开始——检测只对真实输入发声，不注入合成种子、不接模拟设备（评审 P0-4/P1-2：身份与数据模式是显式选择）。
+
+档案随时可在老人端"数据与隐私"里修改；两端都有**清空本机数据**入口（聊天、健康记录、通知台账、协同设置一并删除并回到首启选择）——试玩产生的测试主诉不会永久污染基线。
+
 ### 老人端
 
 第一次进入先选择“我是老人”。首页围绕“帮我”组织，而不是让老人学习复杂功能：
@@ -28,6 +39,8 @@ Phase 4  Agent 解释 + 帮助行动 + 家庭协同
 - 看到“今天要做的事”，支持 `pending → in_progress → completed`；
 - 有变化时给出简单、行动导向的提醒；
 - 可以明确表达“这个不要告诉孩子”“这个不要记录”；
+- **紧急求助常驻卡**（评审 P0-1）：一键拨打 120 / 家属 / 社区医生（`tel:` 链接），不需要先跟 Agent 对话、也不会被折叠进聊天记录；配置微信推送后还有"📲 微信通知家属"一键呼救；
+- **回复分块**（评审 P1-5）：安全指导是主气泡，"我已经记下：……"等回执是小字，隐私与共享声明独立成行；朗读（TTS）只读主气泡，不会把回执隐私一起念出来；
 - 普通状态尽量安静，复杂指标和详细趋势收进可选的状态页。
 
 ### 家属端
@@ -44,10 +57,27 @@ Phase 4  Agent 解释 + 帮助行动 + 家庭协同
 
 - **派发门控**：只有 `familySharing=granted` 且已完成家庭绑定，才会派发 alert/urgent 通知；私密发现（`familyEligible=false`）永远不进入家属通知；
 - **去重**：以发现 ID 为唯一键，同一条通知只派发一次，刷新页面不会重复打扰；
-- **逐渠道送达状态**：每条通知记录「通知中心 / 系统通知（浏览器 Web Notifications）」各自的送达结果；权限未开启、渠道失败都会如实标注“未送达”，绝不把未知包装成安心；
+- **逐渠道送达状态**：每条通知记录「通知中心 / 系统通知（浏览器 Web Notifications）/ 微信推送」各自的送达结果；权限未开启、渠道失败都会如实标注“未送达”，绝不把未知包装成安心；
 - **确认闭环**：家属逐条“确认已知悉”，顶部横幅与待确认计数随之更新；台账持久化在本地，处理进度不会因为刷新丢失。
 
 系统通知权限可在家属端一键开启；真实产品的服务端推送 / 短信渠道应实现同样的 `DeliverFn` 适配器接入台账。
+
+#### 微信推送（通知的"最后一公里"）
+
+浏览器系统通知只在网页开着时可见。配置微信推送后（家属端"数据与设置"），派发的紧急通知会同时推送到家属微信——不需要一直开着网页（`adapters/WebhookPushChannel.ts`）：
+
+- 支持 **Server酱（sct.ftqq.com）/ PushPlus / 自定义 Webhook** 三种服务商；
+- token / SendKey 只保存在本机 localStorage，绝不入库、绝不上传；提供"发送测试消息"真实验证；
+- 老人端 SOS 卡因此多一个"📲 微信通知家属：我需要帮助"按钮，发送结果如实提示（评审 P1-3）；
+- 诚实边界：当前推送由配置了 token 的这台设备发出；正式版应由服务端持有 token 发送。
+
+#### 家属首页不撒谎：三种状态 + 被挡住的信号
+
+家属首页回答的是"今天总体正常，还是有一件事值得关注"，并且：
+
+- 有 alert/urgent 通知时绝不显示"总体正常"；
+- 今天存在但被老人隐私设置挡住的紧急信号，会显示"有 X 件事被隐私设置挡住了"（评审 P0-2）——未知不伪装成安心；
+- 今天还没有任何信号时，显示"还没说话"，而不是"没事"。
 
 当前家庭绑定与联系老人均为**本地 Demo 模拟**：老人端可生成邀请码，家属端输入邀请码后在本地完成校验和绑定。真实产品需要后端账号体系、二维码/手机号验证及跨设备同步。
 
@@ -98,6 +128,8 @@ Person Twin 的目的，是让后续 `Person × Home` 风险模型可以直接�
 ```
 
 `HealthEvent[]` 是运行时事实来源；`DayRecord` 是由 measurement 派生的 UI/Detection 视图。
+
+**时钟服务**（`engine/clock.ts`）：运行期的"今天"不是模块加载时定格的常量——App 内的时钟服务每分钟 tick、页面从后台恢复时对时，跨午夜后新消息、新任务、新检测自动归到新的一天（评审 P1-4：老人睡前打开、凌晨还开着的页面，不能再把 00:01 的主诉说成昨天）。
 
 ## 对话理解与结构化数值
 
@@ -167,6 +199,15 @@ Fail-closed 契约：
 
 无论走 LLM 还是纯规则，否定与"差点发生"（near_miss）的句子都有点名确认话术（"好的，我知道了：您说的头晕没有发生，或者已经好了……"），不再被"说的是您自己还是家里人？"式追问当成没听懂（`userFacing.buildUnacceptedClaimsReply`）。
 
+#### INTENT_RULES 冻结政策
+
+`agent.ts` 的 `INTENT_RULES` 是**规则下限**，不是词表穷举的尝试——它的角色由上面的双层结构保证。修改政策冻结如下：
+
+- **只增不删**：允许为"规则漏识别导致整句无声消失"的句式补兜底 pattern（每处必须注明是兜底、附可复现语料）；不允许删除或收窄既有 pattern，除非有语料证明它制造了误报，且收窄后必须补上等效的否定结构化处理；
+- **新增规则必须过语料**：`tests/corpus/utterances.json` + `tests/pipeline-properties.test.ts` 锁定管线性质（无静默丢弃、不得凭空捏造、否定不入库），任何 pattern 改动导致语料漂移即失败；
+- **不动语义判定**：肯否/假设/差点/人物的最终仲裁在结构化否定与 LLM 仲裁层，`INTENT_RULES` 只提供"有没有提到症状"的下限信号；
+- **回合决策已抽纯函数**：`engine/elderTurn.ts` 的 `planElderTurn` 单独可测（`tests/elder-turn-plan.test.ts`），回复文案、事件归属、no_record 边界都有单测锁定。
+
 配置方式（`.env`，任何 OpenAI 兼容端点，key 只存本地不入库）：
 
 ```bash
@@ -193,11 +234,22 @@ VITE_AGENT_LLM_ENDPOINT=http://localhost:8787/agent/chat   # 可选：回复层�
 
 代理支持 `/chat/completions`（理解层透传）与 `/agent/chat`（回复层适配），带 CORS 头；任何上游错误以 502 + 明确 message 返回，不静默。
 
+**理解层 LLM 的现场验证与 golden 基线**（配好 `.env` 后）：
+
+```bash
+npm run verify:llm                    # 用审查反例 + 阳性对照验证仲裁结果
+npm run verify:llm -- --golden        # 额外对照 golden 基线，模型/提示词漂移即失败
+npm run verify:llm -- --update-golden # 确认漂移符合预期后，重录 golden 基线
+```
+
+golden 基线（`tests/golden/llm-understanding-golden.json`）记录每个用例在某个模型 + 提示词版本下的 accepted 数与标签集合：换模型或改提示词导致结果漂移时脚本会失败，先确认漂移是否符合预期再重录——防止"换了个模型，否定句悄悄开始入库"这类回归静默发生。
+
 ## 跨设备协同与信令
 
 两台真手机的实时协同走 PeerJS（WebRTC DataChannel），数据不经中转服务器，信令只做握手。需要如实对待的风险：
 
 - **官方公共信令（0.peerjs.com）在中国大陆网络不稳定**，可能导致最核心的"老人手机 ↔ 家属手机"协同静默退化为"两台设备各玩各的"。连接失败时 UI 会如实标注"暂时没连上"，不会伪装成已协同；
+- **首连重试**（评审 P2）：家属端第一次连接带 3 次重试（间隔 1.5s），每次重试都在状态里如实显示"正在再试"；公网信令抖一下不至于直接退化成"各玩各的"，重试耗尽后仍如实报 failed；
 - 缓解：自建/国内可达信令。`npx peerjs --port 9000 --key ankang` 起一个信令服务器，然后配置 `VITE_PEER_SIGNALING_URL=http://<服务器>:9000/peerjs`（支持 wss/https）；
 - 默认 ICE 列表在 Google STUN 之外并列了国内可达的 `stun.qq.com:3478`；需要 TURN 时用 `VITE_PEER_ICE_SERVERS` 注入 JSON 数组；
 - 同浏览器多 tab 的 BroadcastChannel 协同不依赖网络，始终可用作兜底。
@@ -270,7 +322,13 @@ interface DeviceAdapter {
 
 本项目做的是**状态变化发现、隐私控制和安全分流**，不做疾病诊断，不根据单个异常读数直接下疾病结论。真实产品上线前仍需要临床专家对规则、阈值、误报/漏报和紧急处置文本进行验证。
 
-## 回归测试
+## 验证体系
+
+一条命令跑完整闸门（格式 → 类型 → 324 个单测 → 构建 → 安全检查 → 6 个 Playwright 黑盒）：
+
+```bash
+npm run ci
+```
 
 单元回归（`npm test`）覆盖：
 
@@ -281,22 +339,35 @@ interface DeviceAdapter {
 - **理解层 LLM 仲裁**（`llm-understanding.test.ts`）：mock fetch 验证标签轴（规则漏识别补齐、只增不删）与肯否轴双向合并、补标签时强词汇信号优先、超时/HTTP 错误/坏 JSON/网络异常全部回落规则、隐私门控、超长输入跳过；
 - **兜底标签回归**（`tag-fallback-regression.test.ts`）：未配置 LLM / private / no_record 场景下，"头一点都不晕了""不晕，但是有点累""摔是没摔，就是腿软了一下"在纯规则模式也留痕不误记，同时锁定防误报边界（晕车/晕船不得记成头晕）；
 - **否定/擦边确认话术**（`user-ux-blackbox.test.ts`）：否定与"差点发生"的句子得到点名确认（"头晕没有发生，或者已经好了"），不再被"说的是您自己还是家里人？"式追问当成没听懂；混合不确定语义仍走追问；
-- 隐私与家属协同：逐条 visibility、一次性/长期共享与撤销、分享审计、会话隔离；
+- **回合纯规划**（`elder-turn-plan.test.ts`）：`planElderTurn` 的回复分块（主气泡/小字回执/隐私行）、no_record 零事件、注入 today 决定事件归属、家属消息不进本人档案、用药遗漏触发任务；
+- **注入时钟**（`clock.test.ts`）：23:59/00:01 两条消息分属两天、后台跨天恢复对时、stop 后失效；
+- **管线性质测试**（`pipeline-properties.test.ts`，语料驱动）：对 `tests/corpus/utterances.json` 里的全部真实口语断言四条管线性质——**无静默丢弃**（每句话都有回应）、**不得凭空捏造**（事件标签只能来自原话 claim；否定/痊愈表达零事件）、**归属正确**（家属消息永不进本人档案、no_record 一条不落）、**防漏记**（真实症状必须入库）；新增语料自动纳入；
+- **重试助手**（`retry.test.ts`）：首连重试耗尽后抛最后一次真实错误；
+- 隐私与家属协同：逐条 visibility、一次性/长期共享与撤销、分享审计、会话隔离、微信推送渠道（`webhook-push.test.ts`）；
 - **本地持久化**（`persistent-health-store.test.ts`）：save→hydrate 往返、坏数据/版本不符按无历史、KV 写失败降级会话内存、clear 清底层；
 - 信令配置（`signaling-config.test.ts`）：自建信令地址解析、非法输入回退、默认 ICE 含国内可达 STUN；
 - Agent：规则回复与有理由追问、外部 LLM 上下文的隐私边界（仅公开 Person Twin）；
 - 图像解析：parser 选择、严格校验、mg/dL 换算、确认后入库；
 - 本地日期与时区安全。
 
-真实浏览器黑盒（本地 `npm run test:browser` / `test:browser:notif` / `test:browser:cross-device`）覆盖角色切换、家属绑定/撤销、一次性共享可见性、拍照确认入库、跨设备状态诚实降级（老人端不出现 P2P/跨设备等技术词、连接失败不伪装成功）等端到端链路。
+**真实浏览器黑盒**（Playwright，`npm run test:browser*`，已并入 GitHub Actions 的 `browser-route1` job）覆盖端到端链路：
+
+- `test:browser`：角色切换、家属绑定/撤销、一次性共享可见性、拍照确认入库；
+- `test:browser:sos`：老人端 SOS 常驻卡 + 安全回复行动条真的能按（`tel:` 链接）；
+- `test:browser:onboarding`：首启二选一、建档编辑、personal 模式数据隔离；
+- `test:browser:webhook`：微信推送配置 → 绑定派发 → 台账"微信推送已送达" → 测试消息 → SOS 微信呼救（拦截真实请求，不打真微信）；
+- `test:browser:notif`：派发引擎真的弹出系统通知 + 跨刷新去重；
+- `test:browser:cross-device`：跨设备状态诚实降级（老人端不出现 P2P/跨设备等技术词、连接失败不伪装成功）。
+
+黑盒构建 dist 时强制剥离 LLM 环境变量，bundle 永不携带真实 key（见 `llm-endpoint-guard.test.ts` 与各黑盒脚本的 `stripLlmEnv`）。
 
 ## 运行
 
 ```bash
 cd route1-health-agent
 npm install
-npm run dev
-npm test
+npm run dev        # 开发
+npm run ci         # 完整闸门（与 GitHub Actions 等价）
 ```
 
 ### 可选：启用理解层 LLM 语义仲裁
