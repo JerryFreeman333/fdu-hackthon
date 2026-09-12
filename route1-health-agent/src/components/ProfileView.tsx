@@ -9,6 +9,8 @@ interface ProfileViewProps {
   observations: Observation[];
   findings: Finding[];
   today: string;
+  /** 评审 P0-4：清空本机全部数据入口；不传则不渲染该区块。 */
+  onClearData?: () => void;
 }
 
 const DISPLAY_METRICS: MetricKey[] = [
@@ -22,7 +24,7 @@ const DISPLAY_METRICS: MetricKey[] = [
   'bloodGlucose',
 ];
 
-export default function ProfileView({ records, observations, findings, today }: ProfileViewProps) {
+export default function ProfileView({ records, observations, findings, today, onClearData }: ProfileViewProps) {
   const profileFindings = findings.filter((f) => f.severity === 'alert' || f.severity === 'urgent');
 
   return (
@@ -117,6 +119,18 @@ export default function ProfileView({ records, observations, findings, today }: 
           }
         </p>
       </div>
+
+      {onClearData && (
+        <div className="card data-reset-card">
+          <h3>数据与隐私</h3>
+          <p className="muted">
+            全部数据只存在这台浏览器里，不会上传。清空会删除聊天、健康记录和所有设置，并回到初始选择，删除后无法恢复。
+          </p>
+          <button className="btn-secondary" onClick={onClearData}>
+            清空本机全部数据
+          </button>
+        </div>
+      )}
     </div>
   );
 }

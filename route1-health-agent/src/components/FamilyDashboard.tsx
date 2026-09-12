@@ -40,6 +40,8 @@ interface FamilyDashboardProps {
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
+  /** 评审 P0-4：家属端也提供清空本机数据入口（试玩污染同样发生在家属端）。 */
+  onClearData?: () => void;
   onViewChange: (view: 'home' | 'detail' | 'report' | 'medication') => void;
   view: 'home' | 'detail' | 'report' | 'medication';
 }
@@ -569,6 +571,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           家属周报
         </button>
       </div>
+
+      {props.onClearData && (
+        <details className="advanced-details">
+          <summary>数据与设置</summary>
+          <div className="card data-reset-card">
+            <p className="muted">
+              清空这台浏览器里的全部数据（聊天、健康记录、通知台账、协同设置），并回到初始选择。删除后无法恢复。
+            </p>
+            <button className="btn-secondary" onClick={props.onClearData}>
+              清空本机全部数据
+            </button>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

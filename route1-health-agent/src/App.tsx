@@ -19,6 +19,7 @@ import { collectFamilyNotifications, collectGatedFindings } from './engine/escal
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
 import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
+import { clearAllLocalData } from './store/clearLocalData';
 
 // 健康数据在本浏览器内持久化（IndexedDB）；IDB 不可用（隐私模式等）时退化为会话内存。
 const healthRecordStore = new PersistentHealthRecordStore(
@@ -295,6 +296,14 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
     setRole(null);
   }
 
+  // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
+  function handleClearAllData() {
+    if (!window.confirm('确定清空这台浏览器里的全部记录吗？\n聊天、健康记录、通知台账和设置都会删除，并回到初始选择。'))
+      return;
+    clearAllLocalData(healthRecordStore);
+    window.location.reload();
+  }
+
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
     updateStatus(taskId, status);
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
@@ -371,7 +380,13 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
             <Suspense fallback={VIEW_FALLBACK}>
-              <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
+              <ProfileView
+                records={records}
+                observations={observations}
+                findings={findings}
+                today={TODAY}
+                onClearData={handleClearAllData}
+              />
             </Suspense>
           </details>
         </main>
@@ -424,13 +439,15 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
             tabId={sync.tabId}
             todaySignalCount={todaySignalCount}
             gatedAlertCount={gatedAlertCount}
+            onClearData={handleClearAllData}
           />
         </Suspense>
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
+        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；
+        回复层 LLM 走服务端 Endpoint，key 不进浏览器；理解层 LLM 若配置 Demo 直连模式，key 会经 Vite 注入浏览器（仅限
+        一次性/免费 key，见 README「诚实声明」；也可用 npm run proxy 本地代理让 bundle 不含 key）。
       </footer>
     </div>
   );
