@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+import { seedDemoProfile as seedDemoProfileContext } from './helpers/demo-seed.mjs';
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.CROSS_SMOKE_PORT ?? 4175);
@@ -50,7 +51,9 @@ function startPreview() {
     const onData = (chunk) => {
       const text = chunk.toString();
       process.stdout.write('[preview] ' + text);
-      if (text.includes('Local:')) resolve();
+      // Vite 在 CI=true 下会强制 ANSI 着色，"Local" 与 ":" 之间夹着转义序列，
+      // 不能只认 'Local:'；URL 里的 localhost 不着色，作为兜底。
+      if (text.includes('Local:') || text.includes('localhost')) resolve();
     };
     serverProcess.stdout.on('data', onData);
     serverProcess.stderr.on('data', onData);
@@ -77,6 +80,7 @@ async function fetchReady() {
 async function runSmoke() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'zh-CN' });
+  await seedDemoProfileContext(context);
   // 替换 PeerJS 让信令走本地桥：避免依赖公开服务器的同时，仍能模拟 host / guest 两端连通
   // 这里简化：让 hostAsPeer 永远 reject（模拟信令不可达），验证 UI 不会假装"已协同"
   await context.addInitScript(() => {
@@ -164,15 +168,18 @@ async function runSmoke() {
     // 4. 邀请码出现后，UI 必须显示某种协同状态，不能假装"已协同"
     await wait(2500); // 给 PeerJS 假 onerror 触发 + UI 更新
     const bannerText = await page.evaluate(() => document.body.innerText);
-    const showsWaiting = bannerText.includes('等待家属端') || bannerText.includes('跨设备连接失败');
-    const falseClaims = bannerText.includes('✅ 家属端已通过 P2P 连入');
+    // 老人端文案必须是"人话"：不出现 P2P/跨设备等技术词（审查反馈：技术状态不该暴露给老人）
+    const showsWaiting = bannerText.includes('等家人在另一台手机') || bannerText.includes('暂时没连上');
+    const falseClaims = bannerText.includes('已经和家人手机连上了');
+    const elderSeesTechJargon = /P2P|跨设备/.test(bannerText);
     check('未生成前不会假装"已协同"', !bannerText.includes('跨设备实时协同已建立'));
     check(
       '生成邀请码后显示等待或失败状态（不是跨设备已建立）',
       showsWaiting,
-      `banner 片段: ${bannerText.match(/(等待家属端|跨设备连接失败|跨设备实时协同已建立)/g)?.join(' / ') ?? '未找到'}`,
+      `banner 片段: ${bannerText.match(/(等家人在另一台手机|暂时没连上|已经和家人手机连上了)/g)?.join(' / ') ?? '未找到'}`,
     );
-    check('没有在没真连接时显示"已 P2P 连入"', !falseClaims);
+    check('没有在没真连接时显示"已连上"', !falseClaims);
+    check('老人端不出现 P2P/跨设备等技术词', !elderSeesTechJargon, elderSeesTechJargon ? '发现技术词' : '');
 
     // 5. 同浏览器 tab 协同仍可用：再开一个 tab，两个 tab 之间能 BroadcastChannel 通信
     const tab2 = await context.newPage();
@@ -194,7 +201,14 @@ async function runSmoke() {
   const passed = results.filter((r) => r.ok).length;
   const total = results.length;
   log(`总计: ${passed}/${total} 通过`);
-  if (passed < total) process.exit(1);
+  if (passed < total) {
+    // 强制退出前先收掉 preview 子进程，否则 runSmoke 里的 exit 会跳过 main 的 finally。
+    stopPreview();
+    process.exit(1);
+  }
+  // CI 的公共信令可达时，PeerJS 的 WebSocket 会一直挂着事件循环——断言跑完也必须强制退出。
+  stopPreview();
+  process.exit(0);
 }
 
 async function main() {

@@ -5,6 +5,9 @@ import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
+import SafetyActions, { familyCallLabel } from './SafetyActions';
+import { loadWebhookConfig } from '../adapters/WebhookPushChannel';
+import type { DataMode } from '../store/profileStore';
 
 interface ElderHomeProps {
   profile: ElderProfile;
@@ -26,6 +29,10 @@ interface ElderHomeProps {
   onRevokeFamilyShare: () => void;
   onGenerateInvite: () => void;
   syncStatus?: import('../hooks/useCrossDeviceSync').CrossDeviceStatus;
+  /** 数据模式：决定"数据从哪儿来"卡片的文案（评审 P1-2）。 */
+  dataMode?: DataMode;
+  /** 已配置微信推送时，SOS 卡出现"微信通知家属"按钮（评审 P1-3）；App 内处理发送与提示。 */
+  onNotifyFamily?: () => void;
 }
 
 export default function ElderHome({
@@ -48,6 +55,8 @@ export default function ElderHome({
   onRevokeFamilyShare,
   onGenerateInvite,
   syncStatus,
+  dataMode = 'demo',
+  onNotifyFamily,
 }: ElderHomeProps) {
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
@@ -88,7 +97,30 @@ export default function ElderHome({
         </button>
       </section>
 
-      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} />
+      {/* 紧急求助常驻卡：一键呼救不能藏在聊天里，更不能不存在（评审 P0-1）。 */}
+      <section className="card sos-card" aria-label="紧急求助">
+        <div className="section-head">
+          <div>
+            <h3>🆘 紧急求助</h3>
+            <span className="muted">突然很不好受，就直接打电话。不用先跟我说话。</span>
+          </div>
+        </div>
+        <SafetyActions profile={profile} />
+        {onNotifyFamily && loadWebhookConfig() && (
+          <button className="btn-secondary sos-notify-btn" onClick={onNotifyFamily}>
+            📲 微信通知家属：我需要帮助
+          </button>
+        )}
+      </section>
+
+      <ChatView
+        id="elder-chat"
+        chat={chat}
+        onSend={onSend}
+        quickInputs={quickInputs}
+        profile={profile}
+        deviceNote={dataMode}
+      />
 
       <section className="card task-card">
         <div className="section-head">
@@ -113,6 +145,16 @@ export default function ElderHome({
                     {task.status === 'pending' && (
                       <button className="btn-secondary" onClick={() => onTaskStatus(task.id, 'in_progress')}>
                         开始
+                      </button>
+                    )}
+                    {task.actions?.includes('call_family') && profile.familyPhone && (
+                      <a className="btn-secondary task-call-btn" href={`tel:${profile.familyPhone}`}>
+                        📞 打给{familyCallLabel(profile)}
+                      </a>
+                    )}
+                    {task.actions?.includes('request_share') && profile.familySharing !== 'granted' && (
+                      <button className="btn-primary" onClick={onRequestFamilyShare}>
+                        让家属知道
                       </button>
                     )}
                     <button className="btn-primary" onClick={() => onTaskStatus(task.id, 'completed')}>
@@ -252,7 +294,12 @@ export default function ElderHome({
         <ul className="data-source-list">
           <li>
             <b>📱 步数 / 心率 / 睡眠 / 血氧</b>
-            <span className="muted">— 来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）</span>
+            <span className="muted">
+              —{' '}
+              {dataMode === 'demo'
+                ? '来自模拟的 iPhone + Apple Watch（演示用本地数据，非真接 HealthKit）'
+                : '当前版本未接入真实硬件；接入后会自动进入同一基线与检测'}
+            </span>
           </li>
           <li>
             <b>📷 血压 / 体重 / 血糖 / 体检报告</b>
@@ -289,10 +336,11 @@ export default function ElderHome({
             </p>
             {syncStatus && (
               <p className={`family-sync-banner-elder family-sync-banner-elder-${syncStatus.mode}`}>
-                {syncStatus.mode === 'cross-device' && '✅ 家属端已通过 P2P 连入，跨设备实时协同。'}
-                {syncStatus.mode === 'connecting' && '⏳ 等待家属端在另一台设备输入邀请码…'}
-                {syncStatus.mode === 'failed' && `⚠️ 跨设备连接失败：${syncStatus.detail}。当前仅同浏览器协同。`}
-                {syncStatus.mode === 'local-only' && '当前仅同浏览器 tab 协同。'}
+                {/* 老人端只说"人话"：不出现 P2P/跨设备/协议等技术词；连接失败的技术细节只给家属端。 */}
+                {syncStatus.mode === 'cross-device' && '✅ 已经和家人手机连上了，这边的记录会同步过去。'}
+                {syncStatus.mode === 'connecting' && '⏳ 等家人在另一台手机上输入这个邀请码…'}
+                {syncStatus.mode === 'failed' && '⚠️ 暂时没连上家人的手机。放心，您记的内容都在，晚点再试一次就行。'}
+                {syncStatus.mode === 'local-only' && '现在只能在这一台设备上一起看。'}
               </p>
             )}
           </>

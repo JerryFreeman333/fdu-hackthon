@@ -95,3 +95,40 @@ jobs:
         run: google-chrome --version
       - name: Run browser black-box suite
         run: npm run blackbox
+
+  browser-route1:
+    name: Route 1 Playwright black-box
+    needs: build-route1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: route1-health-agent
+    steps:
+      - name: Checkout revision under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke (roles, binding, sharing, photo)
+        run: npm run test:browser
+      - name: Elder SOS black-box
+        run: npm run test:browser:sos
+      - name: Onboarding black-box
+        run: npm run test:browser:onboarding
+      - name: Webhook push black-box
+        run: npm run test:browser:webhook
+      - name: Notification push black-box
+        run: npm run test:browser:notif
+      - name: Cross-device status black-box
+        run: npm run test:browser:cross-device

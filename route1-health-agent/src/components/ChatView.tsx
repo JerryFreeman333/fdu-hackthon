@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ElderProfile } from '../types';
+import SafetyActions from './SafetyActions';
+import type { DataMode } from '../store/profileStore';
 
 interface ChatViewProps {
   id?: string;
   chat: ChatMessage[];
   onSend: (text: string) => void | Promise<void>;
   quickInputs: string[];
+  profile: ElderProfile;
+  /** 决定开场说明：demo 提示设备数据是模拟的；personal 说明数据只在本机。 */
+  deviceNote?: DataMode;
 }
 
 type SpeechRecognitionResultEvent = Event & {
@@ -49,7 +54,7 @@ function voiceMessage(state: VoiceState): string {
   }
 }
 
-export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProps) {
+export default function ChatView({ id, chat, onSend, quickInputs, profile, deviceNote = 'demo' }: ChatViewProps) {
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -129,6 +134,11 @@ export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProp
     window.speechSynthesis.speak(utterance);
   }
 
+  // TTS 只读主气泡（评审 P1-5）：记录回执与隐私行是小字辅助信息，不必念给老人听。
+  function mainSpeechText(m: ChatMessage): string {
+    return m.blocks?.find((block) => block.kind === 'main')?.text ?? m.text;
+  }
+
   const voiceHint = voiceMessage(voiceState);
 
   return (
@@ -136,7 +146,9 @@ export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProp
       <div className="chat-intro">
         <div className="agent-greeting">
           我是<b>阿安</b>，您的健康小助手。身体有什么不舒服、心里有什么话，都可以跟我说。
-          现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。
+          {deviceNote === 'demo'
+            ? '现在手表、血压等设备还没有真正连进来，页面里看到的设备数据是演示数据，不代表您刚刚测量的结果。'
+            : '您说的话和记录都只保存在这台设备里。'}
         </div>
       </div>
 
@@ -145,15 +157,28 @@ export default function ChatView({ id, chat, onSend, quickInputs }: ChatViewProp
           <div key={m.id} className={`chat-row ${m.role === 'elder' ? 'row-elder' : 'row-agent'}`}>
             {m.role === 'agent' && <div className="chat-avatar">安</div>}
             <div className="chat-bubble">
-              {m.text.split('\n').map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
+              {m.blocks
+                ? m.blocks.map((block, i) =>
+                    block.kind === 'main' ? (
+                      <div key={i} className="chat-main">
+                        {block.text.split('\n').map((line, lineIndex) => (
+                          <p key={lineIndex}>{line}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p key={i} className={block.kind === 'receipt' ? 'chat-receipt' : 'chat-privacy'}>
+                        {block.text}
+                      </p>
+                    ),
+                  )
+                : m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
               <div className="chat-time">{m.time}</div>
               {m.role === 'agent' && ttsSupported && (
-                <button className="btn-secondary" onClick={() => speak(m.text)} aria-label="朗读这条回复">
+                <button className="btn-secondary" onClick={() => speak(mainSpeechText(m))} aria-label="朗读这条回复">
                   🔊 朗读
                 </button>
               )}
+              {m.role === 'agent' && m.safetyAction && <SafetyActions profile={profile} />}
             </div>
           </div>
         ))}

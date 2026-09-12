@@ -675,6 +675,18 @@ button {
 .chat-bubble p {
   margin: 2px 0;
 }
+/* 回复分块（评审 P1-5）：主气泡正常字号；小字回执弱化；隐私行独立成行并加分隔。 */
+.chat-receipt {
+  font-size: 0.86em;
+  color: var(--ink-soft);
+}
+.chat-privacy {
+  font-size: 0.86em;
+  color: var(--ink-soft);
+  border-top: 1px dashed var(--line);
+  margin-top: 6px;
+  padding-top: 5px;
+}
 .chat-time {
   font-size: 12px;
   color: var(--ink-soft);
@@ -898,4 +910,186 @@ button {
 .sample-table small {
   display: block;
   color: var(--ink-soft);
+}
+
+/* 启动水合（IndexedDB 读取）期间的过渡页 */
+.boot-splash {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: var(--muted, #6b7280);
+}
+
+/* ---------- 紧急求助（评审 P0-1：安全指导出现的地方必须有可按的电话） ---------- */
+.sos-card {
+  border: 2px solid #c0392b;
+  background: #fff7f5;
+}
+.sos-card h3 {
+  color: #c0392b;
+}
+.safety-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.safety-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 12px 24px;
+  border-radius: 14px;
+  border: 2px solid #c0392b;
+  background: #c0392b;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.safety-btn:hover {
+  background: #a93226;
+  border-color: #a93226;
+}
+.safety-btn:focus-visible {
+  outline: 3px solid #2c5d4a;
+  outline-offset: 2px;
+}
+.safety-btn-urgent {
+  background: #96281b;
+  font-size: 22px;
+}
+.safety-btn-missing {
+  border-style: dashed;
+  background: transparent;
+  color: #8a6d6a;
+  font-weight: 600;
+  cursor: default;
+  font-size: 16px;
+}
+.chat-bubble .safety-actions {
+  margin-top: 12px;
+}
+.chat-bubble .safety-btn {
+  min-height: 48px;
+  font-size: 17px;
+  padding: 10px 18px;
+}
+.task-call-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.data-reset-card {
+  border: 1.5px solid #e4d5b8;
+  background: #fffcf5;
+}
+
+/* ---------- 建档 / 档案编辑（评审 P0-4） ---------- */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: left;
+}
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.form-section label {
+  font-weight: 700;
+  font-size: 18px;
+}
+.form-input {
+  width: 100%;
+  min-height: 52px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 18px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+.med-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.med-chip {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--ink);
+}
+.form-error {
+  color: #c0392b;
+  font-weight: 700;
+}
+.form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.form-submit {
+  font-size: 19px;
+  min-height: 54px;
+}
+.profile-summary {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 16px;
+}
+.onboarding-card {
+  max-width: 560px;
+}
+.onboarding-card .role-lead {
+  font-size: 17px;
+}
+.sos-notify-btn {
+  margin-top: 12px;
+  font-size: 17px;
+}
+.webhook-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 460px;
+}
+.webhook-form label {
+  font-weight: 700;
+  margin-top: 6px;
+}
+.webhook-form input,
+.webhook-form select {
+  min-height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-family: inherit;
+}
+.webhook-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.webhook-settings-card {
+  border: 1.5px solid #cfe3d6;
+  background: #f7fcf9;
 }

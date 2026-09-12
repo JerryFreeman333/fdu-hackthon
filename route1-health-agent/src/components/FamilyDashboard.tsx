@@ -10,6 +10,12 @@ import { severityBadge } from '../engine/escalate';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 import { buildMedicationCareView } from '../engine/medicationCare';
 import { familyStatus } from '../engine/dashboardStatus';
+import {
+  loadWebhookConfig,
+  saveWebhookConfig,
+  sendWebhookPush,
+  type WebhookProvider,
+} from '../adapters/WebhookPushChannel';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 
 interface FamilyDashboardProps {
@@ -25,6 +31,9 @@ interface FamilyDashboardProps {
   /** 今日（today）系统收到的主诉/聊天/设备/拍照 信号条数；
    * 0 时 dashboardStatus 不会显示绿色"今天总体正常" */
   todaySignalCount: number;
+  /** 今日存在、但因老人未授权而被隐私门控挡住的 alert/urgent 数量（评审 P0-2）：
+   * 大于 0 时 dashboardStatus 必须显示"被隐私设置挡住"，绝不显示"今天总体正常" */
+  gatedAlertCount: number;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
@@ -37,6 +46,8 @@ interface FamilyDashboardProps {
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
   onBindFamily: (inviteCode: string) => boolean;
+  /** 评审 P0-4：家属端也提供清空本机数据入口（试玩污染同样发生在家属端）。 */
+  onClearData?: () => void;
   onViewChange: (view: 'home' | 'detail' | 'report' | 'medication') => void;
   view: 'home' | 'detail' | 'report' | 'medication';
 }
@@ -94,7 +105,14 @@ function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
-  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount);
+  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount, props.gatedAlertCount);
+  // ===== 微信推送设置（评审 P0-6/P1-3）=====
+  const initialWebhook = loadWebhookConfig();
+  const [webhookProvider, setWebhookProvider] = useState<WebhookProvider>(initialWebhook?.provider ?? 'serverchan');
+  const [webhookToken, setWebhookToken] = useState(initialWebhook?.token ?? '');
+  const [webhookCustomUrl, setWebhookCustomUrl] = useState(initialWebhook?.customUrl ?? '');
+  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const webhookConfigured = Boolean(loadWebhookConfig());
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
@@ -357,6 +375,40 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     setBindError(ok ? null : '邀请码无效或已失效，请让老人重新生成。');
   }
 
+  function saveWebhookSettings() {
+    const token = webhookToken.trim();
+    if (!token) {
+      setWebhookStatus('请先填写推送服务的 token / SendKey。');
+      return;
+    }
+    saveWebhookConfig({
+      provider: webhookProvider,
+      token,
+      customUrl: webhookProvider === 'custom' ? webhookCustomUrl.trim() : undefined,
+    });
+    setWebhookStatus('已保存。之后派发的紧急通知会同时推送到微信。');
+  }
+
+  async function testWebhook() {
+    const token = webhookToken.trim();
+    if (!token) {
+      setWebhookStatus('请先填写推送服务的 token / SendKey。');
+      return;
+    }
+    const config = { provider: webhookProvider, token, customUrl: webhookCustomUrl.trim() || undefined };
+    setWebhookStatus('正在发送测试消息…');
+    const outcome = await sendWebhookPush(config, {
+      title: '安康助手测试消息',
+      body: '这是一条测试推送。收到后说明紧急通知可以送到您的微信。',
+    });
+    if (outcome.status === 'sent') {
+      saveWebhookConfig(config);
+      setWebhookStatus(`✅ ${outcome.detail}`);
+    } else {
+      setWebhookStatus(`❌ ${outcome.detail}`);
+    }
+  }
+
   if (props.familyLink?.status !== 'active') {
     return (
       <div className="family-dashboard">
@@ -566,6 +618,70 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           家属周报
         </button>
       </div>
+
+      {props.onClearData && (
+        <details className="advanced-details">
+          <summary>数据与设置</summary>
+          <div className="card webhook-settings-card">
+            <h3>微信接收紧急通知</h3>
+            <p className="muted">
+              配置后，派发的紧急通知会同时推送到您的微信——不需要一直开着这个网页。
+              当前演示版从这台设备发出；正式版由服务端发送。token 只保存在本机，不会上传。
+            </p>
+            <div className="webhook-form">
+              <label htmlFor="webhook-provider">推送服务</label>
+              <select
+                id="webhook-provider"
+                value={webhookProvider}
+                onChange={(event) => setWebhookProvider(event.target.value as WebhookProvider)}
+              >
+                <option value="serverchan">Server酱（sct.ftqq.com）</option>
+                <option value="pushplus">PushPlus（pushplus.plus）</option>
+                <option value="custom">自定义 Webhook</option>
+              </select>
+              {webhookProvider === 'custom' ? (
+                <>
+                  <label htmlFor="webhook-custom-url">接收地址（https 或 localhost）</label>
+                  <input
+                    id="webhook-custom-url"
+                    value={webhookCustomUrl}
+                    onChange={(event) => setWebhookCustomUrl(event.target.value)}
+                    placeholder="https://your-server.example.com/push"
+                  />
+                  <label htmlFor="webhook-token">通道标识</label>
+                </>
+              ) : (
+                <label htmlFor="webhook-token">SendKey / Token</label>
+              )}
+              <input
+                id="webhook-token"
+                value={webhookToken}
+                onChange={(event) => setWebhookToken(event.target.value)}
+                placeholder="SCT… / 推送 token"
+                autoComplete="off"
+              />
+              <div className="webhook-actions">
+                <button className="btn-secondary" onClick={testWebhook}>
+                  发送测试消息
+                </button>
+                <button className="btn-secondary" onClick={saveWebhookSettings}>
+                  保存
+                </button>
+              </div>
+              {webhookStatus && <p className="muted webhook-status">{webhookStatus}</p>}
+              {webhookConfigured && !webhookStatus && <p className="muted">当前已配置微信推送 ✓（修改后记得保存）</p>}
+            </div>
+          </div>
+          <div className="card data-reset-card">
+            <p className="muted">
+              清空这台浏览器里的全部数据（聊天、健康记录、通知台账、协同设置），并回到初始选择。删除后无法恢复。
+            </p>
+            <button className="btn-secondary" onClick={props.onClearData}>
+              清空本机全部数据
+            </button>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

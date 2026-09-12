@@ -13,6 +13,19 @@ interface ImportMetaEnv {
    *   VITE_HEALTH_VISION_ENDPOINT=/api/health/image-parse
    */
   readonly VITE_HEALTH_VISION_ENDPOINT?: string;
+  /**
+   * 理解层 LLM 语义仲裁（OpenAI 兼容 /chat/completions 端点）。
+   * Demo 阶段 key 通过 .env 注入浏览器（仅限一次性/免费 key）；
+   * 正式部署应换成服务端代理，见 README「理解层 LLM 语义仲裁」。
+   */
+  readonly VITE_UNDERSTANDING_LLM_BASE_URL?: string;
+  readonly VITE_UNDERSTANDING_LLM_API_KEY?: string;
+  readonly VITE_UNDERSTANDING_LLM_MODEL?: string;
+  readonly VITE_UNDERSTANDING_LLM_TIMEOUT_MS?: string;
+  /** 自建 PeerJS 信令服务器地址（wss://host:port/path），不配置则用官方公共信令。 */
+  readonly VITE_PEER_SIGNALING_URL?: string;
+  /** 自定义 ICE 服务器列表（JSON 数组，如 [{"urls":"turn:...","username":"...","credential":"..."}]）。 */
+  readonly VITE_PEER_ICE_SERVERS?: string;
 }
 
 interface ImportMeta {

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FamilyNotification } from '../src/engine/escalate';
+import { collectGatedFindings } from '../src/engine/escalate';
 import type { FamilyNotificationRecord } from '../src/engine/notify';
 import { familyStatus } from '../src/engine/dashboardStatus';
 
@@ -159,4 +160,55 @@ void test('【断点 3 修复】今日大量信号 + 无通知 → ok 且 detail
   const status = familyStatus([], [], 17);
   assert.equal(status.tone, 'ok');
   assert.match(status.detail, /今日已收到 17 条健康信号/);
+});
+
+// ===== 评审 P0-2：第三种未知 —— 有数据但被隐私门控挡住 =====
+
+void test('【评审现场时序】有信号但被隐私门控挡住 → unknown，绝不显示总体正常', () => {
+  // 现场时序：老人 02:42 报胸痛（alert/urgent 被门控挡住），家属 02:44 打开首页，
+  // 看到的是"今天总体正常——今日已收到 24 条健康信号"。
+  const status = familyStatus([], [], 24, 1);
+  assert.equal(status.tone, 'unknown');
+  assert.doesNotMatch(status.title, /今天总体正常/);
+  assert.match(status.title, /隐私设置挡住/);
+  assert.match(status.detail, /24 条健康信号/);
+  assert.match(status.detail, /1 条被系统标记为需要关注/);
+  assert.match(status.detail, /直接联系老人/);
+});
+
+void test('多条被挡住的信号在标题中复数呈现', () => {
+  const status = familyStatus([], [], 10, 3);
+  assert.match(status.title, /3 件事被隐私设置挡住/);
+  assert.match(status.detail, /3 条被系统标记为需要关注/);
+});
+
+void test('gated 优先于派发失败：被挡住的信号比送达状态更需要家属知道', () => {
+  const status = familyStatus([], [record('f1', 'urgent', 'failed', '系统通知发送失败')], 5, 2);
+  assert.equal(status.tone, 'unknown');
+  assert.match(status.title, /隐私设置挡住/);
+});
+
+void test('可见 alert 通知存在时仍走 warn，gated 数量不改变其分级', () => {
+  const status = familyStatus([notification('alert')], [], 6, 1);
+  assert.equal(status.tone, 'warn');
+});
+
+void test('gated=0 保持既有行为：有信号、无通知、无失败 → ok', () => {
+  const status = familyStatus([], [], 24, 0);
+  assert.equal(status.tone, 'ok');
+});
+
+void test('collectGatedFindings：未授权时返回今日 alert/urgent，授权后为空', () => {
+  const findings = [finding('urgent', 'f-urgent'), finding('alert', 'f-alert'), finding('watch', 'f-watch')];
+  assert.deepEqual(
+    collectGatedFindings(findings, 'ask', [], '2026-09-09')
+      .map((item) => item.id)
+      .sort(),
+    ['f-alert', 'f-urgent'],
+  );
+  assert.equal(collectGatedFindings(findings, 'granted', [], '2026-09-09').length, 0);
+  // 一次性共享过的 finding 不再属于"被挡住"
+  assert.equal(collectGatedFindings(findings, 'ask', ['f-urgent'], '2026-09-09').length, 1);
+  // 非今日的 finding 不计入（与 collectFamilyNotifications 的今日门控一致）
+  assert.equal(collectGatedFindings(findings, 'denied', [], '2026-09-01').length, 0);
 });

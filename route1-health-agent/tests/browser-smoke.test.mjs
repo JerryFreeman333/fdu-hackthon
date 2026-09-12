@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { seedDemoProfile } from './helpers/demo-seed.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -87,6 +88,7 @@ async function fetchReady() {
 async function runSmoke(browser) {
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
+  seedDemoProfile(page);
   page.on('console', (msg) => {
     if (msg.type() === 'error') log('console.error:', msg.text());
   });
@@ -198,6 +200,7 @@ async function runFamilyMedicationScenario(browser) {
   log('开始 用药与医护 家属端场景');
   const context = await browser.newContext({ locale: 'zh-CN' });
   const page = await context.newPage();
+  seedDemoProfile(page);
   const text = () => page.locator('body').innerText();
   try {
     await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
@@ -263,6 +266,22 @@ async function runFamilyMedicationScenario(browser) {
       '未授权时用药页 fail-closed',
       revokedText.includes('老人尚未授权家属查看详细用药信息') && !revokedText.includes('氨氯地平'),
     );
+
+    // 本地持久化（IndexedDB）：老人误刷新页面后数据不丢（审查反馈："刷新清空一切=这东西不能用"）
+    await page.locator('button', { hasText: '切换身份' }).click();
+    await page.getByRole('button', { name: /我是老人/ }).click();
+    const markerInput = page.getByPlaceholder(/像平时聊天一样|说说今天/).first();
+    await markerInput.waitFor({ timeout: 5000 });
+    const markerText = `持久化验证${Date.now() % 100000}`;
+    await markerInput.fill(markerText);
+    await markerInput.press('Enter');
+    await page.waitForTimeout(1500); // 等 IndexedDB 写入完成
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.getByRole('button', { name: /我是老人/ }).click({ timeout: 5000 });
+    await page.waitForTimeout(800);
+    const bodyAfterReload = await page.evaluate(() => document.body.innerText);
+    check('刷新页面后聊天记录仍在（IndexedDB 持久化）', bodyAfterReload.includes(markerText));
   } finally {
     await page.screenshot({ path: resolve(ROOT, 'tests', 'family-medication.png'), fullPage: true }).catch(() => {});
     await context.close();
@@ -287,8 +306,13 @@ async function main() {
   const total = results.length;
   log(`\u603b\u8ba1: ${passed}/${total} \u901a\u8fc7`);
   if (passed < total) {
+    // 强制退出前先收掉 preview 子进程，否则 runSmoke 里的 exit 会跳过 main 的 finally。
+    stopPreview();
     process.exit(1);
   }
+  // CI 的公共信令可达时，PeerJS 的 WebSocket 会一直挂着事件循环——断言跑完也必须强制退出。
+  stopPreview();
+  process.exit(0);
 }
 
 main().catch((err) => {

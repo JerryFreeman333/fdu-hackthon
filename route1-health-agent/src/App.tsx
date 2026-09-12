@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
-import { TODAY, profile, records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
+import { startClockService, todayNow } from './engine/clock';
+import { demoStoredProfile, loadStoredProfile, saveStoredProfile, type StoredProfile } from './store/profileStore';
+import FirstRunGate from './components/FirstRunGate';
+import OnboardingFlow from './components/OnboardingFlow';
 import { demoHomeSafetyActions } from './data/demoHomeSafetyActions';
 import {
   legacySnapshotToEvents,
@@ -23,16 +27,30 @@ import {
 import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import { collectFamilyNotifications } from './engine/escalate';
+import { collectFamilyNotifications, collectGatedFindings } from './engine/escalate';
 import { visibleFamilyEvents } from './engine/familyLedger';
-import { healthRecordStore } from './store/LocalHealthRecordStore';
+import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
+import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
+import { clearAllLocalData } from './store/clearLocalData';
+
+// 健康数据在本浏览器内持久化（IndexedDB）；IDB 不可用（隐私模式等）时退化为会话内存。
+const healthRecordStore = new PersistentHealthRecordStore(
+  typeof indexedDB !== 'undefined' ? createIdbKeyValueStore() : null,
+);
 import { useNotificationDispatch } from './hooks/useNotificationDispatch';
 import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
+import { loadWebhookConfig, sendWebhookPush } from './adapters/WebhookPushChannel';
 import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
+import { lazy, Suspense } from 'react';
 import ElderHome from './components/ElderHome';
-import FamilyDashboard from './components/FamilyDashboard';
-import ProfileView from './components/ProfileView';
+
+// 家属端主视图与老人端的可选状态页按需加载：
+// 老人用旧手机/弱网打开时不必下载家属端整个仪表盘（审查反馈：首屏体积）。
+const FamilyDashboard = lazy(() => import('./components/FamilyDashboard'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+
+const VIEW_FALLBACK = <div className="boot-splash">正在打开…</div>;
 import RoleGate from './components/RoleGate';
 import FontSizeControl from './components/FontSizeControl';
 import DeviceDebugPanel, { type DeviceSyncState } from './components/DeviceDebugPanel';
@@ -55,21 +73,22 @@ function clearLegacyHomeSafetyStorage() {
   window.localStorage.removeItem(LEGACY_HOME_ACTION_KEY);
 }
 
-function initialSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
+function buildSeedSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
   clearLegacyHealthStorage();
-  // HealthKit 真实模式 fail-closed：不加载 Demo seed，也不读取本地缓存快照。
+  // HealthKit 真实模式 fail-closed：即使本机此前选择过演示模式，也不注入合成数据。
   if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], chat: [] };
-  const stored = healthRecordStore.load();
-  if (stored.events.length || stored.familyEvents.length || stored.chat.length) return stored;
   const events = legacySnapshotToEvents({
     records: seedRecords,
     observations: [...seedObservations, ...seedPhotoObservations],
     measurements: [],
     labResults: [],
   });
-  const snapshot = { events, familyEvents: [], chat: seedChat };
-  healthRecordStore.save(snapshot);
-  return snapshot;
+  return { events, familyEvents: [], chat: seedChat };
+}
+
+/** personal 模式的起点：一切从空白开始，检测只对真实输入发声（评审 P1-2）。 */
+function emptySnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
+  return { events: [], familyEvents: [], chat: [] };
 }
 
 function initialHomeSafetyActions(): HomeSafetyAction[] {
@@ -86,7 +105,78 @@ function dateDaysAgo(days: number): string {
 }
 
 export default function App() {
-  const initial = useMemo(() => initialSnapshot(), []);
+  // 启动先水合本地持久化的历史数据与本机档案，再进入主界面：
+  // 否则首帧的 save 会把 IndexedDB 里的历史快照覆盖成种子数据。
+  const [initial, setInitial] = useState<ReturnType<typeof buildSeedSnapshot> | null>(null);
+  const [storedProfile, setStoredProfile] = useState<StoredProfile | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = loadStoredProfile();
+      // HealthKit 模式不读取可能由 Demo 模式遗留的本地健康快照。
+      const restored = runtimeConfig.deviceMode === 'healthkit' ? false : await healthRecordStore.hydrate();
+      if (cancelled) return;
+      setStoredProfile(stored);
+      setProfileReady(true);
+      // 有历史数据一律优先采用（那是用户自己的记录）；无历史时才按数据模式装载：
+      // demo = 合成种子，personal = 从空白开始（评审 P0-4/P1-2：身份与数据模式是显式选择）。
+      if (restored) setInitial(healthRecordStore.load());
+      else if (stored?.dataMode === 'demo') setInitial(buildSeedSnapshot());
+      else setInitial(emptySnapshot());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!profileReady || !initial) {
+    return (
+      <div className="app">
+        <div className="boot-splash" role="status">
+          正在打开…
+        </div>
+      </div>
+    );
+  }
+  if (!storedProfile) {
+    if (onboarding) {
+      return (
+        <OnboardingFlow
+          onComplete={(profile) => {
+            const next: StoredProfile = { version: 1, profile, dataMode: 'personal' };
+            saveStoredProfile(next);
+            setStoredProfile(next);
+          }}
+        />
+      );
+    }
+    return (
+      <FirstRunGate
+        onDemo={() => {
+          const next = demoStoredProfile();
+          saveStoredProfile(next);
+          setStoredProfile(next);
+          if (initial.events.length === 0 && initial.chat.length === 0) setInitial(buildSeedSnapshot());
+        }}
+        onPersonal={() => setOnboarding(true)}
+      />
+    );
+  }
+  return <AppRoot initial={initial} storedProfile={storedProfile} onProfileChange={setStoredProfile} />;
+}
+
+function AppRoot({
+  initial,
+  storedProfile,
+  onProfileChange,
+}: {
+  initial: ReturnType<typeof buildSeedSnapshot>;
+  storedProfile: StoredProfile;
+  onProfileChange: (next: StoredProfile) => void;
+}) {
+  const demoMode = storedProfile.dataMode === 'demo';
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
@@ -99,6 +189,13 @@ export default function App() {
     () => new HealthKitDeviceAdapter(runtimeConfig.healthkitEndpoint, runtimeConfig.healthkitBridgeToken),
     [],
   );
+  // 时钟服务（评审 P1-4）：运行期的"今天"是可对时的 state，不再是模块加载时定格的常量。
+  // 每分钟 tick + 页面从后台恢复时对时；跨午夜后新消息/新任务/新检测都算新的一天。
+  const [today, setToday] = useState(() => todayNow());
+  useEffect(() => {
+    const clock = startClockService(setToday);
+    return () => clock.stop();
+  }, []);
   const promptedFamilyFindingIdsRef = useRef(new Set<string>());
   const healthKitSyncInFlightRef = useRef(false);
   const healthKitPollInFlightRef = useRef(false);
@@ -122,9 +219,12 @@ export default function App() {
     bindFamily,
     shareFindingIds,
     shareFamilyEventIds,
-  } = useFamilyBinding({ showToast });
+  } = useFamilyBinding({ showToast, today });
 
-  const activeProfile: ElderProfile = useMemo(() => ({ ...profile, familySharing }), [familySharing]);
+  const activeProfile: ElderProfile = useMemo(
+    () => ({ ...storedProfile.profile, familySharing }),
+    [storedProfile, familySharing],
+  );
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations, measurements } = healthData;
   const familyRecords = useMemo(
@@ -135,20 +235,26 @@ export default function App() {
     () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
     [familyEvents, familySharing, sharedFamilyEventIds],
   );
-  const findings = useMemo(() => runDetection(events, TODAY), [events]);
+  const findings = useMemo(() => runDetection(events, today), [events, today]);
   const agentContext = useMemo(
-    () => buildAgentContext(activeProfile, events, TODAY, findings),
-    [activeProfile, events, findings],
+    () => buildAgentContext(activeProfile, events, today, findings),
+    [activeProfile, events, today, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
-    [findings, familySharing, sharedFindingIds],
+    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, today),
+    [findings, familySharing, sharedFindingIds, today],
+  );
+  // 第三种未知（评审 P0-2）：今日存在但被隐私门控挡住的 alert/urgent 数量。
+  // 家属首页状态必须知道它，否则会把被挡住的紧急信号表述成"今天总体正常"。
+  const gatedAlertCount = useMemo(
+    () => collectGatedFindings(findings, familySharing, sharedFindingIds, today).length,
+    [findings, familySharing, sharedFindingIds, today],
   );
   // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
   // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
   const todaySignalCount = useMemo(
-    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(TODAY)).length,
-    [events],
+    () => events.filter((event) => typeof event.timestamp === 'string' && event.timestamp.startsWith(today)).length,
+    [events, today],
   );
   // 派发引擎只关心"是否真的送出去了"，UI 列表继续走 familyNotifs；
   // 二者共享 collectFamilyNotifications 的判定，但派发有台账和确认闭环。
@@ -207,7 +313,7 @@ export default function App() {
     }
     lastBroadcastRecordIdsRef.current = currentIds;
   }, [dispatchRecords, sync]);
-  const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings });
+  const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings, today });
   const {
     handleElderSend,
     handlePhotoImport,
@@ -218,6 +324,7 @@ export default function App() {
     pendingPhotoError,
     quickInputs,
   } = useElderChat({
+    today,
     familySharing,
     events,
     chat,
@@ -227,7 +334,7 @@ export default function App() {
     setFamilyEvents,
     setChat,
     showToast,
-    onMedicationMissed: () => ensureMedicationCheck(profile.medications),
+    onMedicationMissed: () => ensureMedicationCheck(activeProfile.medications),
     onShareFindingIds: shareFindingIds,
     onShareFamilyEventIds: shareFamilyEventIds,
   });
@@ -239,9 +346,9 @@ export default function App() {
     setDeviceSync((current) => ({ ...current, status: 'syncing', error: undefined }));
     try {
       const adapter = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter : demoDeviceAdapter;
-      const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? TODAY);
-      const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : profile.name;
-      const deviceMeasurements = await adapter.getMeasurements(userId, from, TODAY);
+      const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? today);
+      const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : activeProfile.name;
+      const deviceMeasurements = await adapter.getMeasurements(userId, from, today);
       const diagnostics = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter.lastDiagnostics : undefined;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
       if (runtimeConfig.deviceMode === 'healthkit') {
@@ -275,7 +382,7 @@ export default function App() {
     } finally {
       healthKitSyncInFlightRef.current = false;
     }
-  }, [healthKitAdapter, showToast]);
+  }, [activeProfile.name, healthKitAdapter, showToast, today]);
 
   useEffect(() => {
     if (!shouldPollHealthKit(runtimeConfig.deviceMode)) return;
@@ -325,22 +432,24 @@ export default function App() {
   }, [healthKitAdapter, syncDevice]);
 
   useEffect(() => {
-    if (runtimeConfig.deviceMode !== 'demo') return;
+    // 模拟设备数据只属于演示模式；personal 模式不注入任何合成数据（评审 P1-2）。
+    if (!demoMode || runtimeConfig.deviceMode !== 'demo') return;
     let cancelled = false;
-    const from = seedRecords[0]?.date ?? TODAY;
-    demoDeviceAdapter.getMeasurements(profile.name, from, TODAY).then((deviceMeasurements) => {
+    const from = seedRecords[0]?.date ?? today;
+    demoDeviceAdapter.getMeasurements(activeProfile.name, from, today).then((deviceMeasurements) => {
       if (cancelled) return;
       setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [demoMode, activeProfile.name, today]);
 
   useEffect(() => {
-    // 开应用就生成今天的"💊 今天的药"任务；老人不用等 chat 触发。
-    ensureMedicationCheck(profile.medications);
-  }, [profile.medications, ensureMedicationCheck]);
+    // 开应用就生成今天的"💊 今天的药"任务；没有录入用药时不制造噪声。
+    if (activeProfile.medications.length === 0) return;
+    ensureMedicationCheck(activeProfile.medications);
+  }, [activeProfile.medications, ensureMedicationCheck]);
 
   useEffect(() => {
     healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
@@ -373,6 +482,36 @@ export default function App() {
 
   function resetRole() {
     setRole(null);
+  }
+
+  // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
+  // clearAllLocalData 会连本机档案一起清掉，reload 后回到首启选择。
+  function handleClearAllData() {
+    if (!window.confirm('确定清空这台浏览器里的全部记录吗？\n聊天、健康记录、通知台账和设置都会删除，并回到初始选择。'))
+      return;
+    clearAllLocalData(healthRecordStore);
+    window.location.reload();
+  }
+
+  // 编辑档案（评审 P0-4）：保存到本机档案存储并即时生效。
+  function handleProfileSave(nextProfile: ElderProfile) {
+    const next: StoredProfile = { ...storedProfile, profile: nextProfile };
+    saveStoredProfile(next);
+    onProfileChange(next);
+    showToast('档案已更新。');
+  }
+
+  // 评审 P1-3：老人端 SOS 的微信通知家属动作。发送结果如实提示，不假装成功。
+  async function handleNotifyFamilyUrgent() {
+    const config = loadWebhookConfig();
+    if (!config) return;
+    const outcome = await sendWebhookPush(config, {
+      title: `紧急求助：${activeProfile.name}`,
+      body: '老人在安康助手按下了紧急求助按钮，请立即电话联系确认安全。',
+    });
+    showToast(
+      outcome.status === 'sent' ? '已通过微信通知家属。请同时保持电话畅通。' : `微信通知没有成功：${outcome.detail}`,
+    );
   }
 
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
@@ -460,10 +599,23 @@ export default function App() {
             onRevokeFamilyShare={revokeFamilyShare}
             onGenerateInvite={generateInvite}
             syncStatus={sync.status}
+            dataMode={storedProfile.dataMode}
+            onNotifyFamily={() => void handleNotifyFamilyUrgent()}
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>
-            <ProfileView records={records} observations={observations} findings={findings} today={TODAY} />
+            <Suspense fallback={VIEW_FALLBACK}>
+              <ProfileView
+                records={records}
+                observations={observations}
+                findings={findings}
+                today={today}
+                profile={activeProfile}
+                dataMode={storedProfile.dataMode}
+                onProfileSave={handleProfileSave}
+                onClearData={handleClearAllData}
+              />
+            </Suspense>
           </details>
           <DeviceDebugPanel
             mode={runtimeConfig.deviceMode}
@@ -499,35 +651,40 @@ export default function App() {
       </header>
       <main className="content">
         <RuntimeModeBanner />
-        <FamilyDashboard
-          profile={activeProfile}
-          familyLink={familyLink}
-          notifications={familyNotifs}
-          dispatchRecords={dispatchRecords}
-          onAcknowledgeDispatch={handleAcknowledge}
-          findings={findings}
-          familyEvents={visibleFamilyFacts}
-          tasks={tasks}
-          homeSafetyActions={homeSafetyActions}
-          records={familyRecords}
-          today={TODAY}
-          onTaskStatus={handleTaskStatus}
-          onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
-          onContactElder={contactElder}
-          onContactDoctor={contactDoctor}
-          onRevokeSharing={revokeFamilyShare}
-          onBindFamily={bindFamily}
-          onViewChange={setFamilyView}
-          view={familyView}
-          syncStatus={sync.status}
-          tabId={sync.tabId}
-          todaySignalCount={todaySignalCount}
-        />
+        <Suspense fallback={VIEW_FALLBACK}>
+          <FamilyDashboard
+            profile={activeProfile}
+            familyLink={familyLink}
+            notifications={familyNotifs}
+            dispatchRecords={dispatchRecords}
+            onAcknowledgeDispatch={handleAcknowledge}
+            findings={findings}
+            familyEvents={visibleFamilyFacts}
+            tasks={tasks}
+            homeSafetyActions={homeSafetyActions}
+            records={familyRecords}
+            today={today}
+            onTaskStatus={handleTaskStatus}
+            onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
+            onContactElder={contactElder}
+            onContactDoctor={contactDoctor}
+            onRevokeSharing={revokeFamilyShare}
+            onBindFamily={bindFamily}
+            onViewChange={setFamilyView}
+            view={familyView}
+            syncStatus={sync.status}
+            tabId={sync.tabId}
+            todaySignalCount={todaySignalCount}
+            gatedAlertCount={gatedAlertCount}
+            onClearData={handleClearAllData}
+          />
+        </Suspense>
       </main>
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；LLM
-        可通过服务端 Endpoint 接入，浏览器端不保存厂商 API key。
+        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；
+        回复层 LLM 走服务端 Endpoint，key 不进浏览器；理解层 LLM 若配置 Demo 直连模式，key 会经 Vite 注入浏览器（仅限
+        一次性/免费 key，见 README「诚实声明」；也可用 npm run proxy 本地代理让 bundle 不含 key）。
       </footer>
     </div>
   );

@@ -15,7 +15,7 @@ interface IntentRule {
 const INTENT_RULES: IntentRule[] = [
   {
     tag: 'fatigue',
-    patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/],
+    patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/, /腿(?:都|发)?软/],
     replies: ['先歇一歇，别硬撑。您如果愿意，可以告诉我这种累是从什么时候开始的。'],
   },
   {
@@ -35,12 +35,14 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'dizziness',
-    patterns: [/头晕/, /头.{0,2}晕/, /头昏/, /站不稳/, /眼前发黑/, /天旋地转/],
+    // 兜底下限（主修复在理解层 LLM 仲裁）：窗口 {0,2}→{0,4} 覆盖"头一点都不晕"；
+    // 否定语境的裸"晕"（不晕/没晕）单独补——正面裸"晕"刻意不收（晕车/晕船类误报面大）。
+    patterns: [/头晕/, /头.{0,4}晕/, /头昏/, /(?:不|没(?:有)?|未)晕/, /站不稳/, /眼前发黑/, /天旋地转/],
     replies: ['先坐稳，别硬站着。我想确认一下，这样更容易判断当下行动是否安全。'],
   },
   {
     tag: 'medicationMissed',
-    patterns: [/(忘|没|漏)(了)?(吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/],
+    patterns: [/(?:忘(?:记|了)?|没|漏)(?:了)?(?:吃|服|用).{0,3}药/, /药忘/, /忘了.{0,3}药/],
     replies: ['先别自行加量补吃，按原来的医生方案处理。'],
   },
   {
@@ -84,7 +86,9 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'fall',
-    patterns: [/(摔|跌)(倒|了一跤|了一下|过|了)/, /摔倒/],
+    // 让步句式"X是没X"（摔是没摔）是构式而非词表枚举，作为兜底补收；
+    // 否定语义由 statusFromText/结构化否定判定，不会误记成摔倒发生。
+    patterns: [/(摔|跌)\s*是\s*没(?:有)?\s*(?:摔|跌)/, /(摔|跌)(倒|了一跤|了一下|过|了)/, /摔倒/],
     replies: ['先别急着起身，先确认有没有明显疼痛、出血、意识异常或站不起来。'],
   },
   {
@@ -145,6 +149,32 @@ export function parseElderInput(text: string): ParsedInput {
     }
   }
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
+}
+
+export interface SymptomSpan {
+  tag: SymptomTag;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** 与 parseElderInput 相同的规则集，但保留每个命中的位置，供否定辖域等结构分析使用。 */
+export function matchSymptomSpans(text: string): SymptomSpan[] {
+  const spans: SymptomSpan[] = [];
+  for (const rule of INTENT_RULES) {
+    for (const pattern of rule.patterns) {
+      const global = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+      let match: RegExpExecArray | null;
+      while ((match = global.exec(text)) !== null) {
+        if (match[0].length === 0) {
+          global.lastIndex += 1;
+          continue;
+        }
+        spans.push({ tag: rule.tag, start: match.index, end: match.index + match[0].length, text: match[0] });
+      }
+    }
+  }
+  return spans;
 }
 
 function buildBloodPressureReply(text: string): string | undefined {
@@ -397,8 +427,14 @@ export const QUICK_INPUTS = [
   '药忘记吃了',
   '刚才摔了一跤',
 ];
-export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
-  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
+export function msg(
+  role: ChatMessage['role'],
+  text: string,
+  time: string,
+  persisted = true,
+  extra?: Partial<Pick<ChatMessage, 'safetyAction' | 'blocks'>>,
+): ChatMessage {
+  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted, ...extra };
 }
 export function tagLabel(tag: SymptomTag): string {
   return SYMPTOM_LABELS[tag];
