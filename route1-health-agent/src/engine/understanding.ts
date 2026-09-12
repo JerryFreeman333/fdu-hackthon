@@ -514,8 +514,11 @@ export function understandElderInput(
 }
 
 /**
- * 在规则理解结果之上，允许按「子句原文」覆写肯否状态。
- * LLM 理解层（llmUnderstanding.ts）用真实语言理解仲裁否定/程度语义时走这个入口；
+ * 在规则理解结果之上，允许按「子句原文」覆写肯否状态与症状标签。
+ * LLM 理解层（llmUnderstanding.ts）用真实语言理解仲裁两类规则盲区时走这个入口：
+ * - statusOverrides：肯否语义（否定/程度/双重否定）；
+ * - tagOverrides：规则关键词表漏识别的症状标签（“头一点都不晕了”“摔是没摔”），
+ *   与规则标签取并集、只增不删。
  * key 不存在时覆写映射为空，行为与 understandElderInput 完全一致。
  */
 export function understandElderInputWithOverrides(
@@ -523,6 +526,7 @@ export function understandElderInputWithOverrides(
   today: string,
   recentMessages: ChatMessage[] = [],
   statusOverrides?: ReadonlyMap<string, ClaimStatus>,
+  tagOverrides?: ReadonlyMap<string, SymptomTag[]>,
 ): StructuredElderInput {
   const trimmed = text.trim();
   const recallRequested = /(我之前说啥|我之前说什么|刚才说了什么|前面说了什么|你还记得我说|我忘了我说)/.test(trimmed);
@@ -535,9 +539,11 @@ export function understandElderInputWithOverrides(
     for (const clause of splitClauses(trimmed)) {
       if (isPureCorrectionMarker(clause)) continue;
       const parsed = parseElderInput(clause);
-      const status = statusFromText(clause, parsed.tags, extractHealthValues(clause).length > 0);
+      const clauseTags = [...new Set([...parsed.tags, ...(tagOverrides?.get(clause) ?? [])])];
+      const status =
+        statusOverrides?.get(clause) ?? statusFromText(clause, clauseTags, extractHealthValues(clause).length > 0);
       if (status === 'occurred' || status === 'near_miss') continue;
-      for (const tag of parsed.tags) {
+      for (const tag of clauseTags) {
         if (!correctionTargetTags.includes(tag)) correctionTargetTags.push(tag);
       }
     }
@@ -590,7 +596,9 @@ export function understandElderInputWithOverrides(
 
   for (const clause of splitClauses(trimmed)) {
     const parsed = parseElderInput(clause);
-    const explicitTags = parsed.tags;
+    // LLM 标签仲裁：与规则标签取并集（只增不删），让规则窗口漏识别的症状
+    // （“头一点都不晕了”“摔是没摔”）能以完整 claim 进入后续状态判断。
+    const explicitTags = [...new Set([...parsed.tags, ...(tagOverrides?.get(clause) ?? [])])];
     const explicitHealthValues = extractHealthValues(clause);
     const hasExplicitHealthValue = explicitHealthValues.length > 0;
     const coordinatedSubjects = coordinatedSubjectsFromText(clause);

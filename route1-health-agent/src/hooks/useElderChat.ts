@@ -160,8 +160,9 @@ export function useElderChat({
   }
 
   /**
-   * 理解层入口：配置了理解层 LLM 且输入不含私密意图时，用真实语言理解仲裁肯否语义；
-   * 其余情况（未配置 / private / no_record）走纯规则，原话一个字都不出本地。
+   * 理解层入口：配置了理解层 LLM 且输入不含私密意图时，用真实语言理解仲裁
+   * 症状识别（标签）与肯否语义两个轴；其余情况（未配置 / private / no_record）
+   * 走纯规则，原话一个字都不出本地。
    */
   async function buildUnderstanding(
     text: string,
@@ -178,7 +179,7 @@ export function useElderChat({
   async function runElderTurn(text: string, elderMessage: ChatMessage, priorChat: ChatMessage[]) {
     const intent = parsePrivacyIntent(text);
     const sharingHistoryQuery = sharingHistoryRequested(text);
-    // LLM 仲裁在串行队列内进行：慢响应只拖慢当前回合，不阻塞上屏，也不会并发打乱顺序。
+    // LLM 仲裁（标签 + 肯否）在串行队列内进行：慢响应只拖慢当前回合，不阻塞上屏，也不会并发打乱顺序。
     const understanding = await buildUnderstanding(text, priorChat, intent);
     const acceptedClaims = acceptedSelfClaims(understanding);
     const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
