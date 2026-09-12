@@ -15,7 +15,7 @@ import { measurementsToDayRecords } from './data/normalize';
 import { demoDeviceAdapter } from './adapters/DemoDeviceAdapter';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import { collectFamilyNotifications } from './engine/escalate';
+import { collectFamilyNotifications, collectGatedFindings } from './engine/escalate';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
 import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
@@ -149,6 +149,12 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
   );
   const familyNotifs = useMemo(
     () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, TODAY),
+    [findings, familySharing, sharedFindingIds],
+  );
+  // 第三种未知（评审 P0-2）：今日存在但被隐私门控挡住的 alert/urgent 数量。
+  // 家属首页状态必须知道它，否则会把被挡住的紧急信号表述成"今天总体正常"。
+  const gatedAlertCount = useMemo(
+    () => collectGatedFindings(findings, familySharing, sharedFindingIds, TODAY).length,
     [findings, familySharing, sharedFindingIds],
   );
   // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
@@ -417,6 +423,7 @@ function AppRoot({ initial }: { initial: ReturnType<typeof buildSeedSnapshot> })
             syncStatus={sync.status}
             tabId={sync.tabId}
             todaySignalCount={todaySignalCount}
+            gatedAlertCount={gatedAlertCount}
           />
         </Suspense>
       </main>
