@@ -432,7 +432,7 @@ export function msg(
   text: string,
   time: string,
   persisted = true,
-  extra?: Partial<Pick<ChatMessage, 'safetyAction'>>,
+  extra?: Partial<Pick<ChatMessage, 'safetyAction' | 'blocks'>>,
 ): ChatMessage {
   return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted, ...extra };
 }

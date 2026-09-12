@@ -12,7 +12,7 @@ export interface SharingAuditEntry {
   content: string;
 }
 
-type SharingAuditCandidate = Omit<SharingAuditEntry, 'shareMode'> & {
+export type SharingAuditCandidate = Omit<SharingAuditEntry, 'shareMode'> & {
   shareMode: string;
 };
 

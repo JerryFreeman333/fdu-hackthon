@@ -196,6 +196,16 @@ export interface Finding {
   familyEligible?: boolean;
 }
 
+/**
+ * 回复分块（评审 P1-5）：一条回复拆成主气泡、小字回执与独立隐私行，
+ * 不再把安全指导、记录回执、隐私声明全部挤进一个气泡。
+ */
+export interface ChatMessageBlock {
+  /** main：直接回答/安全指导（TTS 只读这块）；receipt：记录/复测等小字回执；privacy：这条内容去哪、谁能看。 */
+  kind: 'main' | 'receipt' | 'privacy';
+  text: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'elder' | 'agent';
@@ -207,6 +217,11 @@ export interface ChatMessage {
    * 评审反馈：说"立即寻求急救"的同一个界面里必须出现可按的电话按钮。
    */
   safetyAction?: boolean;
+  /**
+   * 结构化分块（评审 P1-5）。缺省时按 text 单气泡渲染（种子数据与历史消息）。
+   * text 始终保留全量拼接文本，供 toast、检索与既有断言使用。
+   */
+  blocks?: ChatMessageBlock[];
 }
 
 export interface ElderProfile {
