@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ElderProfile } from '../types';
+import HoldToTalk from './HoldToTalk';
 
 interface ProfileFormProps {
   initial: ElderProfile;
@@ -16,6 +17,9 @@ interface ProfileFormProps {
  */
 export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, cancelLabel }: ProfileFormProps) {
   const [name, setName] = useState(initial.name);
+  const [sex, setSex] = useState<ElderProfile['sex']>(initial.sex ?? 'unspecified');
+  const [conditions, setConditions] = useState(initial.conditions.join('、'));
+  const [voiceField, setVoiceField] = useState('name');
   const [ageText, setAgeText] = useState(initial.age > 0 ? String(initial.age) : '');
   const [medications, setMedications] = useState<string[]>(initial.medications);
   const [medInput, setMedInput] = useState('');
@@ -59,11 +63,24 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
       return;
     }
     const age = Number(ageText.trim());
+    if (ageText.trim() && (!Number.isInteger(age) || age < 1 || age > 120)) {
+      setError('请填写 1 到 120 之间的年龄，或暂时留空。');
+      return;
+    }
     onSubmit({
       ...initial,
       name: trimmedName,
       age: Number.isFinite(age) && age > 0 && age < 150 ? Math.round(age) : 0,
       medications: finalMedications,
+      medicationRecords: initial.medicationRecords?.map((record) => ({
+        ...record,
+        status: finalMedications.includes(record.name) ? 'active' : 'stopped',
+      })),
+      sex,
+      conditions: conditions
+        .split(/[、，,；;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean),
       familyContact: familyContact.trim() || trimmedFamilyPhone || '',
       familyPhone: trimmedFamilyPhone,
       elderPhone: trimmedElderPhone || undefined,
@@ -73,6 +90,27 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
 
   return (
     <div className="profile-form">
+      <div className="card">
+        <label>
+          想用语音填写哪一项？
+          <select value={voiceField} onChange={(e) => setVoiceField(e.target.value)}>
+            <option value="name">称呼</option>
+            <option value="age">年龄（请说数字）</option>
+            <option value="conditions">基础病</option>
+            <option value="medications">正在服用的药</option>
+          </select>
+        </label>
+        <HoldToTalk
+          compact
+          onText={(text) => {
+            if (voiceField === 'name') setName(text.replace(/[。！]$/, ''));
+            else if (voiceField === 'age') setAgeText(text.replace(/[^0-9]/g, ''));
+            else if (voiceField === 'conditions') setConditions(text);
+            else setMedInput(text);
+          }}
+        />
+        <p className="muted">语音只填写表单，请检查后再保存。</p>
+      </div>
       <div className="form-section">
         <label htmlFor="profile-name">怎么称呼您？</label>
         <input
@@ -98,6 +136,27 @@ export default function ProfileForm({ initial, submitLabel, onSubmit, onCancel, 
         />
       </div>
 
+      <div className="form-section">
+        <label htmlFor="profile-sex">性别</label>
+        <select
+          id="profile-sex"
+          className="form-input"
+          value={sex}
+          onChange={(e) => setSex(e.target.value as ElderProfile['sex'])}
+        >
+          <option value="unspecified">暂不填写</option>
+          <option value="female">女</option>
+          <option value="male">男</option>
+        </select>
+        <label htmlFor="profile-conditions">已知基础病（按确诊情况填写）</label>
+        <input
+          id="profile-conditions"
+          className="form-input"
+          value={conditions}
+          onChange={(e) => setConditions(e.target.value)}
+          placeholder="例如：高血压、糖尿病；没有可以留空"
+        />
+      </div>
       <div className="form-section">
         <label htmlFor="profile-med">平时吃的药（可不填）</label>
         <div className="chat-input-row">

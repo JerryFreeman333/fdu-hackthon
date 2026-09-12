@@ -1,6 +1,6 @@
 /** 路线一领域模型：老人、健康事件、家庭事件、发现与 Agent。 */
 
-export type DataSource = 'demo' | 'device' | 'photo' | 'manual' | 'import' | 'chat';
+export type DataSource = 'demo' | 'device' | 'photo' | 'manual' | 'import' | 'chat' | 'healthkit';
 export type UserRole = 'elder' | 'family';
 export type FamilySharing = 'granted' | 'ask' | 'denied';
 export type NightVisionStatus = 'normal' | 'reduced' | 'unknown';
@@ -227,9 +227,22 @@ export interface ChatMessage {
    * 永不持久化（persisted=false），就绪后由 useElderChat 原地替换为正式回复。
    */
   pending?: boolean;
+  /** Agent 工具返回的可执行目标；例如打开路线二定位到某个药品。 */
+  toolTarget?: { url: string; label: string; source: 'route2-home-twin' };
+}
+
+export interface MedicationRecord {
+  id: string;
+  name: string;
+  dose: string;
+  purpose: string;
+  times: string;
+  status: 'active' | 'stopped';
 }
 
 export interface ElderProfile {
+  sex?: 'male' | 'female' | 'unspecified';
+  medicationRecords?: MedicationRecord[];
   name: string;
   age: number;
   conditions: string[];

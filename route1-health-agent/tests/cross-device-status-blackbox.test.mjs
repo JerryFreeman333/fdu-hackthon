@@ -21,6 +21,8 @@ import { seedDemoProfile as seedDemoProfileContext } from './helpers/demo-seed.m
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.CROSS_SMOKE_PORT ?? 4175);
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 
@@ -29,7 +31,7 @@ function log(...args) {
 }
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit' });
+    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' && cmd === NPM });
     p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exit ${code}`))));
     p.on('error', reject);
   });
@@ -37,12 +39,12 @@ function run(cmd, args) {
 async function ensureBuild() {
   if (!existsSync(DIST) || !existsSync(resolve(DIST, 'index.html'))) {
     log('dist/ 不存在，先 build');
-    await run('npm', ['run', 'build']);
+    await run(NPM, ['run', 'build']);
   }
 }
 function startPreview() {
   return new Promise((resolve, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -148,11 +150,12 @@ async function runSmoke() {
     await wait(600);
 
     // 2. 同意共享
-    const grantBtn = page.getByRole('button', { name: /同意以后需要时告诉家属/ }).first();
+    const grantBtn = page.getByRole('button', { name: /告诉家属/ }).first();
     await grantBtn.click({ timeout: 3000 }).catch(() => {});
     await wait(500);
 
     // 3. 生成邀请码
+    await page.getByRole('button', { name: '我的' }).last().click();
     const inviteBtn = page.getByRole('button', { name: /生成家属邀请码/ }).first();
     await inviteBtn.click({ timeout: 3000 }).catch(() => {});
     await wait(800);
@@ -167,14 +170,17 @@ async function runSmoke() {
     await wait(2500); // 给 PeerJS 假 onerror 触发 + UI 更新
     const bannerText = await page.evaluate(() => document.body.innerText);
     // 老人端文案必须是"人话"：不出现 P2P/跨设备等技术词（审查反馈：技术状态不该暴露给老人）
-    const showsWaiting = bannerText.includes('等家人在另一台手机') || bannerText.includes('暂时没连上');
+    const showsWaiting =
+      bannerText.includes('等家人在另一台手机') ||
+      bannerText.includes('等待家人输入邀请码') ||
+      bannerText.includes('暂时没连上');
     const falseClaims = bannerText.includes('已经和家人手机连上了');
     const elderSeesTechJargon = /P2P|跨设备/.test(bannerText);
     check('未生成前不会假装"已协同"', !bannerText.includes('跨设备实时协同已建立'));
     check(
       '生成邀请码后显示等待或失败状态（不是跨设备已建立）',
       showsWaiting,
-      `banner 片段: ${bannerText.match(/(等家人在另一台手机|暂时没连上|已经和家人手机连上了)/g)?.join(' / ') ?? '未找到'}`,
+      `banner 片段: ${bannerText.match(/(等家人在另一台手机|等待家人输入邀请码|暂时没连上|已经和家人手机连上了)/g)?.join(' / ') ?? '未找到'}`,
     );
     check('没有在没真连接时显示"已连上"', !falseClaims);
     check('老人端不出现 P2P/跨设备等技术词', !elderSeesTechJargon, elderSeesTechJargon ? '发现技术词' : '');

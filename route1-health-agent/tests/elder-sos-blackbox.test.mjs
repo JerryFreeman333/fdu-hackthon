@@ -17,6 +17,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const PORT = Number(process.env.ELDER_SOS_PORT ?? 4177);
 const BASE = `http://localhost:${PORT}`;
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 const results = [];
@@ -32,7 +34,12 @@ function check(name, ok, detail = '') {
 
 function run(cmd, args, envExtra = {}) {
   return new Promise((resolvePromise, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...envExtra } });
+    const p = spawn(cmd, args, {
+      cwd: ROOT,
+      stdio: 'inherit',
+      env: { ...process.env, ...envExtra },
+      shell: process.platform === 'win32' && cmd === NPM,
+    });
     p.on('exit', (code) =>
       code === 0 ? resolvePromise() : reject(new Error(`${cmd} ${args.join(' ')} 退出码 ${code}`)),
     );
@@ -42,7 +49,7 @@ function run(cmd, args, envExtra = {}) {
 
 function startPreview() {
   return new Promise((resolvePromise, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -89,15 +96,18 @@ async function runSosSuite() {
   try {
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 
-    // Case 1：老人端常驻 SOS 卡。
+    // Case 1：页头的紧急求助打开底部行动面板。
     await page.getByRole('button', { name: /我是老人/ }).click();
-    const tel120 = page.locator('.sos-card a[href="tel:120"]');
+    await page.getByRole('button', { name: '紧急求助' }).click();
+    const tel120 = page.locator('.emergency-sheet a[href="tel:120"]');
     await tel120.waitFor({ state: 'visible', timeout: 10000 });
-    check('老人端常驻 SOS：呼叫 120 可直接按', true);
-    const familyTel = page.locator('.sos-card a[href="tel:13800006677"]');
-    check('SOS 卡展示家属电话（演示档案 138****6677）', (await familyTel.count()) === 1);
+    check('老人端紧急求助：呼叫 120 可直接按', true);
+    const familyTel = page.locator('.emergency-sheet a[href="tel:13800006677"]');
+    check('求助面板展示家属电话（演示档案 138****6677）', (await familyTel.count()) === 1);
+    await page.getByRole('button', { name: '关闭' }).click();
 
     // Case 2：胸痛消息的回复下方出现紧急联系行动条。
+    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
     const input = page.locator('#elder-chat input.chat-input');
     await input.fill('胸口疼得厉害，喘不上气');
     await page.locator('#elder-chat button.btn-primary', { hasText: '发送' }).click();
@@ -115,7 +125,7 @@ async function runSosSuite() {
 async function main() {
   // 测试构建必须剥离理解层 LLM 配置：process env 优先于 .env，置空即回落纯规则模式。
   const stripLlmEnv = { VITE_UNDERSTANDING_LLM_API_KEY: '', VITE_UNDERSTANDING_LLM_BASE_URL: '' };
-  await run('npm', ['run', 'build'], stripLlmEnv);
+  await run(NPM, ['run', 'build'], stripLlmEnv);
   await startPreview();
   try {
     await fetchReady();

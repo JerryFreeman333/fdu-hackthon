@@ -17,7 +17,8 @@
     "src/hooks/useElderChat.ts",
     "src/hooks/useCrossDeviceSync.ts",
     "src/adapters/PeerJSCrossDevice.ts",
-    "src/config/appConfig.ts"
+    "src/config/appConfig.ts",
+    "src/config/runtime.ts"
   ],
   "types": ["node"]
 }

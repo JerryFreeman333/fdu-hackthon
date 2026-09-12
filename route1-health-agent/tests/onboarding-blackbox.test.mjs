@@ -12,6 +12,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const PORT = Number(process.env.ONBOARDING_PORT ?? 4178);
 const BASE = `http://localhost:${PORT}`;
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 const results = [];
@@ -27,7 +29,12 @@ function check(name, ok, detail = '') {
 
 function run(cmd, args, envExtra = {}) {
   return new Promise((resolvePromise, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...envExtra } });
+    const p = spawn(cmd, args, {
+      cwd: ROOT,
+      stdio: 'inherit',
+      env: { ...process.env, ...envExtra },
+      shell: process.platform === 'win32' && cmd === NPM,
+    });
     p.on('exit', (code) =>
       code === 0 ? resolvePromise() : reject(new Error(`${cmd} ${args.join(' ')} 退出码 ${code}`)),
     );
@@ -37,7 +44,7 @@ function run(cmd, args, envExtra = {}) {
 
 function startPreview() {
   return new Promise((resolvePromise, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -84,45 +91,41 @@ async function runOnboardingSuite() {
     page.on('pageerror', (err) => log('pageerror:', err.message));
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 
-    await page.getByText('先选一下怎么开始').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
     check('全新用户首先看到首启选择，而不是写死的演示档案', true);
 
-    await page.getByRole('button', { name: /这是我自己用/ }).click();
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /创建真实档案/ }).click();
     await page.getByText('先认识一下您').waitFor({ state: 'visible', timeout: 5000 });
     await page.locator('#profile-name').fill('李奶奶');
     await page.locator('#profile-med').fill('降压药 每日一次');
     await page.getByRole('button', { name: '添加' }).click();
     await page.locator('#profile-family-phone').fill('13911112222');
     await page.getByRole('button', { name: '好了，开始使用' }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    const headerName = await page.locator('.persona-name').textContent();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    const headerName = await page.locator('.elder-welcome h1').textContent();
     check('建档后老人端显示用户自己的称呼', headerName?.includes('李奶奶') === true, headerName ?? '');
 
     const demoSeedText = await page.getByText('今天很累，什么都不想干').count();
     check('personal 模式从空白开始，没有合成聊天种子', demoSeedText === 0);
-    // P2 信息架构收敛后，"数据从哪儿来"收进可展开区块：展开后再断言 personal 模式文案
-    await page.locator('details.advanced-details summary', { hasText: '数据从哪儿来' }).click();
-    await page.getByText('当前版本未接入真实硬件').waitFor({ state: 'visible', timeout: 5000 });
-    check('personal 模式的设备说明不再声称"模拟设备数据"', true);
+    await page.getByRole('button', { name: '我的' }).last().click();
+    await page.getByText('自用模式，不注入演示数据').waitFor({ state: 'visible', timeout: 5000 });
+    check('personal 模式明确不注入演示数据', true);
 
-    // 刷新后档案仍在，不回首启（角色选择是会话状态，需重选一次角色）。
+    // 刷新后档案与用户明确选择的角色都仍在，不重复询问。
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     check(
       '刷新后档案仍在（不回首启）',
-      (await page.locator('.persona-name').textContent())?.includes('李奶奶') === true,
+      (await page.locator('.elder-welcome h1').textContent())?.includes('李奶奶') === true,
     );
 
-    // 编辑档案：打开"查看我的状态" → 编辑 → 改称呼 → 保存
-    await page.getByText('查看我的状态（可选）').click();
-    await page.getByRole('button', { name: '编辑我的档案' }).waitFor({ state: 'visible', timeout: 10000 });
-    await page.getByRole('button', { name: '编辑我的档案' }).click();
+    // 编辑档案：我的 → 个人资料 → 改称呼 → 保存
+    await page.getByRole('button', { name: '我的' }).last().click();
+    await page.locator('.settings-list button', { hasText: '个人资料' }).click();
     await page.locator('#profile-name').fill('赵奶奶');
     await page.getByRole('button', { name: '保存档案' }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    check('编辑档案立即生效到界面上', (await page.locator('.persona-name').textContent())?.includes('赵奶奶') === true);
+    check('编辑档案立即生效到界面上', (await page.locator('body').innerText()).includes('赵奶奶'));
     await context.close();
   }
 
@@ -131,10 +134,10 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /体验演示档案/ }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    const headerName = await page.locator('.persona-name').textContent();
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    const headerName = await page.locator('.elder-welcome h1').textContent();
     check('选择演示档案 → 进入王秀兰奶奶的完整演示', headerName?.includes('王秀兰奶奶') === true, headerName ?? '');
     await context.close();
   }
@@ -144,13 +147,13 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /体验演示档案/ }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
+    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     page.once('dialog', (dialog) => dialog.accept());
-    await page.getByText('查看我的状态（可选）').click();
+    await page.getByRole('button', { name: '我的' }).last().click();
     await page.getByRole('button', { name: '清空本机全部数据' }).click();
-    await page.getByText('先选一下怎么开始').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
     check('清空本机数据后回到首启选择（删档重来）', true);
     await context.close();
   }
@@ -161,7 +164,7 @@ async function runOnboardingSuite() {
 async function main() {
   // 测试构建必须剥离理解层 LLM 配置，避免任何聊天路径真的调用外部模型。
   const stripLlmEnv = { VITE_UNDERSTANDING_LLM_API_KEY: '', VITE_UNDERSTANDING_LLM_BASE_URL: '' };
-  await run('npm', ['run', 'build'], stripLlmEnv);
+  await run(NPM, ['run', 'build'], stripLlmEnv);
   await startPreview();
   try {
     await fetchReady();

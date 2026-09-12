@@ -10,6 +10,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.BROWSER_SMOKE_PORT ?? 4173);
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 
@@ -26,7 +28,7 @@ function log(...args) {
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit' });
+    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' && cmd === NPM });
     p.on('exit', (code) =>
       code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(' ')} \u9000\u51fa\u7801 ${code}`)),
     );
@@ -37,7 +39,7 @@ function run(cmd, args) {
 async function ensureBuild() {
   if (!existsSync(DIST) || !existsSync(resolve(DIST, 'index.html'))) {
     log('dist/ \u4e0d\u5b58\u5728\uff0c\u5148 build');
-    await run('npm', ['run', 'build']);
+    await run(NPM, ['run', 'build']);
   } else {
     log('dist/ \u5df2\u5b58\u5728');
   }
@@ -45,7 +47,7 @@ async function ensureBuild() {
 
 function startPreview() {
   return new Promise((resolve, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -129,7 +131,11 @@ async function runSmoke(browser) {
       await wait(1000);
     }
 
-    // 3. \u8f93\u5165\u6846\u53ef\u7528
+    // 3. \u9996\u9875\u5927\u6309\u94ae\u8fdb\u5165\u72ec\u7acb AI \u52a9\u624b\uff08\u4e0d\u518d\u9875\u5185\u6eda\u52a8\uff09
+    const assistantEntry = page.getByRole('button', { name: /\u6253\u5f00 AI \u52a9\u624b/ }).first();
+    await assistantEntry.click({ timeout: 5000 });
+
+    // 4. \u8f93\u5165\u6846\u53ef\u7528
     const input = page.getByPlaceholder(/\u50cf\u5e73\u65f6\u804a\u5929\u4e00\u6837|\u8bf4\u8bf4\u4eca\u5929/).first();
     const inputExists = await input.isVisible({ timeout: 5000 }).catch(() => false);
     check('\u804a\u5929\u8f93\u5165\u53ef\u7528', inputExists);
@@ -169,7 +175,9 @@ async function runSmoke(browser) {
       await wait(2000);
     }
 
-    // 6. \u8df3\u8f6c\u89d2\u8272: \u70b9 \u201c\u5207\u6362\u8eab\u4efd\u201d
+    // 6. \u4ece\u52a9\u624b\u8fd4\u56de\uff0c\u5728\u201c\u6211\u7684\u201d\u91cc\u5207\u6362\u8eab\u4efd
+    await page.getByRole('button', { name: '\u8fd4\u56de\u9996\u9875' }).click();
+    await page.getByRole('button', { name: '\u6211\u7684' }).last().click();
     const switchBtn = page.locator('text=\u5207\u6362\u8eab\u4efd').first();
     const switchVisible = await switchBtn.isVisible({ timeout: 2000 }).catch(() => false);
     if (switchVisible) {
@@ -206,17 +214,20 @@ async function runFamilyMedicationScenario(browser) {
     // 老人端：报告跌倒触发家属协同卡片，并授权持久共享
     await page.getByRole('button', { name: /我是老人/ }).click();
     await page.waitForTimeout(1000);
+    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
     const chatInput = page.locator('#elder-chat input.chat-input');
     await chatInput.waitFor({ timeout: 5000 });
     await chatInput.fill('我刚刚摔倒了');
     await page.locator('#elder-chat button', { hasText: '发送' }).click();
 
-    const shareBtn = page.locator('button', { hasText: '同意以后需要时告诉家属' });
+    await page.getByRole('button', { name: '返回首页' }).click();
+    const shareBtn = page.locator('button', { hasText: '告诉家属' });
     await shareBtn.waitFor({ timeout: 8000 });
     check('老人端出现家属授权卡片', await shareBtn.isVisible());
     await shareBtn.click();
     await page.waitForTimeout(500);
 
+    await page.getByRole('button', { name: '我的' }).last().click();
     await page.locator('button', { hasText: '生成家属邀请码' }).click();
     await page.waitForTimeout(500);
     const match = (await text()).match(/AN-\d{4}-[A-Z2-9]{10}/);
@@ -232,8 +243,9 @@ async function runFamilyMedicationScenario(browser) {
     await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
     await page.waitForTimeout(800);
 
-    // 进入"用药与医护"
-    const medTab = page.locator('.family-secondary-nav button', { hasText: '用药与医护' });
+    // 在“我的”里进入"用药与医护"
+    await page.getByRole('button', { name: '我的' }).last().click();
+    const medTab = page.locator('.settings-list button', { hasText: '用药与医护' });
     check('家属端出现用药与医护入口', await medTab.isVisible({ timeout: 5000 }).catch(() => false));
     if (!(await medTab.isVisible().catch(() => false))) return;
     await medTab.click();
@@ -249,7 +261,8 @@ async function runFamilyMedicationScenario(browser) {
     await page.waitForTimeout(300);
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
-    const revokeBtn = page.locator('button', { hasText: '暂停家属共享' });
+    await page.getByRole('button', { name: '我的' }).last().click();
+    const revokeBtn = page.locator('button', { hasText: '暂停共享' });
     await revokeBtn.waitFor({ timeout: 5000 });
     check('老人端可暂停家属共享', await revokeBtn.isVisible());
     await revokeBtn.click();
@@ -257,7 +270,8 @@ async function runFamilyMedicationScenario(browser) {
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.getByRole('button', { name: /我是家属/ }).click();
     await page.waitForTimeout(800);
-    await page.locator('.family-secondary-nav button', { hasText: '用药与医护' }).click();
+    await page.getByRole('button', { name: '我的' }).last().click();
+    await page.locator('.settings-list button', { hasText: '用药与医护' }).click();
     await page.waitForTimeout(500);
     const revokedText = await text();
     check(
@@ -268,6 +282,7 @@ async function runFamilyMedicationScenario(browser) {
     // 本地持久化（IndexedDB）：老人误刷新页面后数据不丢（审查反馈："刷新清空一切=这东西不能用"）
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
+    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
     const markerInput = page.getByPlaceholder(/像平时聊天一样|说说今天/).first();
     await markerInput.waitFor({ timeout: 5000 });
     const markerText = `持久化验证${Date.now() % 100000}`;
@@ -278,6 +293,7 @@ async function runFamilyMedicationScenario(browser) {
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.getByRole('button', { name: /我是老人/ }).click({ timeout: 5000 });
     await page.waitForTimeout(800);
+    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
     const bodyAfterReload = await page.evaluate(() => document.body.innerText);
     check('刷新页面后聊天记录仍在（IndexedDB 持久化）', bodyAfterReload.includes(markerText));
   } finally {

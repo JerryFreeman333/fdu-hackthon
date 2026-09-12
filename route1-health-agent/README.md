@@ -230,9 +230,9 @@ LLM_PROXY_API_KEY=你的key npm run proxy   # key 只存在于本机 Node 进程
 然后把 `.env` 改成代理模式（`VITE_UNDERSTANDING_LLM_API_KEY` 填占位符即可）：
 
 ```bash
-VITE_UNDERSTANDING_LLM_BASE_URL=http://localhost:8787
+VITE_UNDERSTANDING_LLM_BASE_URL=http://localhost:8788
 VITE_UNDERSTANDING_LLM_API_KEY=proxy
-VITE_AGENT_LLM_ENDPOINT=http://localhost:8787/agent/chat   # 可选：回复层也走代理
+VITE_AGENT_LLM_ENDPOINT=http://localhost:8788/agent/chat   # 可选：回复层也走代理
 ```
 
 代理支持 `/chat/completions`（理解层透传）与 `/agent/chat`（回复层适配），带 CORS 头；任何上游错误以 502 + 明确 message 返回，不静默。

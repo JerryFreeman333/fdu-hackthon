@@ -28,6 +28,11 @@ interface UseCareTasksOptions {
   today: string;
 }
 
+export function shouldCreateMedicationCheck(tasks: CareTask[], today: string): boolean {
+  // 同一天已经存在过任务（包括已完成）就不能重新生成，否则“完成”会立刻复活。
+  return !tasks.some((task) => task.kind === 'medication_check' && task.dueDate === today);
+}
+
 export function useCareTasks({ findings, today }: UseCareTasksOptions) {
   const [tasks, setTasks] = useState<CareTask[]>(() => loadTasks(today));
 
@@ -57,11 +62,7 @@ export function useCareTasks({ findings, today }: UseCareTasksOptions) {
 
   function ensureMedicationCheck(medications: string[], createdAt?: string) {
     setTasks((current) => {
-      if (
-        current.some((task) => task.kind === 'medication_check' && task.dueDate === today && task.status === 'pending')
-      ) {
-        return current;
-      }
+      if (!shouldCreateMedicationCheck(current, today)) return current;
       const medList = medications.length ? medications.map((m) => `• ${m}`).join('\n') : '• （暂无录入的药物）';
       return [
         ...current,

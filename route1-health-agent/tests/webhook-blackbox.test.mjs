@@ -19,6 +19,8 @@ const ROOT = resolve(__dirname, '..');
 const PORT = Number(process.env.WEBHOOK_PORT ?? 4179);
 const BASE = `http://localhost:${PORT}`;
 const WEBHOOK_STORAGE_KEY = 'ankang-route1-webhook-push-v1';
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 const results = [];
@@ -34,7 +36,12 @@ function check(name, ok, detail = '') {
 
 function run(cmd, args, envExtra = {}) {
   return new Promise((resolvePromise, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...envExtra } });
+    const p = spawn(cmd, args, {
+      cwd: ROOT,
+      stdio: 'inherit',
+      env: { ...process.env, ...envExtra },
+      shell: process.platform === 'win32' && cmd === NPM,
+    });
     p.on('exit', (code) =>
       code === 0 ? resolvePromise() : reject(new Error(`${cmd} ${args.join(' ')} 退出码 ${code}`)),
     );
@@ -44,7 +51,7 @@ function run(cmd, args, envExtra = {}) {
 
 function startPreview() {
   return new Promise((resolvePromise, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -115,9 +122,10 @@ async function runWebhookSuite() {
       .first()
       .click({ timeout: 5000 });
     await page
-      .getByRole('button', { name: /同意以后需要时告诉家属/ })
+      .getByRole('button', { name: /告诉家属/ })
       .first()
       .click({ timeout: 5000 });
+    await page.getByRole('button', { name: '我的' }).last().click();
     await page
       .getByRole('button', { name: /生成家属邀请码/ })
       .first()
@@ -144,6 +152,7 @@ async function runWebhookSuite() {
       .click({ timeout: 5000 });
     await page.locator('input[placeholder*="AN-"]').first().fill(inviteCode);
     await page.getByRole('button', { name: '绑定', exact: true }).first().click();
+    await page.getByRole('button', { name: '待处理' }).last().click();
     // 等派发跑完：台账里出现微信推送记录（sendWebhookPush 是异步 fetch）。
     await page.getByText('微信推送已送达').first().waitFor({ state: 'visible', timeout: 15000 });
 
@@ -163,8 +172,8 @@ async function runWebhookSuite() {
     const ledgerText = await page.locator('body').innerText();
     check('送达台账如实记录微信推送结果', /微信推送已送达/.test(ledgerText));
 
-    // 4. 绑定后的"数据与设置"：已配置状态可见，测试消息真的发出并返回 ✅。
-    await page.getByText('数据与设置').first().click();
+    // 4. 绑定后在“我的”里管理通知方式。
+    await page.getByRole('button', { name: '我的' }).last().click();
     const settingsCard = page.locator('.webhook-settings-card');
     await settingsCard.waitFor({ state: 'visible', timeout: 5000 });
     check('绑定后可见微信推送设置卡', await settingsCard.isVisible());
@@ -186,6 +195,7 @@ async function runWebhookSuite() {
       .getByRole('button', { name: /我是老人/ })
       .first()
       .click({ timeout: 5000 });
+    await page.getByRole('button', { name: '紧急求助' }).click();
     const sosNotifyBtn = page.locator('.sos-notify-btn');
     await sosNotifyBtn.waitFor({ state: 'visible', timeout: 5000 });
     check('老人端 SOS 卡出现微信通知家属按钮', await sosNotifyBtn.isVisible());
@@ -208,7 +218,7 @@ async function runWebhookSuite() {
 
 async function main() {
   const stripLlmEnv = { VITE_UNDERSTANDING_LLM_API_KEY: '', VITE_UNDERSTANDING_LLM_BASE_URL: '' };
-  await run('npm', ['run', 'build'], stripLlmEnv);
+  await run(NPM, ['run', 'build'], stripLlmEnv);
   await startPreview();
   try {
     await fetchReady();

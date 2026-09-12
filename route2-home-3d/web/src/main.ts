@@ -250,21 +250,22 @@ async function main() {
     input.click();
   }
 
+  function selectItem(item: ItemInfo): void {
+    const pos = mode === 'demo' ? item.demoPos : item.realPos;
+    if (!pos) {
+      setHint(`「${item.title}」: ${item.location} — ${item.say} 位置未做 3D 标定，以上文字仅供参考；如不确定，可让系统请家人确认。`);
+      return;
+    }
+    const p = new THREE.Vector3(pos[0], pos[1], pos[2]);
+    rings.pulseAt(p, 0x53d8ff);
+    app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);
+    setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
+  }
+
   panelController = initPanel(data, {
     onSelectHazard: openHazard,
     onSelectPath: selectPath,
-    onSelectItem(item: ItemInfo) {
-      const pos = mode === 'demo' ? item.demoPos : item.realPos;
-      if (!pos) {
-        // 3D 位置不可用时，仍然给老人文字帮助，而不是空白或报错。
-        setHint(`「${item.title}」: ${item.location} — ${item.say} 位置未做 3D 标定，以上文字仅供参考；如不确定，可让系统请家人确认。`);
-        return;
-      }
-      const p = new THREE.Vector3(pos[0], pos[1], pos[2]);
-      rings.pulseAt(p, 0x53d8ff);
-      app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);
-      setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
-    },
+    onSelectItem: selectItem,
     onRescan,
   }, mode, currentActionPlan, currentRole, { rescanOffline });
 
@@ -279,6 +280,17 @@ async function main() {
     }
   });
 
+  const requestedItemId = new URLSearchParams(window.location.search).get('find');
+  const requestedItem = requestedItemId ? data.items.find((item) => item.id === requestedItemId) : undefined;
+  if (requestedItem) {
+    currentRole = 'resident';
+    if (roleSwitcherEl) updateRoleSwitcher(roleSwitcherEl, currentRole);
+    panelController.setRole(currentRole);
+    refreshJourney();
+    document.querySelector<HTMLButtonElement>('[data-role-tab="find"]')?.click();
+    selectItem(requestedItem);
+  }
+
   window.addEventListener('resize', () => {
     app.camera.aspect = window.innerWidth / window.innerHeight;
     app.camera.updateProjectionMatrix();
@@ -286,7 +298,9 @@ async function main() {
   });
 }
 
-main().catch((err) => {
+(new URLSearchParams(window.location.search).get('demo') === '1'
+  ? main()
+  : import('./captureHome').then(module => module.captureHome())).catch((err) => {
   console.error(err);
   const message = err instanceof Error ? err.message : String(err);
   setHint('初始化失败: ' + message);

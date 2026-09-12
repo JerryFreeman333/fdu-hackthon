@@ -31,6 +31,33 @@ function chatTime(offset: number, time: string): string {
 export const profile: ElderProfile = {
   name: '王秀兰奶奶',
   age: 72,
+  sex: 'female',
+  medicationRecords: [
+    {
+      id: 'demo-amlodipine',
+      name: '氨氯地平 5mg 每日一次',
+      dose: '1 片（5 mg）',
+      purpose: '演示记录：用于血压管理；方案为虚构示例，请勿作为用药依据。',
+      times: '08:00',
+      status: 'active',
+    },
+    {
+      id: 'demo-metoprolol',
+      name: '美托洛尔 23.75mg 每日一次',
+      dose: '1 片（23.75 mg）',
+      purpose: '演示记录：心血管随访中的长期用药；以真实医嘱为准。',
+      times: '08:00',
+      status: 'active',
+    },
+    {
+      id: 'demo-past-medication',
+      name: '维生素 C 片（历史演示）',
+      dose: '1 片（100 mg，虚构记录）',
+      purpose: '历史营养补充记录，疗程已结束；用于演示曾用药归档，不代表当前处方。',
+      times: '原记录：08:00；当前已停用',
+      status: 'stopped',
+    },
+  ],
   conditions: ['高血压（已控制）', '心功能减退（随访中）'],
   medications: ['氨氯地平 5mg 每日一次', '美托洛尔 23.75mg 每日一次'],
   familyContact: '女儿 李芳 138****6677',

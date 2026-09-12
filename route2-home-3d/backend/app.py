@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .capture import BrowserUploadCaptureSource, CaptureFile
 from .processor import ProcessResult, build_processor
+from .home_capture import router as home_capture_router
 
 APP_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = APP_ROOT.parent
@@ -42,11 +44,63 @@ app = FastAPI(
     redoc_url="/redoc" if _ENABLE_DOCS else None,
     openapi_url="/openapi.json" if _ENABLE_DOCS else None,
 )
+app.include_router(home_capture_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in os.getenv(
+        "ROUTE2_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173",
+    ).split(",") if origin.strip()],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="route2-rescan")
 _processor = build_processor(REPO_ROOT)
 _capture_source = BrowserUploadCaptureSource()
+_action_status: dict[str, str] = {}
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail=f"Home Twin 数据不可用: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=503, detail="Home Twin 数据格式无效")
+    return payload
+
+
+def _integration_payload() -> dict[str, Any]:
+    hazards = _read_json(REPO_ROOT / "web" / "public" / "data" / "hazards.json")
+    plan = _read_json(REPO_ROOT / "web" / "public" / "data" / "family-action-plan.json")
+    meta = hazards.get("meta", {})
+    provenance = meta.get("provenance", "unknown") if isinstance(meta, dict) else "unknown"
+    items = hazards.get("items", []) if isinstance(hazards.get("items"), list) else []
+    actions = plan.get("actions", []) if isinstance(plan.get("actions"), list) else []
+    normalized_actions = []
+    for raw in actions:
+        if not isinstance(raw, dict):
+            continue
+        closure = raw.get("closureRule")
+        normalized_actions.append({
+            **raw,
+            "action": raw.get("description", "请家属核实并处理。"),
+            "closureRule": closure.get("type", "risk-disappears-after-rescan") if isinstance(closure, dict) else str(closure or "risk-disappears-after-rescan"),
+            "status": _action_status.get(str(raw.get("id", "")), str(raw.get("status", "open"))),
+            "source": "route2-person-home-risk",
+        })
+    return {
+        "schemaVersion": 1,
+        "service": "route2-home-twin",
+        "status": "ready",
+        "dataMode": "demo" if provenance == "demo" else "real",
+        "capturedAt": meta.get("capturedAt") if isinstance(meta, dict) else None,
+        "items": items,
+        "actions": normalized_actions,
+    }
 
 
 def _persist_jobs_locked() -> None:
@@ -231,7 +285,52 @@ def health() -> dict[str, str]:
         "status": "ok",
         "processor": os.getenv("ROUTE2_PROCESSOR_MODE", "queue"),
         "hardware": "adapter-ready",
+        "homeCapture": "enabled" if os.getenv("ROUTE2_ENABLE_PIPELINE", "0") == "1" else "waiting-worker",
     }
+
+
+@app.get("/api/route2/integration")
+def integration() -> dict[str, Any]:
+    """Route 1 stable boundary: connection state, item index and family actions."""
+    return _integration_payload()
+
+
+@app.get("/api/route2/items/find")
+def find_item(q: str) -> dict[str, Any]:
+    query = q.strip().lower()
+    if not query:
+        raise HTTPException(status_code=422, detail="q 不能为空")
+    payload = _integration_payload()
+    aliases = {"药": "medicine", "眼镜": "glasses", "老花镜": "glasses", "钥匙": "keys"}
+    category = next((value for key, value in aliases.items() if key in query), "")
+    for raw in payload["items"]:
+        if not isinstance(raw, dict):
+            continue
+        haystack = f"{raw.get('id', '')} {raw.get('title', '')} {raw.get('location', '')}".lower()
+        if query in haystack or (category and category == str(raw.get("id", "")).lower()):
+            return {
+                "status": "found",
+                "dataMode": payload["dataMode"],
+                "item": raw,
+                "message": raw.get("say") or f"{raw.get('title', '物品')}在{raw.get('location', '尚未确认的位置')}。",
+            }
+    return {
+        "status": "not_found",
+        "dataMode": payload["dataMode"],
+        "item": None,
+        "message": "当前 Home Twin 里没有可靠的位置记录，请让家属确认后再更新。",
+    }
+
+
+@app.post("/api/route2/actions/{action_id}/status")
+def update_action_status(action_id: str, status: str) -> dict[str, str]:
+    if status not in {"open", "done"}:
+        raise HTTPException(status_code=422, detail="status 仅允许 open 或 done；resolved 必须由复扫结果产生")
+    known = {str(item.get("id")) for item in _integration_payload()["actions"] if isinstance(item, dict)}
+    if action_id not in known:
+        raise HTTPException(status_code=404, detail="家庭行动不存在")
+    _action_status[action_id] = status
+    return {"id": action_id, "status": status}
 
 
 @app.post("/api/route2/rescan", dependencies=[Depends(_require_token)])

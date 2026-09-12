@@ -23,6 +23,7 @@ import type { UserRole } from '../types';
  */
 
 export type CrossTabMessage =
+  | { type: 'medication.update'; payload: unknown }
   | { type: 'dispatch.acknowledge'; findingId: string }
   | { type: 'dispatch.append'; record: unknown }
   | { type: 'family.link'; link: unknown; sharing: UserRole | null }

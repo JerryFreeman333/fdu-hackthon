@@ -18,6 +18,8 @@ import { seedDemoProfile } from './helpers/demo-seed.mjs';
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.NOTIF_SMOKE_PORT ?? 4174);
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 
@@ -27,7 +29,7 @@ function log(...args) {
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit' });
+    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' && cmd === NPM });
     p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(' ')} 退出码 ${code}`))));
     p.on('error', reject);
   });
@@ -36,7 +38,7 @@ function run(cmd, args) {
 async function ensureBuild() {
   if (!existsSync(DIST) || !existsSync(resolve(DIST, 'index.html'))) {
     log('dist/ 不存在，先 build');
-    await run('npm', ['run', 'build']);
+    await run(NPM, ['run', 'build']);
   } else {
     log('dist/ 已存在');
   }
@@ -44,7 +46,7 @@ async function ensureBuild() {
 
 function startPreview() {
   return new Promise((resolve, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -166,7 +168,7 @@ async function runSmoke() {
     await wait(800);
 
     // 2. 同意家属共享
-    const grantBtn = page.getByRole('button', { name: /同意以后需要时告诉家属/ }).first();
+    const grantBtn = page.getByRole('button', { name: /告诉家属/ }).first();
     const grantVisible = await grantBtn.isVisible({ timeout: 3000 }).catch(() => false);
     if (!grantVisible) {
       check('老人端出现"同意共享"按钮', false);
@@ -177,6 +179,7 @@ async function runSmoke() {
     check('老人端同意家属共享', true);
 
     // 3. 生成邀请码
+    await page.getByRole('button', { name: '我的' }).last().click();
     const inviteBtn = page.getByRole('button', { name: /生成家属邀请码/ }).first();
     const inviteVisible = await inviteBtn.isVisible({ timeout: 3000 }).catch(() => false);
     if (!inviteVisible) throw new Error('未找到生成邀请码按钮');

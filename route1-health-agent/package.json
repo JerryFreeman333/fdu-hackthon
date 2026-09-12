@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "test": "tsc -p tsconfig.test.json && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && mkdir -p .test-build/tests/corpus && cp tests/corpus/utterances.json .test-build/tests/corpus/ && node --test .test-build/tests/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node -e \"const fs=require('node:fs');fs.mkdirSync('.test-build/tests/corpus',{recursive:true});fs.writeFileSync('.test-build/package.json',JSON.stringify({type:'commonjs'}));fs.copyFileSync('tests/corpus/utterances.json','.test-build/tests/corpus/utterances.json')\" && node --test .test-build/tests/*.test.js",
     "build": "npm run typecheck && vite build",
     "format": "npx --yes prettier@3.5.3 --write .",
     "format:check": "npx --yes prettier@3.5.3 --check .",
@@ -22,7 +22,9 @@
     "test:browser:webhook": "node tests/webhook-blackbox.test.mjs",
     "test:browser:notif": "node tests/notification-push-blackbox.test.mjs",
     "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs",
-    "test:browser:binding": "node tests/family-binding-blackbox.test.mjs"
+    "test:browser:binding": "node tests/family-binding-blackbox.test.mjs",
+    "healthkit:bridge": "node scripts/healthkit-bridge.mjs",
+    "test:healthkit": "node scripts/test-healthkit.mjs"
   },
   "dependencies": {
     "peerjs": "^1.5.5",

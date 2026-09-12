@@ -1,4 +1,5 @@
 import type { CareTask } from '../src/types';
+import { shouldCreateMedicationCheck } from '../src/hooks/useCareTasks';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -41,6 +42,11 @@ function saveTasks(tasks: CareTask[]) {
 
 saveTasks([demoTask]);
 assert(loadTasks()[0]?.id === demoTask.id, 'current session should retain task state');
+assert(!shouldCreateMedicationCheck([demoTask], demoTask.dueDate), 'pending medication task must not duplicate');
+assert(
+  !shouldCreateMedicationCheck([{ ...demoTask, status: 'completed' }], demoTask.dueDate),
+  'completed medication task must not reappear on the same day',
+);
 assert(storage.removed.has('ankang-route1-tasks-v2'), 'legacy persisted task key should be purged');
 
 sessionTasks = null;
