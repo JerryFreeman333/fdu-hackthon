@@ -25,6 +25,9 @@ interface FamilyDashboardProps {
   /** 今日（today）系统收到的主诉/聊天/设备/拍照 信号条数；
    * 0 时 dashboardStatus 不会显示绿色"今天总体正常" */
   todaySignalCount: number;
+  /** 今日存在、但因老人未授权而被隐私门控挡住的 alert/urgent 数量（评审 P0-2）：
+   * 大于 0 时 dashboardStatus 必须显示"被隐私设置挡住"，绝不显示"今天总体正常" */
+  gatedAlertCount: number;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
@@ -94,7 +97,7 @@ function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
 export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
-  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount);
+  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount, props.gatedAlertCount);
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
   const recentFamilyEvents = props.familyEvents.slice(-5).reverse();

@@ -5,12 +5,15 @@ import type { FamilyNotificationRecord } from './notify';
  * 家属端首页一句话状态。
  *
  * 这一函数是"未知的诚实化"的最后一道闸：绝不能在没有真实数据时把页面
- * 显示成"今天总体正常"。两条独立路径必须把"未知"明确标出：
+ * 显示成"今天总体正常"。三条独立路径必须把"未知"明确标出：
  * 1. notifications 为空但派发台账里仍有未被确认的系统通知失败
  *    → 系统尝试提醒但没送到位，不是"今天没事"
  * 2. notifications 为空、派发没失败、但今日信号量为零
  *    → detection 没看到东西 ≠ 老人没事，可能是今天还没说话/没戴设备/
  *    聊天解析漏掉了，必须提示家属主动确认，而不是绿色"ok"
+ * 3. notifications 为空但存在被隐私门控挡住的 alert/urgent（gatedAlertCount > 0）
+ *    → 不是没信号，是老人尚未授权、内容对家属不可见。系统知道有事，
+ *    绝不能表述成正面"正常"（评审现场：老人报胸痛后家属看到"今天总体正常"）
  */
 export type FamilyStatusTone = 'danger' | 'warn' | 'unknown' | 'ok';
 
@@ -33,6 +36,7 @@ export function familyStatus(
   notifications: FamilyNotification[],
   dispatchRecords: FamilyNotificationRecord[],
   todaySignalCount: number,
+  gatedAlertCount = 0,
 ): FamilyStatus {
   const urgent = notifications.filter((notification) => notification.finding.severity === 'urgent');
   if (urgent.length > 0) {
@@ -51,6 +55,18 @@ export function familyStatus(
       detail: '系统把多项近期变化放在一起看后，建议今天主动联系老人确认状态。',
       tone: 'warn',
       reasons: [`alert_notifications=${alert.length}`],
+    };
+  }
+
+  // 第三种未知：notifications 为空不是因为没有信号，而是因为老人尚未授权、
+  // 内容被隐私门控挡住。此时系统知道有事、家属看不见内容——
+  // 必须把"被挡住"本身如实说出，绝不能用绿色"正常"覆盖它。
+  if (gatedAlertCount > 0) {
+    return {
+      title: gatedAlertCount === 1 ? '有 1 件事被隐私设置挡住了' : `有 ${gatedAlertCount} 件事被隐私设置挡住了`,
+      detail: `今日已收到 ${todaySignalCount} 条健康信号，其中 ${gatedAlertCount} 条被系统标记为需要关注，但按老人的隐私设置暂未向您开放。系统无法替您判断老人是否安好：建议直接联系老人确认；老人在老人端同意共享后，您就能看到这些内容。`,
+      tone: 'unknown',
+      reasons: [`gated_alerts=${gatedAlertCount}`, `signals_today=${todaySignalCount}`],
     };
   }
 

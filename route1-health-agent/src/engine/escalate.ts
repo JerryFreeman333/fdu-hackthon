@@ -46,6 +46,33 @@ export function collectFamilyNotifications(
     }));
 }
 
+/**
+ * 与 collectFamilyNotifications 同一判定源的反向集合：
+ * 今日存在、familyEligible 未拒绝、但因授权门控（familySharing !== 'granted'
+ * 且未一次性共享）而没有进入家属通知的 alert/urgent 发现。
+ *
+ * 这就是"第三种未知"：不是没数据，而是有数据但被隐私设置挡住。
+ * 家属首页状态必须看到这个数量，否则会把被挡住的紧急信号表述成"今天总体正常"
+ * （评审现场：老人 02:42 报胸痛，家属 02:44 打开看到"今天总体正常"）。
+ * 只暴露数量，不暴露内容——未授权时家属无权看到发现本身。
+ */
+export function collectGatedFindings(
+  findings: Finding[],
+  familySharing: FamilySharing,
+  oneTimeSharedFindingIds: string[] = [],
+  today: string = '',
+): Finding[] {
+  const sharedIds = new Set(oneTimeSharedFindingIds);
+  return findings.filter(
+    (finding) =>
+      FAMILY_LEVELS.includes(finding.severity) &&
+      finding.familyMessage &&
+      finding.familyEligible !== false &&
+      (today === '' || finding.date === today) &&
+      !(familySharing === 'granted' || sharedIds.has(finding.id)),
+  );
+}
+
 export function severityBadge(sev: Severity): { text: string; className: string } {
   switch (sev) {
     case 'urgent':
