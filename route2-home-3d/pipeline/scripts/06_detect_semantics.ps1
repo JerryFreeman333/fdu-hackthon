@@ -1,4 +1,4 @@
-# 路线二 —— 视觉语义识别 + COLMAP 3D 定位 + 候选空间拓扑
+﻿# 路线二 —— 视觉语义识别 + COLMAP 3D 定位 + 候选空间拓扑
 # 输出: pipeline/data/<Scene>/semantic/hometwin-semantic.json
 param(
     [string]$Scene = "home",

@@ -1,4 +1,4 @@
-# Route 2 —— 使用新一轮 Home Twin 风险投影验证家庭行动是否真正关闭
+﻿# Route 2 —— 使用新一轮 Home Twin 风险投影验证家庭行动是否真正关闭
 param(
     [string]$Scene = "home",
     [string]$RescanHomeSnapshot,

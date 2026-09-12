@@ -1,4 +1,4 @@
-# Route 2 —— 真实复扫：新的照片/视频 → 独立复扫场景 → Person × Home 风险 → 继承旧行动计划
+﻿# Route 2 —— 真实复扫：新的照片/视频 → 独立复扫场景 → Person × Home 风险 → 继承旧行动计划
 param(
     [string]$Video,
     [string]$Photos,

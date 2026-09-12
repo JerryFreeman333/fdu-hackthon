@@ -32,7 +32,16 @@ SUPPORTED_SUFFIXES = {
 }
 BATCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 
-app = FastAPI(title="Route 2 Rescan Backend", version="0.1.0")
+_ENABLE_DOCS = os.getenv("ROUTE2_ENABLE_DOCS", "0") == "1"
+
+# 默认关闭 /docs 与 /openapi.json：局域网内不应暴露交互式接口文档；需要时设 ROUTE2_ENABLE_DOCS=1。
+app = FastAPI(
+    title="Route 2 Rescan Backend",
+    version="0.1.0",
+    docs_url="/docs" if _ENABLE_DOCS else None,
+    redoc_url="/redoc" if _ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if _ENABLE_DOCS else None,
+)
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="route2-rescan")
@@ -108,22 +117,31 @@ def _validate_manifest(manifest_text: str, batch_id: str, captured_at: str, medi
         raise HTTPException(status_code=422, detail="manifest 不是合法 JSON") from exc
     if not isinstance(manifest, dict):
         raise HTTPException(status_code=422, detail="manifest 必须是对象")
-    if manifest.get("id") != batch_id or manifest.get("capturedAt") != captured_at or manifest.get("kind") != media_kind:
-        raise HTTPException(status_code=422, detail="manifest 与表单字段不一致")
+    problems: list[str] = []
+    if manifest.get("id") != batch_id:
+        problems.append(f"manifest.id 应等于表单 batchId {batch_id!r}，实际为 {manifest.get('id')!r}")
+    if manifest.get("capturedAt") != captured_at:
+        problems.append(f"manifest.capturedAt 应等于表单 capturedAt {captured_at!r}，实际为 {manifest.get('capturedAt')!r}")
+    if manifest.get("kind") != media_kind:
+        problems.append(f"manifest.kind 应等于表单 mediaKind {media_kind!r}，实际为 {manifest.get('kind')!r}")
     files = manifest.get("files")
     if not isinstance(files, list) or not files:
-        raise HTTPException(status_code=422, detail="manifest.files 不能为空")
+        problems.append("manifest.files 必须是非空数组，每项含 name/size/type")
+        raise HTTPException(status_code=422, detail="；".join(problems))
     if len(files) > MAX_FILES:
-        raise HTTPException(status_code=413, detail="文件数量超过限制")
-    for entry in files:
+        raise HTTPException(status_code=413, detail=f"文件数量超过限制（最多 {MAX_FILES} 个）")
+    for index, entry in enumerate(files, start=1):
         if not isinstance(entry, dict):
-            raise HTTPException(status_code=422, detail="manifest.files 项格式无效")
+            problems.append(f"manifest.files[{index}] 必须是对象")
+            continue
         if not isinstance(entry.get("name"), str) or not entry["name"].strip():
-            raise HTTPException(status_code=422, detail="manifest.files.name 无效")
+            problems.append(f"manifest.files[{index}].name 无效（必须是非空字符串）")
         if not isinstance(entry.get("size"), int) or entry["size"] < 0:
-            raise HTTPException(status_code=422, detail="manifest.files.size 无效")
+            problems.append(f"manifest.files[{index}].size 无效（必须是非负整数，单位字节）")
         if not isinstance(entry.get("type"), str) or not entry["type"]:
-            raise HTTPException(status_code=422, detail="manifest.files.type 无效")
+            problems.append(f"manifest.files[{index}].type 无效（必须是 MIME 类型字符串，如 image/jpeg）")
+    if problems:
+        raise HTTPException(status_code=422, detail="manifest 与表单字段不一致：" + "；".join(problems))
     return files
 
 
@@ -233,7 +251,10 @@ async def submit_rescan(
     if not files or len(files) > MAX_FILES:
         raise HTTPException(status_code=413, detail="文件数量不合法")
     if len(manifest_files) != len(files):
-        raise HTTPException(status_code=422, detail="manifest.files 与实际上传文件数量不一致")
+        raise HTTPException(
+            status_code=422,
+            detail=f"manifest.files 数量（{len(manifest_files)}）与实际上传文件数量（{len(files)}）不一致",
+        )
     if mediaKind == "video" and len(files) != 1:
         raise HTTPException(status_code=422, detail="当前真实 pipeline 的视频复扫一次只允许一个视频文件")
 
@@ -247,7 +268,10 @@ async def submit_rescan(
             manifest_entry = manifest_files[index - 1]
             original_name = Path(upload.filename or "").name
             if original_name != Path(str(manifest_entry["name"])).name:
-                raise HTTPException(status_code=422, detail="manifest.files 与实际文件名不一致")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"manifest.files[{index}].name 与实际文件名不一致：manifest 为 {manifest_entry['name']!r}，上传为 {original_name!r}",
+                )
             filename = _sanitize_filename(original_name, index)
             target = input_dir / filename
             if target.exists():
@@ -258,9 +282,15 @@ async def submit_rescan(
                 raise HTTPException(status_code=413, detail="本批次文件总大小超过限制")
             media_type = upload.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
             if int(manifest_entry["size"]) != size:
-                raise HTTPException(status_code=422, detail="manifest.files.size 与实际文件大小不一致")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"manifest.files[{index}].size 与实际文件大小不一致：manifest 为 {manifest_entry['size']} 字节，实际为 {size} 字节",
+                )
             if str(manifest_entry["type"]) != media_type:
-                raise HTTPException(status_code=422, detail="manifest.files.type 与实际文件类型不一致")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"manifest.files[{index}].type 与实际文件类型不一致：manifest 为 {manifest_entry['type']!r}，实际为 {media_type!r}",
+                )
             if mediaKind == "image" and media_type.startswith("video/"):
                 raise HTTPException(status_code=422, detail="mediaKind=image 不允许上传视频")
             if mediaKind == "video" and not media_type.startswith("video/"):

@@ -1,4 +1,4 @@
-# 路线二 —— COLMAP 相机标定 + SfM + 去畸变
+﻿# 路线二 —— COLMAP 相机标定 + SfM + 去畸变
 param([string]$Scene = "home")
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

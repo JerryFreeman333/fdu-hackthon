@@ -1,4 +1,4 @@
-# 路线二 —— Home Twin 全流程：数据准备 → COLMAP → 语义/3D 定位 → 候选路线 → 个体化通行 → Person × Home 风险 → 家庭行动 → 3DGS → Web
+﻿# 路线二 —— Home Twin 全流程：数据准备 → COLMAP → 语义/3D 定位 → 候选路线 → 个体化通行 → Person × Home 风险 → 家庭行动 → 3DGS → Web
 # 视频: powershell -ExecutionPolicy Bypass -File scripts\run_all.ps1 -Video "C:\path\home.mp4" -Scene home -PersonProfile "C:\path\person.json" -ScaleFile "C:\path\scale.json"
 # 照片: powershell -ExecutionPolicy Bypass -File scripts\run_all.ps1 -Photos "C:\path\photos" -Scene home -PersonProfile "C:\path\person.json" -ScaleFile "C:\path\scale.json"
 param(

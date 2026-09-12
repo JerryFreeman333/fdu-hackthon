@@ -1,4 +1,4 @@
-# 路线二 —— 数据准备：视频抽帧或照片整理成 COLMAP 输入格式
+﻿# 路线二 —— 数据准备：视频抽帧或照片整理成 COLMAP 输入格式
 # 用法1(视频): powershell -ExecutionPolicy Bypass -File scripts\02_prepare_data.ps1 -Video "C:\path\living_room.mp4" -Scene home
 # 用法2(照片): powershell -ExecutionPolicy Bypass -File scripts\02_prepare_data.ps1 -Photos "C:\path\photos" -Scene home
 param(

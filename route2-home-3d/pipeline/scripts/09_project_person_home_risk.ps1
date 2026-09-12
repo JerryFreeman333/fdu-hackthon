@@ -1,4 +1,4 @@
-# Route 2 —— 将 Route 1 Person Twin 与 Home Twin 组合为非诊断风险投影
+﻿# Route 2 —— 将 Route 1 Person Twin 与 Home Twin 组合为非诊断风险投影
 param(
     [string]$Scene = "home",
     [string]$PersonProfile = "",

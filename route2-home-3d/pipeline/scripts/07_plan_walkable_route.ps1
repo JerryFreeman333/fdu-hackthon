@@ -1,4 +1,4 @@
-# 路线二 —— 可通行候选路线 + 风险代价
+﻿# 路线二 —— 可通行候选路线 + 风险代价
 # 输入: pipeline/data/<Scene>/semantic/hometwin-semantic.json
 # 输出: pipeline/data/<Scene>/semantic/hometwin-route.json
 param([string]$Scene = "home")

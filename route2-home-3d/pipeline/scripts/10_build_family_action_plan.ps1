@@ -1,4 +1,4 @@
-# Route 2 —— 将 Person × Home 风险转成可执行、可复扫关闭的家庭任务
+﻿# Route 2 —— 将 Person × Home 风险转成可执行、可复扫关闭的家庭任务
 param(
     [string]$Scene = "home",
     [string]$RiskProjection = "",

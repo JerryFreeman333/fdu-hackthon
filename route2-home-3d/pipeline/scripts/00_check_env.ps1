@@ -54,7 +54,7 @@ $gsDir = "$repoRoot\pipeline\external\gaussian-splatting"
 Check "gaussian-splatting 仓库" (Test-Path "$gsDir\train.py") $(if (Test-Path "$gsDir\train.py") { $gsDir } else { "运行 01_setup.ps1 自动克隆并编译" })
 
 if (Test-Path "$gsDir\train.py") {
-    $sub = & $python -c "import diff_gaussian_rasterization, simple_knn, fused_ssim; print('已安装')" 2>&1
+    $sub = & $python -c "import diff_gaussian_rasterization, simple_knn, fused_ssim; print('ok')" 2>&1
     Check "3DGS CUDA 子模块" ($LASTEXITCODE -eq 0) $sub
 }
 

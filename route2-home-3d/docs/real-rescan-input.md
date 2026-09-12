@@ -14,7 +14,22 @@
 - `capturedAt`
 - `mediaKind`
 - `manifest`
-- `files`
+- `files`（注意：字段名是 `files`，不是 `files[]`）
+
+`manifest` 为 JSON 字符串，记录批次 ID、采集时间、媒体类型和文件元数据，且必须与表单字段一致：
+
+```json
+{
+  "id": "<= batchId",
+  "capturedAt": "<= capturedAt",
+  "kind": "<= mediaKind",
+  "files": [
+    { "name": "photo1.jpg", "size": 123456, "type": "image/jpeg" }
+  ]
+}
+```
+
+每个 `files` 项的 `size` 为实际字节数，`type` 为该文件分片的 MIME 类型。
 
 服务端/本地管线返回：
 
