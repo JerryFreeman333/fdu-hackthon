@@ -38,6 +38,8 @@ interface FamilyDashboardProps {
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
   homeSafetyActions: HomeSafetyAction[];
+  /** 路线二 Home Twin 前端入口。开发环境默认 http://localhost:5174。 */
+  homeTwinUrl: string;
   records: DayRecord[];
   today: string;
   onTaskStatus: (taskId: string, status: CareTask['status']) => void;
@@ -493,6 +495,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               </div>
             ))}
           </div>
+          <a className="btn-primary home-twin-link" href={props.homeTwinUrl}>
+            进入 3D 居家安全
+          </a>
         </section>
       )}
 

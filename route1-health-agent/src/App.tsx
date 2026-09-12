@@ -55,6 +55,7 @@ import RoleGate from './components/RoleGate';
 import FontSizeControl from './components/FontSizeControl';
 import DeviceDebugPanel, { type DeviceSyncState } from './components/DeviceDebugPanel';
 import RuntimeModeBanner from './components/RuntimeModeBanner';
+import MobileTabBar, { type MobileTabItem } from './components/MobileTabBar';
 import { useCareTasks } from './hooks/useCareTasks';
 import { useElderChat } from './hooks/useElderChat';
 import { useFamilyBinding } from './hooks/useFamilyBinding';
@@ -62,6 +63,23 @@ import { useFontScale } from './hooks/useFontScale';
 
 const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-route1-health-records-v2'];
 const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
+type ElderTab = 'home' | 'health' | 'assistant' | 'profile';
+
+const ELDER_TABS: readonly MobileTabItem<ElderTab>[] = [
+  { id: 'home', label: '首页', icon: 'home' },
+  { id: 'health', label: '健康', icon: 'health' },
+  { id: 'assistant', label: '助手', icon: 'assistant' },
+  { id: 'profile', label: '我的', icon: 'profile' },
+];
+
+const FAMILY_TABS: readonly MobileTabItem<'home' | 'detail' | 'report' | 'medication'>[] = [
+  { id: 'home', label: '首页', icon: 'home' },
+  { id: 'report', label: '周报', icon: 'report' },
+  { id: 'detail', label: '消息', icon: 'messages' },
+  { id: 'medication', label: '我的', icon: 'profile' },
+];
+
+const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || 'http://localhost:5174';
 
 function clearLegacyHealthStorage() {
   if (typeof window === 'undefined') return;
@@ -183,6 +201,7 @@ function AppRoot({
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
   const [role, setRole] = useState<UserRole | null>(null);
   const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
+  const [elderTab, setElderTab] = useState<ElderTab>('home');
   const [toast, setToast] = useState<string | null>(null);
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
   const healthKitAdapter = useMemo(
@@ -340,49 +359,52 @@ function AppRoot({
   });
 
   // 手动和自动同步复用同一条 Adapter → HealthEvent → Detection/Finding → Person Twin 链。
-  const syncDevice = useCallback(async (trigger: 'manual' | 'automatic' = 'manual') => {
-    if (healthKitSyncInFlightRef.current) return;
-    healthKitSyncInFlightRef.current = true;
-    setDeviceSync((current) => ({ ...current, status: 'syncing', error: undefined }));
-    try {
-      const adapter = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter : demoDeviceAdapter;
-      const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? today);
-      const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : activeProfile.name;
-      const deviceMeasurements = await adapter.getMeasurements(userId, from, today);
-      const diagnostics = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter.lastDiagnostics : undefined;
-      setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
-      if (runtimeConfig.deviceMode === 'healthkit') {
-        lastAppliedHealthKitRevisionRef.current = healthKitRevisionKey(diagnostics);
+  const syncDevice = useCallback(
+    async (trigger: 'manual' | 'automatic' = 'manual') => {
+      if (healthKitSyncInFlightRef.current) return;
+      healthKitSyncInFlightRef.current = true;
+      setDeviceSync((current) => ({ ...current, status: 'syncing', error: undefined }));
+      try {
+        const adapter = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter : demoDeviceAdapter;
+        const from = runtimeConfig.deviceMode === 'healthkit' ? dateDaysAgo(21) : (seedRecords[0]?.date ?? today);
+        const userId = runtimeConfig.deviceMode === 'healthkit' ? runtimeConfig.healthkitUserId : activeProfile.name;
+        const deviceMeasurements = await adapter.getMeasurements(userId, from, today);
+        const diagnostics = runtimeConfig.deviceMode === 'healthkit' ? healthKitAdapter.lastDiagnostics : undefined;
+        setEvents((current) => mergeHealthEvents(current, deviceMeasurements.map(measurementToEvent)));
+        if (runtimeConfig.deviceMode === 'healthkit') {
+          lastAppliedHealthKitRevisionRef.current = healthKitRevisionKey(diagnostics);
+        }
+        setDeviceSync({
+          status: 'success',
+          received: deviceMeasurements,
+          lastSyncAt: new Date().toISOString(),
+          lastCheckedAt: new Date().toISOString(),
+          autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
+          lastTrigger: trigger,
+          diagnostics,
+        });
+        if (trigger === 'manual') {
+          showToast(
+            `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setDeviceSync((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+          lastCheckedAt: new Date().toISOString(),
+          autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
+          diagnostics: healthKitAdapter.lastDiagnostics,
+        }));
+        if (trigger === 'manual') showToast('同步失败，未使用 Demo 数据替代。');
+      } finally {
+        healthKitSyncInFlightRef.current = false;
       }
-      setDeviceSync({
-        status: 'success',
-        received: deviceMeasurements,
-        lastSyncAt: new Date().toISOString(),
-        lastCheckedAt: new Date().toISOString(),
-        autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
-        lastTrigger: trigger,
-        diagnostics,
-      });
-      if (trigger === 'manual') {
-        showToast(
-          `已同步 ${deviceMeasurements.length} 条${runtimeConfig.deviceMode === 'healthkit' ? '真实 HealthKit' : '演示'}数据。`,
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setDeviceSync((current) => ({
-        ...current,
-        status: 'error',
-        error: message,
-        lastCheckedAt: new Date().toISOString(),
-        autoPolling: shouldPollHealthKit(runtimeConfig.deviceMode),
-        diagnostics: healthKitAdapter.lastDiagnostics,
-      }));
-      if (trigger === 'manual') showToast('同步失败，未使用 Demo 数据替代。');
-    } finally {
-      healthKitSyncInFlightRef.current = false;
-    }
-  }, [activeProfile.name, healthKitAdapter, showToast, today]);
+    },
+    [activeProfile.name, healthKitAdapter, showToast, today],
+  );
 
   useEffect(() => {
     if (!shouldPollHealthKit(runtimeConfig.deviceMode)) return;
@@ -482,6 +504,28 @@ function AppRoot({
 
   function resetRole() {
     setRole(null);
+  }
+
+  function navigateElder(tab: ElderTab) {
+    setElderTab(tab);
+    if (tab === 'health') {
+      const details = document.getElementById('elder-health') as HTMLDetailsElement | null;
+      if (details) details.open = true;
+    }
+    const targetId =
+      tab === 'home'
+        ? 'elder-home'
+        : tab === 'health'
+          ? 'elder-health'
+          : tab === 'assistant'
+            ? 'elder-chat'
+            : 'elder-settings';
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const top = target.getBoundingClientRect().top + window.scrollY - 92;
+      window.scrollTo({ top, behavior: 'smooth' });
+    });
   }
 
   // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
@@ -602,7 +646,7 @@ function AppRoot({
             dataMode={storedProfile.dataMode}
             onNotifyFamily={() => void handleNotifyFamilyUrgent()}
           />
-          <details className="advanced-details">
+          <details className="advanced-details" id="elder-health">
             <summary>查看我的状态（可选）</summary>
             <Suspense fallback={VIEW_FALLBACK}>
               <ProfileView
@@ -626,6 +670,7 @@ function AppRoot({
             onSync={() => void syncDevice('manual')}
           />
         </main>
+        <MobileTabBar items={ELDER_TABS} active={elderTab} onSelect={navigateElder} />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -662,6 +707,7 @@ function AppRoot({
             familyEvents={visibleFamilyFacts}
             tasks={tasks}
             homeSafetyActions={homeSafetyActions}
+            homeTwinUrl={HOME_TWIN_URL}
             records={familyRecords}
             today={today}
             onTaskStatus={handleTaskStatus}
@@ -680,6 +726,7 @@ function AppRoot({
           />
         </Suspense>
       </main>
+      <MobileTabBar items={FAMILY_TABS} active={familyView} onSelect={setFamilyView} />
       {toast && <div className="toast">{toast}</div>}
       <footer className="footer">
         第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；

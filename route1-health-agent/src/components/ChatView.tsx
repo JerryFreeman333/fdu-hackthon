@@ -58,7 +58,7 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
   const [text, setText] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('ready');
   const [ttsSupported, setTtsSupported] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatListRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -73,7 +73,9 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const list = chatListRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
   }, [chat.length]);
 
   function send(t: string) {
@@ -152,7 +154,7 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
         </div>
       </div>
 
-      <div className="chat-list">
+      <div className="chat-list" ref={chatListRef}>
         {chat.map((m) => (
           <div key={m.id} className={`chat-row ${m.role === 'elder' ? 'row-elder' : 'row-agent'}`}>
             {m.role === 'agent' && <div className="chat-avatar">安</div>}
@@ -182,7 +184,6 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
 
       <div className="chat-quick">

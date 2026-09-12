@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_HEALTHKIT_ENDPOINT?: string;
   readonly VITE_HEALTHKIT_USER_ID?: string;
   readonly VITE_HEALTHKIT_BRIDGE_TOKEN?: string;
+  /** 路线二 Home Twin 前端地址；本地开发默认 http://localhost:5174。 */
+  readonly VITE_HOME_TWIN_URL?: string;
   readonly VITE_AGENT_LLM_ENDPOINT?: string;
   /**
    * 真实视觉模型服务端代理地址。

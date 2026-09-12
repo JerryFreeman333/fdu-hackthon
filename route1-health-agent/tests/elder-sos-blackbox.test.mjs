@@ -17,6 +17,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const PORT = Number(process.env.ELDER_SOS_PORT ?? 4177);
 const BASE = `http://localhost:${PORT}`;
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 let serverProcess = null;
 const results = [];
@@ -32,7 +34,12 @@ function check(name, ok, detail = '') {
 
 function run(cmd, args, envExtra = {}) {
   return new Promise((resolvePromise, reject) => {
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...envExtra } });
+    const p = spawn(cmd, args, {
+      cwd: ROOT,
+      stdio: 'inherit',
+      env: { ...process.env, ...envExtra },
+      shell: process.platform === 'win32' && cmd === NPM,
+    });
     p.on('exit', (code) =>
       code === 0 ? resolvePromise() : reject(new Error(`${cmd} ${args.join(' ')} 退出码 ${code}`)),
     );
@@ -42,7 +49,7 @@ function run(cmd, args, envExtra = {}) {
 
 function startPreview() {
   return new Promise((resolvePromise, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -115,7 +122,7 @@ async function runSosSuite() {
 async function main() {
   // 测试构建必须剥离理解层 LLM 配置：process env 优先于 .env，置空即回落纯规则模式。
   const stripLlmEnv = { VITE_UNDERSTANDING_LLM_API_KEY: '', VITE_UNDERSTANDING_LLM_BASE_URL: '' };
-  await run('npm', ['run', 'build'], stripLlmEnv);
+  await run(NPM, ['run', 'build'], stripLlmEnv);
   await startPreview();
   try {
     await fetchReady();

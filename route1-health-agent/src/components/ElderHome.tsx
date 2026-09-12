@@ -69,7 +69,11 @@ export default function ElderHome({
   }
 
   function openHelp() {
-    document.getElementById('elder-chat')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const chatView = document.getElementById('elder-chat');
+    if (chatView) {
+      const top = chatView.getBoundingClientRect().top + window.scrollY - 92;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
     window.setTimeout(() => document.querySelector<HTMLInputElement>('#elder-chat input.chat-input')?.focus(), 250);
   }
 
@@ -81,20 +85,23 @@ export default function ElderHome({
 
   return (
     <div className="elder-home">
-      <section className="elder-hero card">
+      <section className="elder-hero card" id="elder-home">
         <div>
-          <div className="eyebrow">今天</div>
-          <h2>{profile.name}，我在这儿。</h2>
+          <div className="eyebrow">今天 · 我一直在</div>
+          <h2>{profile.name}，早上好。</h2>
           <p>
             {gentleChanges.length
               ? '最近有一点变化，我会安静地帮您留意。需要您做什么，我会直接告诉您。'
               : '今天有什么不舒服、想记件事情，或者只是想说说话，都可以直接告诉我。'}
           </p>
         </div>
-        <button className="big-help" type="button" onClick={openHelp} aria-label="开始告诉我今天的情况">
-          <span>帮我</span>
-          <small>点这里说</small>
-        </button>
+        <div className="elder-voice-action">
+          <button className="big-help" type="button" onClick={openHelp} aria-label="开始告诉我今天的情况">
+            <span className="voice-mic-mark" aria-hidden="true" />
+          </button>
+          <strong>点一下，告诉我</strong>
+          <small>身体不舒服、想记事情，都可以说</small>
+        </div>
       </section>
 
       {/* 紧急求助常驻卡：一键呼救不能藏在聊天里，更不能不存在（评审 P0-1）。 */}
@@ -112,15 +119,6 @@ export default function ElderHome({
           </button>
         )}
       </section>
-
-      <ChatView
-        id="elder-chat"
-        chat={chat}
-        onSend={onSend}
-        quickInputs={quickInputs}
-        profile={profile}
-        deviceNote={dataMode}
-      />
 
       <section className="card task-card">
         <div className="section-head">
@@ -170,6 +168,15 @@ export default function ElderHome({
         )}
         {tasks.length > 2 && <span className="muted">还有 {tasks.length - 2} 件事，我会稍后再提醒您。</span>}
       </section>
+
+      <ChatView
+        id="elder-chat"
+        chat={chat}
+        onSend={onSend}
+        quickInputs={quickInputs}
+        profile={profile}
+        deviceNote={dataMode}
+      />
 
       {familyAsk && (
         <section className="card privacy-card">
@@ -311,7 +318,7 @@ export default function ElderHome({
           </li>
         </ul>
       </section>
-      <section className="card privacy-card">
+      <section className="card privacy-card" id="elder-settings">
         <div className="section-head">
           <div>
             <h3>家庭协同</h3>
