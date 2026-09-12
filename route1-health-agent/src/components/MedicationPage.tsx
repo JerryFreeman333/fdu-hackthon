@@ -21,10 +21,12 @@ export default function MedicationPage({
   profile,
   onSave,
   onFind,
+  title = '我的药物',
 }: {
   profile: ElderProfile;
   onSave: (p: ElderProfile) => void;
   onFind: (name: string) => void;
+  title?: string;
 }) {
   const [filter, setFilter] = useState('active');
   const [selected, setSelected] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export default function MedicationPage({
     <section className="flow-page">
       <header className="page-title-block">
         <span className="page-kicker">按医嘱记录，安心用药</span>
-        <h1>我的药物</h1>
+        <h1>{title}</h1>
       </header>
       <div className="flow-segments" aria-label="药物状态">
         {[

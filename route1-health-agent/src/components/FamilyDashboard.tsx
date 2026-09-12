@@ -4,7 +4,7 @@ import type { FamilyNotification } from '../engine/escalate';
 import type { FamilyNotificationRecord } from '../engine/notify';
 import { describeDeliveries } from '../engine/notify';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
-import { SYMPTOM_LABELS } from '../types';
+import { METRICS, SYMPTOM_LABELS, type MetricKey } from '../types';
 import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
@@ -19,9 +19,12 @@ import {
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 import type { HomeTwinConnection } from '../hooks/useHomeTwinIntegration';
 
-type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
+export type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication' | 'archives' | 'messages' | 'privacy';
 
 interface FamilyDashboardProps {
+  demoMode?: boolean;
+  medicationPage?: ReactNode;
+  archivePage?: ReactNode;
   profile: ElderProfile;
   familyLink: FamilyLink | null;
   notifications: FamilyNotification[];
@@ -112,6 +115,8 @@ function renderSyncBanner(status: CrossDeviceStatus, _tabId: string): ReactNode 
 }
 
 export default function FamilyDashboard(props: FamilyDashboardProps) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
   const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount, props.gatedAlertCount);
@@ -214,6 +219,16 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   }
 
   if (props.view === 'report') {
+    const end = new Date(props.today + 'T12:00:00');
+    end.setDate(end.getDate() - weekOffset * 7);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const startDate = dateKey(start), endDate = dateKey(end);
+    const inWeek = (date: string) => date.slice(0,10) >= startDate && date.slice(0,10) <= endDate;
+    const weekRecords = props.records.filter(r => inWeek(r.date));
+    const weekFindings = familyFindings.filter(f => inWeek(f.date));
+    const weekEvents = props.familyEvents.filter(e => inWeek(e.timestamp));
     if (!canViewSharedDetail) {
       return (
         <div className="card privacy-card">
@@ -233,14 +248,28 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </button>
         </div>
         <section className="card">
-          <div className="eyebrow">家属周报</div>
+          <div className="eyebrow">{props.profile.name} · 健康周报</div>
+          <h1>{startDate} — {endDate}</h1>
+          <div className="family-actions">
+            <button className="btn-secondary" onClick={() => setWeekOffset(n => n + 1)}>上一周</button>
+            <button className="btn-secondary" disabled={weekOffset === 0} onClick={() => setWeekOffset(n => n - 1)}>下一周</button>
+          </div>
+          <p>按七天汇总已共享的身体数据与异常记录，最新一期截至今天。共有 {weekRecords.length} 天身体数据记录。</p>
+          <div className="archive-grid">
+            {(Object.keys(METRICS) as MetricKey[]).map(key => {
+              const values = weekRecords.map(r => r.metrics[key]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+              if (!values.length) return null;
+              const meta = METRICS[key];
+              return <div className="card" key={key}><strong>{meta.label}</strong><h2>{(values.reduce((a,b) => a+b,0)/values.length).toFixed(meta.decimals)} <small>{meta.unit}</small></h2><p>日汇总均值 · {values.length} 天有记录</p><small>范围 {Math.min(...values)}–{Math.max(...values)} {meta.unit}</small></div>;
+            })}
+          </div>
           <h3>
-            {familyFindings.length > 0 ? `本周有 ${familyFindings.length} 项需要您留意` : '本周没有需要您介入的变化'}
+            {weekFindings.length > 0 ? `本周有 ${weekFindings.length} 项需要您留意` : '本周暂无已共享的异常记录'}
           </h3>
-          <p className="muted">这份摘要只汇总明确需要家属行动的信息；详细健康资料仍留在老人端。</p>
-          {familyFindings.length > 0 && (
+          <p className="muted">缺少数据不代表身体正常；报告只依据父母已授权共享的记录。</p>
+          {weekFindings.length > 0 && (
             <div className="family-feed">
-              {familyFindings.map((finding) => (
+              {weekFindings.map((finding) => (
                 <div className={`family-item family-item-${finding.severity}`} key={finding.id}>
                   <div className="finding-head">
                     <span className={`badge ${severityBadge(finding.severity).className}`}>
@@ -260,10 +289,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               ))}
             </div>
           )}
-          {recentFamilyEvents.length > 0 && (
+          {weekEvents.length > 0 && (
             <div className="family-feed">
               <h4>本周主动分享的家人近况</h4>
-              {recentFamilyEvents.map((event) => (
+              {weekEvents.map((event) => (
                 <div className="family-item" key={event.id}>
                   <div className="finding-head">
                     <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
@@ -280,6 +309,16 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     );
   }
 
+  if (props.view === 'medication' && props.medicationPage) {
+    return canViewSharedDetail && props.familyLink?.status === 'active'
+      ? <><button className="btn-secondary" onClick={() => props.onViewChange('home')}>← 返回首页</button>{props.medicationPage}</>
+      : <section className="card"><h1>药物建档</h1><p>请先绑定家人，并由父母授权共享药物资料。</p><button className="btn-primary" onClick={() => props.onViewChange('privacy')}>家庭与权限</button></section>;
+  }
+  if (props.view === 'archives') {
+    return canViewSharedDetail && props.familyLink?.status === 'active'
+      ? <><button className="btn-secondary" onClick={() => props.onViewChange('home')}>← 返回首页</button>{props.archivePage}</>
+      : <section className="card"><h1>档案管理</h1><p>请先绑定家人，并由父母授权共享健康档案。</p><button className="btn-primary" onClick={() => props.onViewChange('privacy')}>家庭与权限</button></section>;
+  }
   if (props.view === 'medication') {
     if (!canViewSharedDetail) {
       return (
@@ -418,7 +457,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     }
   }
 
-  if (props.familyLink?.status !== 'active') {
+  if (props.familyLink?.status !== 'active' && props.view !== 'profile') {
     return (
       <div className="family-dashboard">
         <section className="card privacy-card">
@@ -456,14 +495,14 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
       <div className="family-dashboard family-home-page">
         <header className="family-welcome">
           <span className="page-kicker">家庭状态</span>
-          <h1>您好，{props.familyLink.displayName}</h1>
-          <p>这里只告诉您是否需要介入，不展示老人的全部生活数据。</p>
+          <h1>您好，{props.familyLink?.displayName ?? '家人'}</h1>
+          <p>陪伴是最好的关心</p>
         </header>
         {renderSyncBanner(props.syncStatus, props.tabId)}
         <section className={`family-status card status-${state.tone}`}>
           <div className="family-status-mark" aria-hidden="true" />
           <div>
-            <span className="page-kicker">{props.profile.name}</span>
+            <span className="page-kicker">{props.profile.name}{props.demoMode ? ' · 演示家庭' : ''}</span>
             <h2>{state.title}</h2>
             <p>{state.detail}</p>
           </div>
@@ -471,12 +510,30 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             <button className="btn-primary" onClick={props.onContactElder}>
               联系老人
             </button>
-            <button className="btn-secondary" onClick={() => props.onViewChange('tasks')}>
-              查看待处理
+            <button className="btn-secondary" onClick={() => props.onViewChange('messages')}>
+              查看消息
             </button>
           </div>
         </section>
 
+        <div className="family-feature-grid">
+          {([
+            ['medication', '药物建档', '查看与编辑父母的用药信息', 'medication'],
+            ['archives', '档案管理', '整理报告、病历与检查资料', 'archive'],
+            ['tasks', '空间胶囊', '家庭环境与危险识别', 'space'],
+            ['privacy', '隐私设置', '数据共享与家庭权限管理', 'privacy'],
+          ] as const).map(([view, title, description, icon]) => (
+            <button key={view} className={`family-feature feature-${icon}`} onClick={() => props.onViewChange(view)}>
+              <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                {icon === 'medication' ? <><rect x="15" y="5" width="18" height="38" rx="9" transform="rotate(40 24 24)" /><path d="m17 18 14 12" /></>
+                  : icon === 'archive' ? <path d="M5 14h15l4-5h16a3 3 0 0 1 3 3v26H5V14Zm0 6h38" />
+                  : icon === 'space' ? <><path d="m5 23 19-16 19 16M10 20v22h28V20" /><path d="M20 42V29h8v13" /></>
+                  : <><path d="M24 5 7 12v11c0 10 8 17 17 21 9-4 17-11 17-21V12L24 5Z" /><rect x="18" y="22" width="12" height="11" rx="2" /><path d="M20 22v-4a4 4 0 0 1 8 0v4" /></>}
+              </svg>
+              <strong>{title}</strong><span>{description}</span><b aria-hidden="true">↗</b>
+            </button>
+          ))}
+        </div>
         <section className="card family-priority-card">
           <div className="section-head compact-section-head">
             <div>
@@ -492,14 +549,14 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               <span className="priority-next">查看原因与处理步骤 →</span>
             </button>
           ) : priorityNotification ? (
-            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
               <span className="priority-type">状态变化</span>
               <strong>{priorityNotification.finding.title}</strong>
               <p>{priorityNotification.message}</p>
               <span className="priority-next">查看为什么现在通知您 →</span>
             </button>
           ) : priorityTask ? (
-            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
               <span className="priority-type">家庭待办</span>
               <strong>{priorityTask.title}</strong>
               <p>{priorityTask.description}</p>
@@ -518,7 +575,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             <strong>本周变化</strong>
             <span>查看周报</span>
           </button>
-          <button type="button" onClick={() => props.onViewChange('profile')}>
+          <button type="button" onClick={() => props.onViewChange('privacy')}>
             <strong>家庭与权限</strong>
             <span>管理连接</span>
           </button>
@@ -527,16 +584,18 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     );
   }
 
-  if (props.view === 'tasks') {
+  if (props.view === 'tasks' || props.view === 'messages') {
     return (
       <div className="family-dashboard family-tasks-page">
         <header className="page-title-block">
-          <span className="page-kicker">待处理</span>
-          <h1>需要您介入的事情</h1>
-          <p>按优先级整理健康变化、家庭风险和协同任务。</p>
+          <span className="page-kicker">{props.profile.name}</span>
+          <h1>{props.view === 'tasks' ? '空间胶囊' : '消息'}</h1>
+          <p>{props.view === 'tasks' ? '查看家庭风险、处理建议与空间证据。' : '父母的健康变化、通知和协同提醒集中在这里。'}</p>
         </header>
 
-        {openHomeActions.map((action) => (
+        {props.view === 'tasks' && <a className="btn-primary" href={familyActionUrl(props.homeTwinUrl)}>进入家庭空间 · 查看危险识别 →</a>}
+        {props.view === 'messages' && openHomeActions.length > 0 && <button className="card priority-entry" onClick={() => props.onViewChange('tasks')}><strong>家庭空间有 {openHomeActions.length} 项风险待关注</strong><span>查看空间胶囊 →</span></button>}
+        {props.view === 'tasks' && openHomeActions.map((action) => (
           <section className="card action-detail-card" key={action.id}>
             <div className="action-detail-head">
               <span className="badge badge-alert">居家安全</span>
@@ -571,7 +630,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </section>
         ))}
 
-        {props.notifications.map((notification) => {
+        {props.view === 'messages' && props.notifications.map((notification) => {
           const badge = severityBadge(notification.finding.severity);
           const dispatch = dispatchByFinding.get(notification.finding.id);
           return (
@@ -613,7 +672,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           );
         })}
 
-        {activeTasks.map((task) => (
+        {props.view === 'messages' && activeTasks.map((task) => (
           <section className="card action-detail-card" key={task.id}>
             <div className="action-detail-head">
               <span className="badge badge-info">家庭待办</span>
@@ -627,7 +686,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </section>
         ))}
 
-        {openHomeActions.length + props.notifications.length + activeTasks.length === 0 && (
+        {(props.view === 'tasks' ? openHomeActions.length : openHomeActions.length + props.notifications.length + activeTasks.length) === 0 && (
           <section className="card calm-empty">
             <strong>目前没有待处理事项</strong>
             <span>系统会在真正需要时通知您。</span>
@@ -638,20 +697,42 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   }
 
   if (props.view === 'profile') {
+    return <div className="family-dashboard">
+      <header className="page-title-block"><span className="page-kicker">我的</span><h1>{props.familyLink?.displayName ?? '欢迎来到安康家属'}</h1><p>{props.familyLink ? `正在照护：${props.profile.name} · ${props.familyLink.relation}` : '登录账号，连接您的家人'}</p></header>
+      <section className="settings-list card">
+        <button onClick={() => setAccountOpen(v => !v)} aria-expanded={accountOpen}><span><strong>账号与登录</strong><small>{props.demoMode ? '当前为演示身份，尚未登录真实账号' : '当前使用本机档案，尚未登录云端账号'}</small></span><b>›</b></button>
+        {accountOpen && <div className="card"><h2>微信授权登录</h2><p>微信授权服务尚未配置，暂时无法登录真实账号。您可以继续使用本机档案；家庭邀请码用于连接父母设备，不等同于账号登录。</p><button className="btn-secondary" disabled>微信登录暂不可用</button></div>}
+        <button onClick={() => props.onViewChange('privacy')}><span><strong>家庭连接与绑定</strong><small>{props.familyLink?.status === 'active' ? '查看已绑定家人与授权状态' : '通过父母提供的邀请码连接'}</small></span><b>›</b></button>
+      </section>
+      {renderSyncBanner(props.syncStatus, props.tabId)}
+      <section className="settings-list card">
+        <button onClick={() => props.onViewChange('privacy')}><span><strong>隐私设置</strong><small>父母的数据、权限与消息接收设置</small></span><b>›</b></button>
+        <button onClick={() => props.onViewChange('report')}><span><strong>父母周报</strong><small>查看近期健康变化</small></span><b>›</b></button>
+        <button onClick={props.onContactElder}><span><strong>联系父母</strong><small>使用档案内的家庭联系电话</small></span><b>›</b></button>
+      </section>
+    </div>;
+  }
+  if (props.view === 'privacy') {
     return (
       <div className="family-dashboard family-profile-page">
         <header className="page-title-block">
           <span className="page-kicker">我的</span>
-          <h1>家庭、权限与通知</h1>
-          <p>管理连接和接收方式，不在这里堆健康数据。</p>
+          <h1>隐私设置</h1>
+          <p>查看父母授权范围，管理家庭连接与消息接收方式。</p>
         </header>
+        {props.view === 'privacy' && <section className="card settings-list">
+          <h2>父母的数据与权限</h2>
+          <p>当前使用父母的家庭共享授权。细分数据授权尚未接入，需在父母端同意后才能查看共享资料。</p>
+          {['药物档案', '健康档案', '家庭空间与风险'].map(label => <div className="settings-row" key={label}><strong>{label}</strong><span>{canViewSharedDetail ? '已获家庭共享授权' : '未授权'}</span></div>)}
+          <div className="settings-row"><strong>手机健康数据、麦克风与相机</strong><span>由父母设备管理</span></div>
+        </section>}
         <section className="settings-list card">
           <div className="settings-row">
             <span>
               <strong>已绑定老人</strong>
               <small>{props.profile.name}</small>
             </span>
-            <span>{props.familyLink.relation}</span>
+            <span>{props.familyLink?.relation ?? '未绑定'}</span>
           </div>
           <button type="button" onClick={() => props.onViewChange('medication')}>
             <span>

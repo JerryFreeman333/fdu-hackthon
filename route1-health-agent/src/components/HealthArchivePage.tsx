@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { demoArchives } from '../data/demoArchives';
 
 const categories = ['体检报告', '就诊记录', '检验检查', '影像资料', '病历资料', '其他资料'];
-type Archive = { id: string; name: string; category: string; date: string; file: File };
+type Archive = { id: string; name: string; category: string; date: string; file: File; scope?: string };
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open('ankang-health-attachments', 1);
@@ -15,12 +15,17 @@ export default function HealthArchivePage({
   children,
   onRecognize,
   demoMode = false,
+  owner = '',
 }: {
   children: ReactNode;
   onRecognize?: (file: File) => void;
   demoMode?: boolean;
+  owner?: string;
 }) {
   const [healthOpen, setHealthOpen] = useState(false);
+  const scope = `${demoMode ? 'demo' : 'personal'}:${owner}`;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
   const [items, setItems] = useState<Archive[]>(() => (demoMode ? demoArchives() : []));
   const [category, setCategory] = useState('全部');
   const [upload, setUpload] = useState(false);
@@ -37,7 +42,10 @@ export default function HealthArchivePage({
       .then((db) => {
         const r = db.transaction('files').objectStore('files').getAll();
         r.onsuccess = () => {
-          if (active) setItems([...(demoMode ? demoArchives() : []), ...(r.result as Archive[])]);
+          if (active) {
+            const saved = (r.result as Archive[]).filter(a => a.scope === scope || (!a.scope && !demoMode));
+            setItems([...(demoMode ? demoArchives().filter(a => !saved.some(s => s.id === a.id)) : []), ...saved]);
+          }
           db.close();
         };
         r.onerror = () => {
@@ -49,7 +57,13 @@ export default function HealthArchivePage({
     return () => {
       active = false;
     };
-  }, [demoMode]);
+  }, [demoMode, scope, revision]);
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('ankang-archive-updates');
+    channel.onmessage = e => { if (e.data === scope) setRevision(r => r + 1); };
+    return () => channel.close();
+  }, [scope]);
   useEffect(() => {
     if (!selected) return;
     const url = URL.createObjectURL(selected.file);
@@ -62,11 +76,12 @@ export default function HealthArchivePage({
     setError('');
     try {
       const entry: Archive = {
-        id: crypto.randomUUID(),
+        id: editingId ?? crypto.randomUUID(),
         name: name.trim(),
         category: kind,
         date: new Date().toISOString(),
         file,
+        scope,
       };
       const db = await database();
       await new Promise<void>((resolve, reject) => {
@@ -77,7 +92,13 @@ export default function HealthArchivePage({
         tx.onabort = () => reject(tx.error);
       });
       db.close();
-      setItems((i) => [...i, entry]);
+      setItems((i) => [...i.filter(a => a.id !== entry.id), entry]);
+      setEditingId(null);
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('ankang-archive-updates');
+        channel.postMessage(scope);
+        channel.close();
+      }
       setUpload(false);
       setFile(null);
       setName('');
@@ -105,6 +126,10 @@ export default function HealthArchivePage({
             返回档案
           </button>
           <h2>{selected.name}</h2>
+          <button className="btn-secondary" onClick={() => {
+            setEditingId(selected.id); setName(selected.name); setKind(selected.category);
+            setFile(selected.file); setSelected(null); setUpload(true);
+          }}>编辑档案</button>
           <p>
             {selected.category} · {new Date(selected.date).toLocaleDateString()}
           </p>
@@ -123,7 +148,7 @@ export default function HealthArchivePage({
             void save();
           }}
         >
-          <h2>上传新档案</h2>
+          <h2>{editingId ? '编辑档案' : '上传新档案'}</h2>
           <label>
             拍照或选择图片
             <input
@@ -172,7 +197,7 @@ export default function HealthArchivePage({
           <button className="btn-primary" disabled={!file || busy}>
             {busy ? '保存中…' : '保存档案'}
           </button>
-          <button type="button" className="btn-secondary" onClick={() => setUpload(false)}>
+          <button type="button" className="btn-secondary" onClick={() => { setUpload(false); setEditingId(null); setFile(null); setName(''); }}>
             取消
           </button>
         </form>

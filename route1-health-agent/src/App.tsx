@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, ElderProfile, FamilyHealthEvent, UserRole } from './types';
+import type { ChatMessage, ElderProfile, FamilyHealthEvent, FamilyLink, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
@@ -79,7 +79,7 @@ const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-r
 const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
 type ElderTab = 'home' | 'medications' | 'health' | 'profile';
 type ElderScreen = ElderTab | 'assistant' | 'home_space';
-type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
+type FamilyView = import('./components/FamilyDashboard').FamilyView;
 
 const ELDER_TABS: readonly MobileTabItem<ElderTab>[] = [
   { id: 'home', label: '首页', icon: 'home' },
@@ -88,10 +88,10 @@ const ELDER_TABS: readonly MobileTabItem<ElderTab>[] = [
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
-const FAMILY_TABS: readonly MobileTabItem<'home' | 'tasks' | 'report' | 'profile'>[] = [
+const FAMILY_TABS: readonly MobileTabItem<FamilyView>[] = [
   { id: 'home', label: '首页', icon: 'home' },
-  { id: 'tasks', label: '待处理', icon: 'tasks' },
   { id: 'report', label: '周报', icon: 'report' },
+  { id: 'messages', label: '消息', icon: 'messages' },
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
@@ -226,10 +226,19 @@ function AppRoot({
   );
   const [role, setRole] = useState<UserRole | null>(storedProfile.preferredRole ?? null);
   const [familyView, setFamilyView] = useState<FamilyView>('home');
+  const [demoSharing, setDemoSharing] = useState(true);
   const [elderScreen, setElderScreen] = useState<ElderScreen>('home');
   const [spaceResult, setSpaceResult] = useState<{ message: string; url?: string } | null>(null);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const demoFamilyLink: FamilyLink = {
+    id: 'demo-family-link',
+    relation: '儿子',
+    displayName: '王强（演示家属）',
+    maskedContact: '138****6677',
+    inviteCode: 'AN-DEMO-2026',
+    status: 'active',
+  };
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
   const homeTwin = useHomeTwinIntegration(HOME_TWIN_API_URL);
   const agentTools = useMemo(
@@ -344,10 +353,22 @@ function AppRoot({
       } else if (envelope.type === 'dispatch.append') {
         const record = envelope.payload as import('./engine/notify').FamilyNotificationRecord;
         mergeRecord(record);
+      } else if (envelope.type === 'medication.update') {
+        const payload = envelope.payload as { familyId?: string; mode?: string; name?: string; medicationRecords?: ElderProfile['medicationRecords'] };
+        const allowed = (demoMode && demoSharing) || (familySharing === 'granted' && familyLink?.status === 'active');
+        if (!allowed || payload?.mode !== storedProfile.dataMode || payload.familyId !== (demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode) || payload.name !== activeProfile.name) return;
+        const medicines = payload.medicationRecords;
+        if (!Array.isArray(medicines) || medicines.length > 200 || !medicines.every(m =>
+          m && ['id', 'name', 'dose', 'purpose', 'times'].every(k => typeof m[k as keyof typeof m] === 'string') &&
+          (m.status === 'active' || m.status === 'stopped'))) return;
+        const next = { ...storedProfile, profile: { ...storedProfile.profile, medicationRecords: medicines, medications: medicines.filter(m => m.status === 'active').map(m => m.name) } };
+        saveStoredProfile(next);
+        onProfileChange(next);
+        showToast('已收到家人的用药档案更新。');
       }
     });
     return unsubscribe;
-  }, [sync, mergeAcknowledge, mergeRecord]);
+  }, [sync, mergeAcknowledge, mergeRecord, demoMode, demoSharing, familySharing, familyLink, activeProfile.name, storedProfile, onProfileChange]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
   const handleAcknowledge = useCallback(
@@ -620,7 +641,14 @@ function AppRoot({
     const next: StoredProfile = { ...storedProfile, profile: nextProfile };
     saveStoredProfile(next);
     onProfileChange(next);
-    showToast('档案已更新。');
+    if (nextProfile.medicationRecords !== storedProfile.profile.medicationRecords &&
+        (demoMode || (familySharing === 'granted' && familyLink?.status === 'active'))) {
+      sync.broadcast('medication.update', {
+        familyId: demoMode ? demoFamilyLink.inviteCode : familyLink?.inviteCode,
+        mode: storedProfile.dataMode, name: activeProfile.name, medicationRecords: nextProfile.medicationRecords,
+      });
+    }
+    showToast(sync.status.mode === 'cross-device' ? '档案已保存，更新已发送到家庭连接。' : '档案已保存在本机，同浏览器家庭页面可同步更新。');
   }
 
   // 评审 P1-3：老人端 SOS 的微信通知家属动作。发送结果如实提示，不假装成功。
@@ -747,6 +775,7 @@ function AppRoot({
           )}
           {elderScreen === 'health' && (
             <HealthArchivePage
+              owner={activeProfile.name}
               demoMode={demoMode}
               onRecognize={(file) => {
                 if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
@@ -906,13 +935,34 @@ function AppRoot({
       <main className="content">
         <Suspense fallback={VIEW_FALLBACK}>
           <FamilyDashboard
-            profile={activeProfile}
-            familyLink={familyLink}
-            notifications={familyNotifs}
+            demoMode={demoMode}
+            medicationPage={<MedicationPage title="父母的药物档案" profile={activeProfile} onSave={handleProfileSave} onFind={(name) => void openHomeTwinLookup(name)} />}
+            archivePage={<HealthArchivePage owner={activeProfile.name} demoMode={demoMode}
+              onRecognize={(file) => {
+                if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
+                  showToast('真实图片识别服务尚未配置，未写入模拟结果。'); return;
+                }
+                void handlePhotoImport(file, 'report');
+              }}>
+              <ElderHealthPage profile={activeProfile} findings={findings} dataMode={storedProfile.dataMode}
+                onPhotoImport={(file, kind) => {
+                  if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
+                    showToast('真实图片识别服务尚未配置，未写入模拟结果。'); return;
+                  }
+                  return handlePhotoImport(file, kind);
+                }}
+                onCommitPhoto={commitPhotoImport} onCancelPhoto={cancelPhotoImport}
+                pendingPhoto={pendingPhoto} pendingPhotoKind={pendingPhotoKind} pendingPhotoError={pendingPhotoError}>
+                <p>档案保存在当前浏览器，与同机父母端共用。跨设备附件同步尚未接入。</p>
+              </ElderHealthPage>
+            </HealthArchivePage>}
+            profile={demoMode ? { ...activeProfile, familySharing: demoSharing ? 'granted' : 'denied' } : activeProfile}
+            familyLink={demoMode ? demoFamilyLink : familyLink}
+            notifications={demoMode ? (demoSharing ? collectFamilyNotifications(findings, 'granted', sharedFindingIds, today) : []) : familyNotifs}
             dispatchRecords={dispatchRecords}
             onAcknowledgeDispatch={handleAcknowledge}
             findings={findings}
-            familyEvents={visibleFamilyFacts}
+            familyEvents={demoMode ? (demoSharing ? familyEvents : []) : visibleFamilyFacts}
             tasks={tasks}
             homeSafetyActions={homeSafetyActions}
             homeTwinUrl={HOME_TWIN_URL}
@@ -923,21 +973,21 @@ function AppRoot({
             onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
             onContactElder={contactElder}
             onContactDoctor={contactDoctor}
-            onRevokeSharing={revokeFamilyShare}
+            onRevokeSharing={() => { setDemoSharing(false); revokeFamilyShare(); }}
             onBindFamily={bindFamily}
             onViewChange={setFamilyView}
             view={familyView}
             syncStatus={sync.status}
             tabId={sync.tabId}
             todaySignalCount={todaySignalCount}
-            gatedAlertCount={gatedAlertCount}
+            gatedAlertCount={demoMode ? 0 : gatedAlertCount}
             onClearData={handleClearAllData}
           />
         </Suspense>
       </main>
       <MobileTabBar
         items={FAMILY_TABS}
-        active={familyView === 'detail' ? 'tasks' : familyView === 'medication' ? 'profile' : familyView}
+        active={familyView === 'profile' || familyView === 'privacy' ? 'profile' : familyView === 'report' ? 'report' : familyView === 'messages' || familyView === 'detail' ? 'messages' : 'home'}
         onSelect={setFamilyView}
       />
       {toast && <div className="toast">{toast}</div>}
