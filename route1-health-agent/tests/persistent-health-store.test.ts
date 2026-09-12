@@ -113,3 +113,38 @@ test('hydrate 是幂等的：重复调用不重复读取也不会覆盖已有缓
   assert.equal(second, true);
   assert.equal(reader.load().events[0]?.id, 'event-1');
 });
+
+test('并发 hydrate（React StrictMode 双触发）必须共享同一次读取，不得误判无历史', async () => {
+  // 模拟 IndexedDB 的异步读取：第一次 get 在微任务之后才 resolve。
+  const map = new Map<string, unknown>();
+  const writer = new PersistentHealthRecordStore({
+    get: async (key) => map.get(key),
+    set: async (key, value) => {
+      map.set(key, value);
+    },
+    delete: async (key) => {
+      map.delete(key);
+    },
+  });
+  writer.save(snapshot);
+  let reads = 0;
+  const slowKv = {
+    get: async (key: string) => {
+      reads += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return map.get(key);
+    },
+    set: async (key: string, value: unknown) => {
+      map.set(key, value);
+    },
+    delete: async (key: string) => {
+      map.delete(key);
+    },
+  };
+  const reader = new PersistentHealthRecordStore(slowKv);
+  // StrictMode：第二个 effect 在第一个的 IDB 读取完成前就发起 hydrate。
+  const [first, second] = await Promise.all([reader.hydrate(), reader.hydrate()]);
+  assert.equal(first, true, '第一次 hydrate 必须读到历史数据');
+  assert.equal(second, true, '并发第二次 hydrate 不允许在读取完成前短路成 false（会把历史覆盖成种子）');
+  assert.equal(reader.load().events[0]?.id, 'event-1');
+});

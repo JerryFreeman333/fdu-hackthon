@@ -50,7 +50,8 @@ function isValidSnapshot(value: unknown): value is HealthRecordSnapshot {
 
 export class PersistentHealthRecordStore implements HealthRecordStore {
   private cache: HealthRecordSnapshot = EMPTY;
-  private hydrated = false;
+  /** 在途/已完成的水合 promise：并发调用共享同一结果（React StrictMode 双触发防覆盖）。 */
+  private hydratePromise: Promise<boolean> | null = null;
 
   constructor(private readonly kv: AsyncKeyValueStore | null) {}
 
@@ -81,10 +82,20 @@ export class PersistentHealthRecordStore implements HealthRecordStore {
    * 启动水合：把上次持久化的快照读进内存缓存。
    * 返回 true 表示存在可用的历史数据（App 应直接采用 load() 的结果）。
    * 多次调用幂等；任何读取/解析失败都等价于"没有历史数据"。
+   *
+   * 关键：并发调用必须共享同一个在途 promise。React StrictMode 会在开发模式
+   * 双触发启动 effect——第二次调用发生在第一次的 IDB 读取尚未完成时，若按
+   * "已完成"短路返回空 cache 的结果，App 会误判"无历史"并种下演示数据，
+   * 把上一次会话的真实记录覆盖掉（彩排实测复现：刷新即丢聊天）。
    */
-  async hydrate(): Promise<boolean> {
-    if (this.hydrated) return this.cache.events.length > 0 || this.cache.chat.length > 0;
-    this.hydrated = true;
+  hydrate(): Promise<boolean> {
+    if (!this.hydratePromise) {
+      this.hydratePromise = this.runHydrate();
+    }
+    return this.hydratePromise;
+  }
+
+  private async runHydrate(): Promise<boolean> {
     if (!this.kv) return false;
     try {
       const raw = await this.kv.get(STORAGE_KEY);
