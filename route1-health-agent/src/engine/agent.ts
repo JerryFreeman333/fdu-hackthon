@@ -427,8 +427,14 @@ export const QUICK_INPUTS = [
   '药忘记吃了',
   '刚才摔了一跤',
 ];
-export function msg(role: ChatMessage['role'], text: string, time: string, persisted = true): ChatMessage {
-  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted };
+export function msg(
+  role: ChatMessage['role'],
+  text: string,
+  time: string,
+  persisted = true,
+  extra?: Partial<Pick<ChatMessage, 'safetyAction'>>,
+): ChatMessage {
+  return { id: `${role}-${time}-${Math.random().toString(36).slice(2, 8)}`, role, text, time, persisted, ...extra };
 }
 export function tagLabel(tag: SymptomTag): string {
   return SYMPTOM_LABELS[tag];

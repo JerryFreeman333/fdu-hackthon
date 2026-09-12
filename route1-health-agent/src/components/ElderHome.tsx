@@ -5,6 +5,7 @@ import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
+import SafetyActions from './SafetyActions';
 
 interface ElderHomeProps {
   profile: ElderProfile;
@@ -88,7 +89,18 @@ export default function ElderHome({
         </button>
       </section>
 
-      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} />
+      {/* 紧急求助常驻卡：一键呼救不能藏在聊天里，更不能不存在（评审 P0-1）。 */}
+      <section className="card sos-card" aria-label="紧急求助">
+        <div className="section-head">
+          <div>
+            <h3>🆘 紧急求助</h3>
+            <span className="muted">突然很不好受，就直接打电话。不用先跟我说话。</span>
+          </div>
+        </div>
+        <SafetyActions profile={profile} />
+      </section>
+
+      <ChatView id="elder-chat" chat={chat} onSend={onSend} quickInputs={quickInputs} profile={profile} />
 
       <section className="card task-card">
         <div className="section-head">
