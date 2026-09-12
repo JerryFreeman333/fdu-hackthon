@@ -5,7 +5,7 @@ import type { ParsedHealthData } from '../adapters/ImageHealthParser';
 import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
-import SafetyActions from './SafetyActions';
+import SafetyActions, { familyCallLabel } from './SafetyActions';
 
 interface ElderHomeProps {
   profile: ElderProfile;
@@ -125,6 +125,16 @@ export default function ElderHome({
                     {task.status === 'pending' && (
                       <button className="btn-secondary" onClick={() => onTaskStatus(task.id, 'in_progress')}>
                         开始
+                      </button>
+                    )}
+                    {task.actions?.includes('call_family') && profile.familyPhone && (
+                      <a className="btn-secondary task-call-btn" href={`tel:${profile.familyPhone}`}>
+                        📞 打给{familyCallLabel(profile)}
+                      </a>
+                    )}
+                    {task.actions?.includes('request_share') && profile.familySharing !== 'granted' && (
+                      <button className="btn-primary" onClick={onRequestFamilyShare}>
+                        让家属知道
                       </button>
                     )}
                     <button className="btn-primary" onClick={() => onTaskStatus(task.id, 'completed')}>
