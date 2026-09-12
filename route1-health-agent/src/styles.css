@@ -874,3 +874,7 @@ button {
   align-items: center;
   white-space: nowrap;
 }
+.data-reset-card {
+  border: 1.5px solid #e4d5b8;
+  background: #fffcf5;
+}

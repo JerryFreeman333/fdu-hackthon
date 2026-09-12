@@ -177,6 +177,22 @@ VITE_UNDERSTANDING_LLM_MODEL=Minimax-M3   # 智谱 glm-4-flash（免费档）/ d
 
 **诚实声明**：Demo 阶段 key 经 Vite 注入浏览器，任何打开该页面的人理论上可提取。仅限一次性/免费 key（如 glm-4-flash 免费档）。正式部署必须换服务端代理（同 `VITE_AGENT_LLM_ENDPOINT` 的模式），由代理持有 key 并转发。
 
+**让 key 不进浏览器的本地代理**（推荐，一条命令）：
+
+```bash
+LLM_PROXY_API_KEY=你的key npm run proxy   # key 只存在于本机 Node 进程
+```
+
+然后把 `.env` 改成代理模式（`VITE_UNDERSTANDING_LLM_API_KEY` 填占位符即可）：
+
+```bash
+VITE_UNDERSTANDING_LLM_BASE_URL=http://localhost:8787
+VITE_UNDERSTANDING_LLM_API_KEY=proxy
+VITE_AGENT_LLM_ENDPOINT=http://localhost:8787/agent/chat   # 可选：回复层也走代理
+```
+
+代理支持 `/chat/completions`（理解层透传）与 `/agent/chat`（回复层适配），带 CORS 头；任何上游错误以 502 + 明确 message 返回，不静默。
+
 ## 跨设备协同与信令
 
 两台真手机的实时协同走 PeerJS（WebRTC DataChannel），数据不经中转服务器，信令只做握手。需要如实对待的风险：
