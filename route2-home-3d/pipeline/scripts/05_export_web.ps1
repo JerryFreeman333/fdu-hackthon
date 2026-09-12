@@ -7,7 +7,7 @@ $ply = Get-ChildItem "$repoRoot\pipeline\output\$Scene\point_cloud\iteration_*\p
     Sort-Object { [int]($_.Directory.Name -replace 'iteration_','') } | Select-Object -Last 1
 if (-not $ply) { throw "未找到训练结果，先运行 04_train_3dgs.ps1" }
 
-$dest = "$repoRoot\route2-home-3d\web\public\models\home.ply"
+$dest = "$repoRoot\web\public\models\home.ply"
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
 Copy-Item $ply.FullName $dest -Force
 Write-Host "===== 已导出到 $dest =====" -ForegroundColor Green

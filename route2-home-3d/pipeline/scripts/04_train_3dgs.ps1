@@ -7,6 +7,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$python = "$repoRoot\.venv\Scripts\python.exe"
+if (-not (Test-Path $python -PathType Leaf)) { throw "项目虚拟环境不存在: $python。请先运行 01_setup.ps1。" }
 $gsDir = "$repoRoot\pipeline\external\gaussian-splatting"
 $distilled = "$repoRoot\pipeline\data\$Scene\distilled"
 $output = "$repoRoot\pipeline\output\$Scene"
@@ -19,7 +21,7 @@ if ($Downscale -gt 0) { $args += @("-r", "$Downscale") }
 Write-Host "===== 训练高斯泼溅模型 (iterations=$Iterations) =====" -ForegroundColor Cyan
 Write-Host "提示: RTX 4060 8GB 约需 20~50 分钟；如遇 OOM 请加 -Downscale 4" -ForegroundColor Yellow
 Push-Location $gsDir
-python @args
+& $python @args
 Pop-Location
 if ($LASTEXITCODE -ne 0) { throw "训练失败" }
 

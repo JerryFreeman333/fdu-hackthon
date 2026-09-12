@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from .capture import BrowserUploadCaptureSource, CaptureFile
@@ -21,6 +21,8 @@ from .processor import ProcessResult, build_processor
 APP_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = APP_ROOT.parent
 DATA_ROOT = APP_ROOT / ".data"
+JOBS_INDEX_PATH = DATA_ROOT / "jobs" / "index.json"
+API_TOKEN = os.getenv("ROUTE2_API_TOKEN", "").strip()
 MAX_FILE_BYTES = int(os.getenv("ROUTE2_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
 MAX_TOTAL_BYTES = int(os.getenv("ROUTE2_MAX_TOTAL_BYTES", str(200 * 1024 * 1024)))
 MAX_FILES = int(os.getenv("ROUTE2_MAX_FILES", "60"))
@@ -36,6 +38,46 @@ _jobs_lock = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="route2-rescan")
 _processor = build_processor(REPO_ROOT)
 _capture_source = BrowserUploadCaptureSource()
+
+
+def _persist_jobs_locked() -> None:
+    # 任务状态落盘：进程重启后前端轮询的 jobId 不至于 404 失忆。
+    try:
+        JOBS_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = JOBS_INDEX_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(_jobs, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(JOBS_INDEX_PATH)
+    except OSError:
+        pass  # 状态落盘失败不阻塞复扫主流程
+
+
+def _load_jobs() -> None:
+    if not JOBS_INDEX_PATH.exists():
+        return
+    try:
+        data = json.loads(JOBS_INDEX_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    for job_id, job in data.items():
+        if not isinstance(job, dict):
+            continue
+        if job.get("status") in {"queued", "processing"}:
+            job["status"] = "failed"
+            job["message"] = "服务重启，任务中断；请重新提交复扫。"
+        _jobs[str(job_id)] = job
+
+
+_load_jobs()
+
+
+def _require_token(request: Request) -> None:
+    # 默认（未设置 ROUTE2_API_TOKEN）保持本机零配置可用；设置后强制校验。
+    if not API_TOKEN:
+        return
+    if request.headers.get("X-Route2-Token", "") != API_TOKEN:
+        raise HTTPException(status_code=401, detail="复扫接口需要有效的 X-Route2-Token")
 
 
 def _utc_now() -> str:
@@ -124,6 +166,7 @@ def _run_job(job_id: str, batch_payload: dict[str, Any]) -> None:
         with _jobs_lock:
             _jobs[job_id]["status"] = "processing"
             _jobs[job_id]["startedAt"] = _utc_now()
+            _persist_jobs_locked()
         files = tuple(
             CaptureFile(
                 path=Path(item["path"]),
@@ -151,6 +194,7 @@ def _run_job(job_id: str, batch_payload: dict[str, Any]) -> None:
             update["actionPlan"] = result.action_plan
         with _jobs_lock:
             _jobs[job_id].update(update)
+            _persist_jobs_locked()
     except Exception as exc:
         with _jobs_lock:
             _jobs[job_id].update({
@@ -158,6 +202,7 @@ def _run_job(job_id: str, batch_payload: dict[str, Any]) -> None:
                 "message": f"复扫任务异常: {exc}",
                 "finishedAt": _utc_now(),
             })
+            _persist_jobs_locked()
     finally:
         _cleanup_job(job_dir)
 
@@ -171,8 +216,9 @@ def health() -> dict[str, str]:
     }
 
 
-@app.post("/api/route2/rescan")
+@app.post("/api/route2/rescan", dependencies=[Depends(_require_token)])
 async def submit_rescan(
+    request: Request,
     batchId: str = Form(...),
     capturedAt: str = Form(...),
     mediaKind: str = Form(...),
@@ -243,6 +289,7 @@ async def submit_rescan(
             "createdAt": _utc_now(),
             "message": "复扫已进入本地队列。",
         }
+        _persist_jobs_locked()
     _executor.submit(_run_job, job_id, batch_payload)
     return JSONResponse(status_code=202, content={
         "status": "queued",
@@ -251,8 +298,8 @@ async def submit_rescan(
     })
 
 
-@app.get("/api/route2/rescan/{job_id}")
-def get_rescan(job_id: str) -> dict[str, Any]:
+@app.get("/api/route2/rescan/{job_id}", dependencies=[Depends(_require_token)])
+def get_rescan(job_id: str, request: Request) -> dict[str, Any]:
     with _jobs_lock:
         job = _jobs.get(job_id)
         if job is None:

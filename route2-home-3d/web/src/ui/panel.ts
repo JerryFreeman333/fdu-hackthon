@@ -25,7 +25,7 @@ function actionStatusLabel(status: HomeSafetyActionPlan['actions'][number]['stat
   return '待处理';
 }
 
-function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, onRescan?: () => void): void {
+function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, onRescan?: () => void, rescanOffline = false): void {
   body.innerHTML = '';
   if (!plan) {
     body.append(el<HTMLDivElement>('div', 'muted small', '暂未接入家庭行动计划。'));
@@ -59,12 +59,19 @@ function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, 
     const button = el<HTMLButtonElement>('button', 'action-rescan-btn', '🔄 已处理？重新扫描确认');
     button.onclick = () => onRescan();
     body.append(button);
+    if (rescanOffline) {
+      body.append(el<HTMLDivElement>(
+        'div',
+        'action-rescan-warning muted small',
+        '⚠ 复扫服务未启动：提交不会成功。请先启动后端（python -m uvicorn backend.app:app --port 8010）。',
+      ));
+    }
   } else if (plan.status === 'clear') {
     body.append(el<HTMLDivElement>('div', 'action-resolved-note', '✓ 本轮复扫未再发现对应风险，任务已自动关闭。'));
   }
 }
 
-function renderRoleHome(data: HazardData, body: HTMLElement, cb: PanelCallbacks, mode: SceneMode, role: Route2Role, actionPlan: HomeSafetyActionPlan | null): { updateActionPlan(plan: HomeSafetyActionPlan | null): void } {
+function renderRoleHome(data: HazardData, body: HTMLElement, cb: PanelCallbacks, mode: SceneMode, role: Route2Role, actionPlan: HomeSafetyActionPlan | null, rescanOffline = false): { updateActionPlan(plan: HomeSafetyActionPlan | null): void } {
   body.innerHTML = '';
 
   const title = role === 'resident' ? '我的家' : '家庭状态';
@@ -88,17 +95,18 @@ function renderRoleHome(data: HazardData, body: HTMLElement, cb: PanelCallbacks,
     body.append(tip);
   } else {
     body.append(el<HTMLDivElement>('div', 'family-summary', `当前 ${data.hazards.length} 个演示风险项；只有已具备空间证据的数据才允许进入真实模式。`));
-    renderActionPlan(body, actionPlan, cb.onRescan);
+    renderActionPlan(body, actionPlan, cb.onRescan, rescanOffline);
   }
 
   return {
     updateActionPlan(plan) {
-      if (role === 'family') renderActionPlan(body, plan, cb.onRescan);
+      if (role === 'family') renderActionPlan(body, plan, cb.onRescan, rescanOffline);
     },
   };
 }
 
-export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode, actionPlan: HomeSafetyActionPlan | null = null, role: Route2Role = 'resident'): { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void } {
+export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode, actionPlan: HomeSafetyActionPlan | null = null, role: Route2Role = 'resident', options: { rescanOffline?: boolean } = {}): { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void; setRescanOffline(offline: boolean): void } {
+  let rescanOffline = options.rescanOffline ?? false;
   const panel = document.getElementById('panel')!;
   panel.innerHTML = '';
 
@@ -140,7 +148,7 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
   data.hazards.forEach(h => counts[h.level]++);
 
   const homeController = renderRoleHome(data, residentHome.body, cb, mode, 'resident', actionPlan);
-  const familyController = renderRoleHome(data, familyHome.body, cb, mode, 'family', actionPlan);
+  let familyController = renderRoleHome(data, familyHome.body, cb, mode, 'family', actionPlan, rescanOffline);
 
   const stats = el<HTMLDivElement>('div', 'stats', `
     <span class="badge lv-high">高 ${counts.high}</span>
@@ -215,6 +223,11 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
       familyController.updateActionPlan(plan);
     },
     setRole,
+    setRescanOffline(offline: boolean) {
+      if (rescanOffline === offline) return;
+      rescanOffline = offline;
+      familyController = renderRoleHome(data, familyHome.body, cb, mode, 'family', actionPlan, rescanOffline);
+    },
   };
 }
 

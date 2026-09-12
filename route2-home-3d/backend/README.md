@@ -46,7 +46,15 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8010
 
 `GET /api/route2/rescan/{jobId}`
 
-轮询 `queued → processing → ready/failed`；只有 `ready` 且存在新的风险投影时，前端才会应用新的风险/行动状态。
+轮询 `queued → processing → ready/failed`；只有 `ready` 且存在新的风险投影时，前端才会应用新的风险/行动状态。任务状态会落盘到 `backend/.data/jobs/index.json`，服务重启后已结束的任务仍可查询；重启时仍在排队/处理中的任务会被如实标记为失败，请重新提交。
+
+## 部署边界
+
+本后端面向**本机或可信家庭内网**的单用户原型使用：
+
+- 未做用户体系；设置环境变量 `ROUTE2_API_TOKEN`（任意随机串）后，`POST /api/route2/rescan` 与 `GET /api/route2/rescan/{jobId}` 都要求请求头 `X-Route2-Token` 匹配，否则返回 401。前端当前不发送该请求头，启用 token 时需自行在 `RESCAN_ENDPOINT` 调用侧补充。
+- 单工作者队列（`max_workers=1`）；管线子进程自带超时（`ROUTE2_PIPELINE_TIMEOUT_SECONDS`，默认 1800 秒），超时任务会标记为 failed，不会永久堵死队列，但排在其后的任务仍需顺序执行。
+- 请勿将端口暴露到公网。
 
 ## 隐私与留存
 

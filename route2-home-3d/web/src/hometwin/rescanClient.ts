@@ -20,6 +20,29 @@ export interface RescanJobOptions {
   signal?: AbortSignal;
 }
 
+export interface RescanServiceStatus {
+  online: boolean;
+  detail?: string;
+}
+
+export async function checkRescanService(
+  endpoint = '/api/route2/rescan',
+  timeoutMs = 2500,
+): Promise<RescanServiceStatus> {
+  const healthUrl = `${endpoint.replace(/\/rescan\/?$/, '')}/health`;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(healthUrl, { signal: controller.signal });
+    if (!response.ok) return { online: false, detail: `HTTP ${response.status}` };
+    return { online: true };
+  } catch (error) {
+    return { online: false, detail: error instanceof Error ? error.message : String(error) };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function parseResponse(payload: unknown): RescanSubmitResponse {
   if (!payload || typeof payload !== 'object') {
     throw new Error('复扫服务返回了无效响应');

@@ -20,3 +20,9 @@ web/dist/
 
 # python
 __pycache__/
+
+# 本地环境与模型权重（不入库）
+.venv/
+weights/
+*.pt
+*.bak

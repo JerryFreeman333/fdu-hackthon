@@ -6,13 +6,13 @@ import { validateHomeTwin, type HomeTwinSnapshot, type RouteStatus } from './hom
 import { planBedToToilet, type RoutePlanResult } from './hometwin/routePlanner';
 import { applyRescan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
-import { submitRescanBatch, waitForRescanJob, type RescanSubmitResponse } from './hometwin/rescanClient';
+import { submitRescanBatch, waitForRescanJob, checkRescanService, type RescanSubmitResponse } from './hometwin/rescanClient';
 import { SceneManager } from './scene/app';
 import { buildDemoRoom } from './scene/demoRoom';
 import { createHazardMarkers, createItemRings } from './scene/markers';
 import { createPathVisual, highlightDangerZones } from './scene/paths';
 import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
-import { createRoleSwitcher, readStoredRole, updateRoleSwitcher, type Route2Role } from './ui/roleMode';
+import { createRoleSwitcher, readStoredRole, hasStoredRole, updateRoleSwitcher, type Route2Role } from './ui/roleMode';
 import { buildJourney, type JourneyStep } from './ui/journey';
 
 const DEMO_SPLAT_URL = 'models/home.ply';
@@ -158,7 +158,8 @@ async function main() {
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
 
-  let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void; };
+  let panelController: { updateActionPlan(plan: HomeSafetyActionPlan | null): void; setRole(nextRole: Route2Role): void; setRescanOffline(offline: boolean): void; };
+  let rescanOffline = true; // 默认按“未启动”处理，启动探测成功后才放开。
   let currentRole = readStoredRole();
   const journeyMount = document.getElementById('journey');
 
@@ -228,7 +229,17 @@ async function main() {
     }
   }
 
-  function onRescan(): void {
+  async function onRescan(): Promise<void> {
+    // 先探测后端；服务不在线时绝不弹文件选择框，避免家属选完文件才石沉大海。
+    const status = await checkRescanService(RESCAN_ENDPOINT);
+    if (!status.online) {
+      rescanOffline = true;
+      panelController.setRescanOffline(true);
+      setHint('复扫服务未启动：请先在仓库根目录运行 python -m uvicorn backend.app:app --port 8010，再重新扫描。本次未选择文件，未改变任何状态。');
+      return;
+    }
+    rescanOffline = false;
+    panelController.setRescanOffline(false);
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime,video/x-m4v';
@@ -255,7 +266,18 @@ async function main() {
       setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
     },
     onRescan,
-  }, mode, currentActionPlan, currentRole);
+  }, mode, currentActionPlan, currentRole, { rescanOffline });
+
+  // 启动即探测复扫服务：不在线时在复扫入口常驻提示，而不是等用户选完文件才失败。
+  void checkRescanService(RESCAN_ENDPOINT).then((status) => {
+    rescanOffline = !status.online;
+    panelController.setRescanOffline(rescanOffline);
+    if (rescanOffline) {
+      setHint('复扫服务未启动：家属端「重新扫描确认」暂不可用。启动方式：python -m uvicorn backend.app:app --port 8010。找东西等功能不受影响。');
+    } else if (!hasStoredRole()) {
+      setHint('首次使用：可在右上角切换「我是老人 / 我是子女」视角；老人日常只需要「找东西」页。');
+    }
+  });
 
   window.addEventListener('resize', () => {
     app.camera.aspect = window.innerWidth / window.innerHeight;

@@ -11,6 +11,14 @@ export function readStoredRole(): Route2Role {
   }
 }
 
+export function hasStoredRole(): boolean {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function persistRole(role: Route2Role): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, role);

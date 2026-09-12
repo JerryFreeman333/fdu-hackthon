@@ -19,6 +19,16 @@ if ([string]::IsNullOrWhiteSpace($Video) -eq [string]::IsNullOrWhiteSpace($Photo
 if ($Fps -lt 1) { throw "-Fps 必须 >= 1" }
 if ($MaxWidth -lt 640) { throw "-MaxWidth 建议不要低于 640" }
 
+$ffmpeg = $null
+if ($Video) {
+    $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if (-not $ffmpeg) {
+        $ffmpeg = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Gyan.FFmpeg_*\*\bin\ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if (-not $ffmpeg) { throw "未找到 ffmpeg.exe；请将 ffmpeg 加入 PATH 或通过 winget 安装 Gyan.FFmpeg。" }
+    $ffmpegPath = if ($ffmpeg.PSObject.Properties['Source']) { $ffmpeg.Source } else { $ffmpeg.FullName }
+}
+
 # 每次运行从干净场景开始，避免不同家庭/不同扫描混入同一个 COLMAP 数据库。
 if (Test-Path $sceneDir) {
     Remove-Item $inputDir, "$sceneDir\db.db", "$sceneDir\sparse", "$sceneDir\distilled" -Recurse -Force -ErrorAction SilentlyContinue
@@ -28,7 +38,7 @@ New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
 if ($Video) {
     if (-not (Test-Path $Video -PathType Leaf)) { throw "视频不存在: $Video" }
     Write-Host "===== 视频抽帧: $Video -> $inputDir (fps=$Fps) =====" -ForegroundColor Cyan
-    & ffmpeg -y -i $Video -vf "fps=$Fps,scale='min($MaxWidth,iw)':-2" -q:v 2 "$inputDir\frame_%04d.jpg"
+    & $ffmpegPath -y -i $Video -vf "fps=$Fps,scale='min($MaxWidth,iw)':-2" -q:v 2 "$inputDir\frame_%04d.jpg"
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg 抽帧失败" }
 }
 else {
