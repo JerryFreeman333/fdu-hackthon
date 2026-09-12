@@ -14,11 +14,12 @@
     "security:check": "node scripts/security-check.mjs",
     "verify:llm": "node scripts/verify-llm-understanding.mjs",
     "proxy": "node scripts/local-llm-proxy.mjs",
-    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:sos && npm run test:browser:onboarding && npm run test:browser:notif && npm run test:browser:cross-device",
+    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:sos && npm run test:browser:onboarding && npm run test:browser:webhook && npm run test:browser:notif && npm run test:browser:cross-device",
     "preview": "vite preview",
     "test:browser": "node tests/browser-smoke.test.mjs",
     "test:browser:sos": "node tests/elder-sos-blackbox.test.mjs",
     "test:browser:onboarding": "node tests/onboarding-blackbox.test.mjs",
+    "test:browser:webhook": "node tests/webhook-blackbox.test.mjs",
     "test:browser:notif": "node tests/notification-push-blackbox.test.mjs",
     "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs"
   },

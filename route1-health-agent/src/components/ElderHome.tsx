@@ -6,6 +6,7 @@ import { sharingLabel } from '../engine/privacy';
 import type { DemoImageKind } from '../adapters/DemoImageHealthParser';
 import ChatView from './ChatView';
 import SafetyActions, { familyCallLabel } from './SafetyActions';
+import { loadWebhookConfig } from '../adapters/WebhookPushChannel';
 import type { DataMode } from '../store/profileStore';
 
 interface ElderHomeProps {
@@ -30,6 +31,8 @@ interface ElderHomeProps {
   syncStatus?: import('../hooks/useCrossDeviceSync').CrossDeviceStatus;
   /** 数据模式：决定"数据从哪儿来"卡片的文案（评审 P1-2）。 */
   dataMode?: DataMode;
+  /** 已配置微信推送时，SOS 卡出现"微信通知家属"按钮（评审 P1-3）；App 内处理发送与提示。 */
+  onNotifyFamily?: () => void;
 }
 
 export default function ElderHome({
@@ -53,6 +56,7 @@ export default function ElderHome({
   onGenerateInvite,
   syncStatus,
   dataMode = 'demo',
+  onNotifyFamily,
 }: ElderHomeProps) {
   const gentleChanges = findings.filter((f) => f.severity === 'watch').slice(0, 2);
   const familyAsk =
@@ -102,6 +106,11 @@ export default function ElderHome({
           </div>
         </div>
         <SafetyActions profile={profile} />
+        {onNotifyFamily && loadWebhookConfig() && (
+          <button className="btn-secondary sos-notify-btn" onClick={onNotifyFamily}>
+            📲 微信通知家属：我需要帮助
+          </button>
+        )}
       </section>
 
       <ChatView

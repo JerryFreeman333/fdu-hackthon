@@ -30,6 +30,7 @@ const healthRecordStore = new PersistentHealthRecordStore(
 );
 import { useNotificationDispatch } from './hooks/useNotificationDispatch';
 import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
+import { loadWebhookConfig, sendWebhookPush } from './adapters/WebhookPushChannel';
 import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
 import { lazy, Suspense } from 'react';
@@ -370,6 +371,19 @@ function AppRoot({
     showToast('档案已更新。');
   }
 
+  // 评审 P1-3：老人端 SOS 的微信通知家属动作。发送结果如实提示，不假装成功。
+  async function handleNotifyFamilyUrgent() {
+    const config = loadWebhookConfig();
+    if (!config) return;
+    const outcome = await sendWebhookPush(config, {
+      title: `紧急求助：${activeProfile.name}`,
+      body: '老人在安康助手按下了紧急求助按钮，请立即电话联系确认安全。',
+    });
+    showToast(
+      outcome.status === 'sent' ? '已通过微信通知家属。请同时保持电话畅通。' : `微信通知没有成功：${outcome.detail}`,
+    );
+  }
+
   function handleTaskStatus(taskId: string, status: Parameters<typeof updateStatus>[1]) {
     updateStatus(taskId, status);
     if (status === 'completed') showToast('已完成。我会把这次处理结果记下来。');
@@ -443,6 +457,7 @@ function AppRoot({
             onGenerateInvite={generateInvite}
             syncStatus={sync.status}
             dataMode={storedProfile.dataMode}
+            onNotifyFamily={() => void handleNotifyFamilyUrgent()}
           />
           <details className="advanced-details">
             <summary>查看我的状态（可选）</summary>

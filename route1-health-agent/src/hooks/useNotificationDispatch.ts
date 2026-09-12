@@ -11,6 +11,7 @@ import {
   type FamilyNotificationRecord,
 } from '../engine/notify';
 import { sendBrowserPush } from '../adapters/BrowserNotificationChannel';
+import { loadWebhookConfig, sendWebhookPush } from '../adapters/WebhookPushChannel';
 import { loadDispatchRecords, saveDispatchRecords } from '../engine/notifyPersistence';
 
 function isUndeliveredPush(record: FamilyNotificationRecord): boolean {
@@ -72,14 +73,23 @@ export function useNotificationDispatch({
   const effectiveDeliver = useCallback<DeliverFn>(
     async (notification) => {
       if (deliver) return deliver(notification);
-      // 默认走浏览器系统通知；adapter 内部对不支持/未授权/抛错都会返回
+      // 渠道一：浏览器系统通知；adapter 内部对不支持/未授权/抛错都返回
       // 明确的 DeliveryOutcome，台账如实记录，绝不假装送达。
-      const outcome: DeliveryOutcome = sendBrowserPush(
-        `family-${notification.finding.id}`,
-        notification.finding.title,
-        notification.message,
-      );
-      return [outcome];
+      const outcomes: DeliveryOutcome[] = [
+        sendBrowserPush(`family-${notification.finding.id}`, notification.finding.title, notification.message),
+      ];
+      // 渠道二（评审 P0-6/P1-3）：配置了微信推送时把同一条通知推到家属微信，
+      // 不依赖"家属此刻开着这个网页"。失败同样进台账，绝不静默。
+      const webhookConfig = loadWebhookConfig();
+      if (webhookConfig) {
+        outcomes.push(
+          await sendWebhookPush(webhookConfig, {
+            title: notification.finding.title,
+            body: notification.message,
+          }),
+        );
+      }
+      return outcomes;
     },
     [deliver],
   );
