@@ -169,11 +169,12 @@ async function main() {
   }
   const failed = results.filter((item) => !item.ok).length;
   log(failed === 0 ? '全部通过' : `${failed} 项失败`);
-  process.exitCode = failed === 0 ? 0 : 1;
+  // CI 的公共信令可达时，PeerJS 的 WebSocket 会一直挂着事件循环——断言跑完也必须强制退出。
+  process.exit(failed === 0 ? 0 : 1);
 }
 
 main().catch((error) => {
   console.error(error);
   stopPreview();
-  process.exitCode = 1;
+  process.exit(1);
 });

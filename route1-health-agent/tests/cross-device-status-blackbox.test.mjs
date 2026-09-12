@@ -198,6 +198,8 @@ async function runSmoke() {
   const total = results.length;
   log(`总计: ${passed}/${total} 通过`);
   if (passed < total) process.exit(1);
+  // CI 的公共信令可达时，PeerJS 的 WebSocket 会一直挂着事件循环——断言跑完也必须强制退出。
+  process.exit(0);
 }
 
 async function main() {
