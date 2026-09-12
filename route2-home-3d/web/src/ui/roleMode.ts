@@ -1,13 +1,16 @@
-export type Route2Role = 'resident' | 'family';
+export type Route2Role = "resident" | "family";
 
-const STORAGE_KEY = 'route2-role';
+const STORAGE_KEY = "route2-role";
 
 export function readStoredRole(): Route2Role {
   try {
+    // 路线一会在 5174 入口上显式传 role，深链身份优先于本机上次选择。
+    const launchRole = new URLSearchParams(window.location.search).get("role");
+    if (launchRole === "family" || launchRole === "resident") return launchRole;
     const value = window.localStorage.getItem(STORAGE_KEY);
-    return value === 'family' ? 'family' : 'resident';
+    return value === "family" ? "family" : "resident";
   } catch {
-    return 'resident';
+    return "resident";
   }
 }
 
@@ -19,24 +22,27 @@ export function persistRole(role: Route2Role): void {
   }
 }
 
-export function createRoleSwitcher(initialRole: Route2Role, onChange: (role: Route2Role) => void): HTMLElement {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'role-switcher';
-  wrapper.setAttribute('role', 'group');
-  wrapper.setAttribute('aria-label', '使用身份');
+export function createRoleSwitcher(
+  initialRole: Route2Role,
+  onChange: (role: Route2Role) => void,
+): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "role-switcher";
+  wrapper.setAttribute("role", "group");
+  wrapper.setAttribute("aria-label", "使用身份");
 
   const roles: Array<{ key: Route2Role; label: string }> = [
-    { key: 'resident', label: '我是老人' },
-    { key: 'family', label: '我是子女/照护者' },
+    { key: "resident", label: "我是老人" },
+    { key: "family", label: "我是子女/照护者" },
   ];
 
   for (const role of roles) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'role-btn';
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "role-btn";
     button.textContent = role.label;
     button.dataset.role = role.key;
-    button.setAttribute('aria-pressed', String(role.key === initialRole));
+    button.setAttribute("aria-pressed", String(role.key === initialRole));
     button.onclick = () => {
       persistRole(role.key);
       onChange(role.key);
@@ -48,9 +54,9 @@ export function createRoleSwitcher(initialRole: Route2Role, onChange: (role: Rou
 }
 
 export function updateRoleSwitcher(root: HTMLElement, role: Route2Role): void {
-  root.querySelectorAll<HTMLButtonElement>('.role-btn').forEach((button) => {
+  root.querySelectorAll<HTMLButtonElement>(".role-btn").forEach((button) => {
     const active = button.dataset.role === role;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', String(active));
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
 }

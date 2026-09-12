@@ -8,21 +8,21 @@
  * 用法：
  *   LLM_PROXY_API_KEY=你的key npm run proxy
  * 然后在 .env 里改成代理模式（key 填占位符即可，代理会替换成真实 key）：
- *   VITE_UNDERSTANDING_LLM_BASE_URL=http://localhost:8787
+ *   VITE_UNDERSTANDING_LLM_BASE_URL=http://localhost:8788
  *   VITE_UNDERSTANDING_LLM_API_KEY=proxy
  *   VITE_UNDERSTANDING_LLM_MODEL=你的模型名
  * 回复层适配器（可选）：
- *   VITE_AGENT_LLM_ENDPOINT=http://localhost:8787/agent/chat
+ *   VITE_AGENT_LLM_ENDPOINT=http://localhost:8788/agent/chat
  *
  * 环境变量：
  *   LLM_PROXY_API_KEY      必填，上游厂商 key（只存在于本进程）
  *   LLM_PROXY_UPSTREAM_URL 默认 https://api.minimaxi.com/v1（任何 OpenAI 兼容端点）
- *   LLM_PROXY_PORT         默认 8787
+ *   LLM_PROXY_PORT         默认 8788（避开 HealthKit Bridge 的 8787）
  *   LLM_PROXY_MODEL        /agent/chat 未显式传 model 时的默认模型
  */
 import http from 'node:http';
 
-const PORT = Number(process.env.LLM_PROXY_PORT ?? 8787);
+const PORT = Number(process.env.LLM_PROXY_PORT ?? 8788);
 const UPSTREAM = (process.env.LLM_PROXY_UPSTREAM_URL ?? 'https://api.minimaxi.com/v1').replace(/\/+$/, '');
 const API_KEY = process.env.LLM_PROXY_API_KEY ?? '';
 

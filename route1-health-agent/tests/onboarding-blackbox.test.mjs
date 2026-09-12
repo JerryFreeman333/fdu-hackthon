@@ -102,32 +102,31 @@ async function runOnboardingSuite() {
     await page.locator('#profile-family-phone').fill('13911112222');
     await page.getByRole('button', { name: '好了，开始使用' }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    const headerName = await page.locator('.persona-name').textContent();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    const headerName = await page.locator('.elder-welcome h1').textContent();
     check('建档后老人端显示用户自己的称呼', headerName?.includes('李奶奶') === true, headerName ?? '');
 
     const demoSeedText = await page.getByText('今天很累，什么都不想干').count();
     check('personal 模式从空白开始，没有合成聊天种子', demoSeedText === 0);
-    await page.getByText('当前版本未接入真实硬件').waitFor({ state: 'visible', timeout: 5000 });
-    check('personal 模式的设备说明不再声称"模拟设备数据"', true);
+    await page.getByRole('button', { name: '我的' }).last().click();
+    await page.getByText('自用模式，不注入演示数据').waitFor({ state: 'visible', timeout: 5000 });
+    check('personal 模式明确不注入演示数据', true);
 
     // 刷新后档案仍在，不回首启（角色选择是会话状态，需重选一次角色）。
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     check(
       '刷新后档案仍在（不回首启）',
-      (await page.locator('.persona-name').textContent())?.includes('李奶奶') === true,
+      (await page.locator('.elder-welcome h1').textContent())?.includes('李奶奶') === true,
     );
 
-    // 编辑档案：打开"查看我的状态" → 编辑 → 改称呼 → 保存
-    await page.getByText('查看我的状态（可选）').click();
-    await page.getByRole('button', { name: '编辑我的档案' }).waitFor({ state: 'visible', timeout: 10000 });
-    await page.getByRole('button', { name: '编辑我的档案' }).click();
+    // 编辑档案：我的 → 个人资料 → 改称呼 → 保存
+    await page.getByRole('button', { name: '我的' }).last().click();
+    await page.locator('.settings-list button', { hasText: '个人资料' }).click();
     await page.locator('#profile-name').fill('赵奶奶');
     await page.getByRole('button', { name: '保存档案' }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    check('编辑档案立即生效到界面上', (await page.locator('.persona-name').textContent())?.includes('赵奶奶') === true);
+    check('编辑档案立即生效到界面上', (await page.locator('body').innerText()).includes('赵奶奶'));
     await context.close();
   }
 
@@ -138,8 +137,8 @@ async function runOnboardingSuite() {
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: /体验演示档案/ }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
-    const headerName = await page.locator('.persona-name').textContent();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    const headerName = await page.locator('.elder-welcome h1').textContent();
     check('选择演示档案 → 进入王秀兰奶奶的完整演示', headerName?.includes('王秀兰奶奶') === true, headerName ?? '');
     await context.close();
   }
@@ -151,9 +150,9 @@ async function runOnboardingSuite() {
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: /体验演示档案/ }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.locator('.persona-name').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     page.once('dialog', (dialog) => dialog.accept());
-    await page.getByText('查看我的状态（可选）').click();
+    await page.getByRole('button', { name: '我的' }).last().click();
     await page.getByRole('button', { name: '清空本机全部数据' }).click();
     await page.getByText('先选一下怎么开始').waitFor({ state: 'visible', timeout: 10000 });
     check('清空本机数据后回到首启选择（删档重来）', true);

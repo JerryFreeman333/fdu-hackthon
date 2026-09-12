@@ -44,6 +44,11 @@ import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
 import { lazy, Suspense } from 'react';
 import ElderHome from './components/ElderHome';
+import ElderAssistantPage from './components/ElderAssistantPage';
+import ElderHealthPage from './components/ElderHealthPage';
+import ElderHomeSpacePage from './components/ElderHomeSpacePage';
+import ElderSettingsPage from './components/ElderSettingsPage';
+import SafetyActions from './components/SafetyActions';
 
 // 家属端主视图与老人端的可选状态页按需加载：
 // 老人用旧手机/弱网打开时不必下载家属端整个仪表盘（审查反馈：首屏体积）。
@@ -63,20 +68,22 @@ import { useFontScale } from './hooks/useFontScale';
 
 const LEGACY_HEALTH_STORAGE_KEYS = ['ankang-route1-health-records-v1', 'ankang-route1-health-records-v2'];
 const LEGACY_HOME_ACTION_KEY = 'ankang-route1-home-safety-actions-v1';
-type ElderTab = 'home' | 'health' | 'assistant' | 'profile';
+type ElderTab = 'home' | 'health' | 'home_space' | 'profile';
+type ElderScreen = ElderTab | 'assistant';
+type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
 
 const ELDER_TABS: readonly MobileTabItem<ElderTab>[] = [
   { id: 'home', label: '首页', icon: 'home' },
   { id: 'health', label: '健康', icon: 'health' },
-  { id: 'assistant', label: '助手', icon: 'assistant' },
+  { id: 'home_space', label: '我的家', icon: 'space' },
   { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
-const FAMILY_TABS: readonly MobileTabItem<'home' | 'detail' | 'report' | 'medication'>[] = [
+const FAMILY_TABS: readonly MobileTabItem<'home' | 'tasks' | 'report' | 'profile'>[] = [
   { id: 'home', label: '首页', icon: 'home' },
+  { id: 'tasks', label: '待处理', icon: 'tasks' },
   { id: 'report', label: '周报', icon: 'report' },
-  { id: 'detail', label: '消息', icon: 'messages' },
-  { id: 'medication', label: '我的', icon: 'profile' },
+  { id: 'profile', label: '我的', icon: 'profile' },
 ];
 
 const HOME_TWIN_URL = import.meta.env.VITE_HOME_TWIN_URL?.trim() || 'http://localhost:5174';
@@ -200,8 +207,9 @@ function AppRoot({
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(initialHomeSafetyActions);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [familyView, setFamilyView] = useState<'home' | 'detail' | 'report' | 'medication'>('home');
-  const [elderTab, setElderTab] = useState<ElderTab>('home');
+  const [familyView, setFamilyView] = useState<FamilyView>('home');
+  const [elderScreen, setElderScreen] = useState<ElderScreen>('home');
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [deviceSync, setDeviceSync] = useState<DeviceSyncState>({ status: 'idle', received: [] });
   const healthKitAdapter = useMemo(
@@ -491,6 +499,8 @@ function AppRoot({
   }, [familySharing, findings, promptFamilyShare]);
 
   function selectRole(nextRole: UserRole) {
+    if (nextRole === 'elder') setElderScreen('home');
+    if (nextRole === 'family') setFamilyView('home');
     setRole(nextRole);
   }
 
@@ -507,25 +517,14 @@ function AppRoot({
   }
 
   function navigateElder(tab: ElderTab) {
-    setElderTab(tab);
-    if (tab === 'health') {
-      const details = document.getElementById('elder-health') as HTMLDetailsElement | null;
-      if (details) details.open = true;
-    }
-    const targetId =
-      tab === 'home'
-        ? 'elder-home'
-        : tab === 'health'
-          ? 'elder-health'
-          : tab === 'assistant'
-            ? 'elder-chat'
-            : 'elder-settings';
-    window.requestAnimationFrame(() => {
-      const target = document.getElementById(targetId);
-      if (!target) return;
-      const top = target.getBoundingClientRect().top + window.scrollY - 92;
-      window.scrollTo({ top, behavior: 'smooth' });
-    });
+    setElderScreen(tab);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  function openAssistant(prompt?: string) {
+    setElderScreen('assistant');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    if (prompt) void handleElderSend(prompt);
   }
 
   // 评审 P0-4：删档重来。试玩产生的测试主诉会永久影响基线，必须有用户可达的清空入口。
@@ -601,91 +600,131 @@ function AppRoot({
 
   if (role === 'elder') {
     return (
-      <div className="app">
-        <header className="simple-header">
-          <div>
-            <div className="persona-name">{activeProfile.name}</div>
-            <div className="persona-sub">
-              今天 ·{' '}
-              {activeProfile.familySharing === 'granted'
-                ? '已允许必要的家属协同'
-                : activeProfile.familySharing === 'ask'
-                  ? '需要时先问您'
-                  : '暂不共享给家属'}
+      <div className={`app elder-app ${elderScreen === 'assistant' ? 'assistant-is-open' : ''}`}>
+        {elderScreen !== 'assistant' && (
+          <header className="simple-header app-shell-header">
+            <div>
+              <div className="app-wordmark">安康助手</div>
+              <div className="persona-sub">今天 · 安静陪伴，需要时立即帮忙</div>
             </div>
-          </div>
-          <div className="header-actions">
-            <FontSizeControl value={fontScale} onChange={setFontScale} />
-            <button className="btn-secondary" onClick={resetRole}>
-              切换身份
+            <button className="emergency-header-button" type="button" onClick={() => setEmergencyOpen(true)}>
+              紧急求助
             </button>
-          </div>
-        </header>
-        <main className="content">
-          <RuntimeModeBanner />
-          <ElderHome
-            profile={activeProfile}
-            chat={chat}
-            onSend={handleElderSend}
-            onPhotoImport={handlePhotoImport}
-            onCommitPhoto={commitPhotoImport}
-            onCancelPhoto={cancelPhotoImport}
-            pendingPhoto={pendingPhoto}
-            pendingPhotoKind={pendingPhotoKind}
-            pendingPhotoError={pendingPhotoError}
-            quickInputs={quickInputs}
-            tasks={tasks}
-            findings={findings}
-            familyLink={familyLink}
-            onTaskStatus={handleTaskStatus}
-            onRequestFamilyShare={requestFamilyShare}
-            onKeepFamilyPrivate={keepFamilyPrivate}
-            onRevokeFamilyShare={revokeFamilyShare}
-            onGenerateInvite={generateInvite}
-            syncStatus={sync.status}
-            dataMode={storedProfile.dataMode}
-            onNotifyFamily={() => void handleNotifyFamilyUrgent()}
-          />
-          <details className="advanced-details" id="elder-health">
-            <summary>查看我的状态（可选）</summary>
-            <Suspense fallback={VIEW_FALLBACK}>
-              <ProfileView
-                records={records}
-                observations={observations}
+          </header>
+        )}
+        <main className={`content ${elderScreen === 'assistant' ? 'assistant-content' : ''}`}>
+          {elderScreen === 'home' && (
+            <ElderHome
+              profile={activeProfile}
+              tasks={tasks}
+              findings={findings}
+              onTaskStatus={handleTaskStatus}
+              onOpenAssistant={() => openAssistant()}
+              onOpenHealth={() => navigateElder('health')}
+              onOpenHomeSpace={() => navigateElder('home_space')}
+              onRequestFamilyShare={requestFamilyShare}
+              onKeepFamilyPrivate={keepFamilyPrivate}
+            />
+          )}
+          {elderScreen === 'assistant' && (
+            <ElderAssistantPage
+              chat={chat}
+              onSend={handleElderSend}
+              quickInputs={quickInputs}
+              profile={activeProfile}
+              dataMode={storedProfile.dataMode}
+              onBack={() => navigateElder('home')}
+              onEmergency={() => setEmergencyOpen(true)}
+            />
+          )}
+          {elderScreen === 'health' && (
+            <ElderHealthPage
+              profile={activeProfile}
+              findings={findings}
+              dataMode={storedProfile.dataMode}
+              onPhotoImport={handlePhotoImport}
+              onCommitPhoto={commitPhotoImport}
+              onCancelPhoto={cancelPhotoImport}
+              pendingPhoto={pendingPhoto}
+              pendingPhotoKind={pendingPhotoKind}
+              pendingPhotoError={pendingPhotoError}
+            >
+              <Suspense fallback={VIEW_FALLBACK}>
+                <ProfileView records={records} observations={observations} findings={findings} today={today} />
+              </Suspense>
+            </ElderHealthPage>
+          )}
+          {elderScreen === 'home_space' && (
+            <ElderHomeSpacePage profile={activeProfile} homeTwinUrl={HOME_TWIN_URL} onAsk={openAssistant} />
+          )}
+          {elderScreen === 'profile' && (
+            <ElderSettingsPage
+              profile={activeProfile}
+              familyLink={familyLink}
+              syncStatus={sync.status}
+              dataMode={storedProfile.dataMode}
+              onProfileSave={handleProfileSave}
+              onRequestFamilyShare={requestFamilyShare}
+              onRevokeFamilyShare={revokeFamilyShare}
+              onGenerateInvite={generateInvite}
+              onClearData={handleClearAllData}
+              onSwitchRole={resetRole}
+            >
+              <RuntimeModeBanner />
+              <DeviceDebugPanel
+                mode={runtimeConfig.deviceMode}
+                state={deviceSync}
+                eventCount={events.length}
                 findings={findings}
-                today={today}
-                profile={activeProfile}
-                dataMode={storedProfile.dataMode}
-                onProfileSave={handleProfileSave}
-                onClearData={handleClearAllData}
+                personTwin={agentContext.personTwin}
+                onSync={() => void syncDevice('manual')}
               />
-            </Suspense>
-          </details>
-          <DeviceDebugPanel
-            mode={runtimeConfig.deviceMode}
-            state={deviceSync}
-            eventCount={events.length}
-            findings={findings}
-            personTwin={agentContext.personTwin}
-            onSync={() => void syncDevice('manual')}
-          />
+            </ElderSettingsPage>
+          )}
         </main>
-        <MobileTabBar items={ELDER_TABS} active={elderTab} onSelect={navigateElder} />
+        {elderScreen !== 'assistant' && (
+          <MobileTabBar items={ELDER_TABS} active={elderScreen} onSelect={navigateElder} />
+        )}
+        {emergencyOpen && (
+          <div className="emergency-backdrop" role="presentation" onClick={() => setEmergencyOpen(false)}>
+            <section
+              className="emergency-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="紧急求助"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="sheet-handle" />
+              <div className="section-head">
+                <div>
+                  <div className="eyebrow emergency-eyebrow">紧急情况</div>
+                  <h2>现在需要谁来帮助您？</h2>
+                </div>
+                <button className="sheet-close" type="button" onClick={() => setEmergencyOpen(false)} aria-label="关闭">
+                  ×
+                </button>
+              </div>
+              <p className="muted">突然胸痛、喘不上气、意识不清或严重跌倒，请优先拨打 120。</p>
+              <SafetyActions profile={activeProfile} />
+              {loadWebhookConfig() && (
+                <button className="btn-secondary sos-notify-btn" onClick={() => void handleNotifyFamilyUrgent()}>
+                  微信通知家属：我需要帮助
+                </button>
+              )}
+            </section>
+          </div>
+        )}
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
   }
 
   return (
-    <div className="app">
-      <header className="simple-header">
+    <div className="app family-app">
+      <header className="simple-header app-shell-header family-shell-header">
         <div>
-          <div className="persona-name">{activeProfile.name} · 家属端</div>
-          <div className="persona-sub">
-            {familyLink?.status === 'active'
-              ? `绑定关系：${familyLink.relation} ${familyLink.displayName}`
-              : '尚未绑定老人'}
-          </div>
+          <div className="app-wordmark">安康家属</div>
+          <div className="persona-sub">重要变化与家庭行动</div>
         </div>
         <div className="header-actions">
           <FontSizeControl value={fontScale} onChange={setFontScale} />
@@ -695,7 +734,6 @@ function AppRoot({
         </div>
       </header>
       <main className="content">
-        <RuntimeModeBanner />
         <Suspense fallback={VIEW_FALLBACK}>
           <FamilyDashboard
             profile={activeProfile}
@@ -726,13 +764,12 @@ function AppRoot({
           />
         </Suspense>
       </main>
-      <MobileTabBar items={FAMILY_TABS} active={familyView} onSelect={setFamilyView} />
+      <MobileTabBar
+        items={FAMILY_TABS}
+        active={familyView === 'detail' ? 'tasks' : familyView === 'medication' ? 'profile' : familyView}
+        onSelect={setFamilyView}
+      />
       {toast && <div className="toast">{toast}</div>}
-      <footer className="footer">
-        第一阶段 MVP：先认识老人。硬件通过 Adapter 预留；拍照入口当前使用明确标注的 Demo parser，不读取真实图片内容；
-        回复层 LLM 走服务端 Endpoint，key 不进浏览器；理解层 LLM 若配置 Demo 直连模式，key 会经 Vite 注入浏览器（仅限
-        一次性/免费 key，见 README「诚实声明」；也可用 npm run proxy 本地代理让 bundle 不含 key）。
-      </footer>
     </div>
   );
 }

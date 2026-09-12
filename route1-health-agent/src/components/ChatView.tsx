@@ -203,7 +203,7 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
           aria-label={voiceState === 'unsupported' ? '网页语音输入不可用' : '语音输入'}
           disabled={voiceState === 'unsupported'}
         >
-          {voiceState === 'listening' ? '停止录音' : voiceState === 'unsupported' ? '🎙️ 语音不可用' : '🎙️ 说话'}
+          {voiceState === 'listening' ? '停止' : '🎙️'}
         </button>
         <input
           ref={inputRef}

@@ -168,7 +168,7 @@ async function runSmoke() {
     await wait(800);
 
     // 2. 同意家属共享
-    const grantBtn = page.getByRole('button', { name: /同意以后需要时告诉家属/ }).first();
+    const grantBtn = page.getByRole('button', { name: /告诉家属/ }).first();
     const grantVisible = await grantBtn.isVisible({ timeout: 3000 }).catch(() => false);
     if (!grantVisible) {
       check('老人端出现"同意共享"按钮', false);
@@ -179,6 +179,7 @@ async function runSmoke() {
     check('老人端同意家属共享', true);
 
     // 3. 生成邀请码
+    await page.getByRole('button', { name: '我的' }).last().click();
     const inviteBtn = page.getByRole('button', { name: /生成家属邀请码/ }).first();
     const inviteVisible = await inviteBtn.isVisible({ timeout: 3000 }).catch(() => false);
     if (!inviteVisible) throw new Error('未找到生成邀请码按钮');

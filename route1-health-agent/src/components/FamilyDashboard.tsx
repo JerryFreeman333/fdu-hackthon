@@ -18,6 +18,8 @@ import {
 } from '../adapters/WebhookPushChannel';
 import type { CrossDeviceStatus } from '../hooks/useCrossDeviceSync';
 
+type FamilyView = 'home' | 'tasks' | 'report' | 'profile' | 'detail' | 'medication';
+
 interface FamilyDashboardProps {
   profile: ElderProfile;
   familyLink: FamilyLink | null;
@@ -50,8 +52,21 @@ interface FamilyDashboardProps {
   onBindFamily: (inviteCode: string) => boolean;
   /** 评审 P0-4：家属端也提供清空本机数据入口（试玩污染同样发生在家属端）。 */
   onClearData?: () => void;
-  onViewChange: (view: 'home' | 'detail' | 'report' | 'medication') => void;
-  view: 'home' | 'detail' | 'report' | 'medication';
+  onViewChange: (view: FamilyView) => void;
+  view: FamilyView;
+}
+
+function familyActionUrl(base: string, actionId?: string): string {
+  try {
+    const url = new URL(base, window.location.href);
+    url.searchParams.set('role', 'family');
+    url.searchParams.set('view', 'family-actions');
+    if (actionId) url.searchParams.set('actionId', actionId);
+    url.searchParams.set('returnUrl', window.location.href);
+    return url.toString();
+  } catch {
+    return base;
+  }
 }
 
 const MEDICATION_STATUS_BADGES: Record<CareTask['status'], string> = {
@@ -61,15 +76,12 @@ const MEDICATION_STATUS_BADGES: Record<CareTask['status'], string> = {
   dismissed: 'badge badge-muted',
 };
 
-function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
+function renderSyncBanner(status: CrossDeviceStatus, _tabId: string): ReactNode {
   if (status.mode === 'cross-device') {
     return (
       <div className="family-sync-banner family-sync-banner-cross" role="status">
         <span className="family-sync-dot" aria-hidden="true" />
-        <span>
-          跨设备实时协同已建立：老人端与家属端通过 P2P 连接直接同步派发台账与确认动作， 数据不经任何中转服务器。
-          {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
-        </span>
+        <span>已和老人端同步，重要变化会及时更新。</span>
       </div>
     );
   }
@@ -77,7 +89,7 @@ function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
     return (
       <div className="family-sync-banner family-sync-banner-pending" role="status">
         <span className="family-sync-dot" aria-hidden="true" />
-        <span>正在建立跨设备连接：{status.detail}</span>
+        <span>正在连接老人端，请稍候。</span>
       </div>
     );
   }
@@ -85,21 +97,14 @@ function renderSyncBanner(status: CrossDeviceStatus, tabId: string): ReactNode {
     return (
       <div className="family-sync-banner family-sync-banner-failed" role="status">
         <span className="family-sync-dot" aria-hidden="true" />
-        <span>
-          跨设备连接失败：{status.detail}。当前仅同浏览器 tab 协同， 两台真手机暂不能互相看见。
-          {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
-        </span>
+        <span>暂时没有连上老人端。您仍可查看本机已有内容，稍后会自动重试。</span>
       </div>
     );
   }
   return (
     <div className="family-sync-banner" role="status">
       <span className="family-sync-dot" aria-hidden="true" />
-      <span>
-        当前仅同浏览器 tab 协同：在同一浏览器的另一个 tab 打开本应用并选另一个角色即可同步。
-        跨真手机需要老人端生成邀请码后，家属端在另一台设备输入该码，握手成功后会切到"跨设备实时协同"。
-        {tabId && <span className="muted">（当前 tab：{tabId}）</span>}
-      </span>
+      <span>当前只在这台设备同步。如需和老人的手机连接，请使用邀请码完成绑定。</span>
     </div>
   );
 }
@@ -436,6 +441,284 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </div>
           {bindError && <p className="muted">{bindError}</p>}
           <p className="muted">这是演示访问控制；真实产品必须由服务端账号、授权与会话共同校验。</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (props.view === 'home') {
+    const priorityHomeAction = openHomeActions[0];
+    const priorityNotification = props.notifications[0];
+    const priorityTask = activeTasks[0];
+    return (
+      <div className="family-dashboard family-home-page">
+        <header className="family-welcome">
+          <span className="page-kicker">家庭状态</span>
+          <h1>您好，{props.familyLink.displayName}</h1>
+          <p>这里只告诉您是否需要介入，不展示老人的全部生活数据。</p>
+        </header>
+        {renderSyncBanner(props.syncStatus, props.tabId)}
+        <section className={`family-status card status-${state.tone}`}>
+          <div className="family-status-mark" aria-hidden="true" />
+          <div>
+            <span className="page-kicker">{props.profile.name}</span>
+            <h2>{state.title}</h2>
+            <p>{state.detail}</p>
+          </div>
+          <div className="family-actions">
+            <button className="btn-primary" onClick={props.onContactElder}>
+              联系老人
+            </button>
+            <button className="btn-secondary" onClick={() => props.onViewChange('tasks')}>
+              查看待处理
+            </button>
+          </div>
+        </section>
+
+        <section className="card family-priority-card">
+          <div className="section-head compact-section-head">
+            <div>
+              <span className="page-kicker">现在最需要知道的</span>
+              <h2>一件事，一次处理清楚</h2>
+            </div>
+          </div>
+          {priorityHomeAction ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+              <span className="priority-type">居家安全</span>
+              <strong>{priorityHomeAction.title}</strong>
+              <p>{priorityHomeAction.description}</p>
+              <span className="priority-next">查看原因与处理步骤 →</span>
+            </button>
+          ) : priorityNotification ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+              <span className="priority-type">状态变化</span>
+              <strong>{priorityNotification.finding.title}</strong>
+              <p>{priorityNotification.message}</p>
+              <span className="priority-next">查看为什么现在通知您 →</span>
+            </button>
+          ) : priorityTask ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+              <span className="priority-type">家庭待办</span>
+              <strong>{priorityTask.title}</strong>
+              <p>{priorityTask.description}</p>
+              <span className="priority-next">去处理 →</span>
+            </button>
+          ) : (
+            <div className="calm-empty">
+              <strong>现在没有需要您处理的事情</strong>
+              <span>系统有明确变化时再来提醒您。</span>
+            </div>
+          )}
+        </section>
+
+        <section className="family-home-links">
+          <button type="button" onClick={() => props.onViewChange('report')}>
+            <strong>本周变化</strong>
+            <span>查看周报</span>
+          </button>
+          <button type="button" onClick={() => props.onViewChange('profile')}>
+            <strong>家庭与权限</strong>
+            <span>管理连接</span>
+          </button>
+        </section>
+      </div>
+    );
+  }
+
+  if (props.view === 'tasks') {
+    return (
+      <div className="family-dashboard family-tasks-page">
+        <header className="page-title-block">
+          <span className="page-kicker">待处理</span>
+          <h1>需要您介入的事情</h1>
+          <p>按优先级整理健康变化、家庭风险和协同任务。</p>
+        </header>
+
+        {openHomeActions.map((action) => (
+          <section className="card action-detail-card" key={action.id}>
+            <div className="action-detail-head">
+              <span className="badge badge-alert">居家安全</span>
+              <span>{action.status === 'done' ? '已处理，待复扫' : '待处理'}</span>
+            </div>
+            <h2>{action.title}</h2>
+            <dl className="action-story">
+              <div>
+                <dt>发生了什么</dt>
+                <dd>{action.description}</dd>
+              </div>
+              <div>
+                <dt>为什么现在处理</dt>
+                <dd>这项家庭环境变化与老人当前行动状态相关，需要家人确认。</dd>
+              </div>
+              <div>
+                <dt>现在做什么</dt>
+                <dd>{action.action}</dd>
+              </div>
+            </dl>
+            <div className="family-actions">
+              {action.status === 'open' && (
+                <button className="btn-primary" onClick={() => props.onHomeSafetyActionStatus(action.id, 'done')}>
+                  我已处理
+                </button>
+              )}
+              <a className="btn-secondary" href={familyActionUrl(props.homeTwinUrl, action.id)}>
+                查看空间证据
+              </a>
+            </div>
+            {action.requiresRescan && <p className="muted">完成操作不等于风险消失，需要重新扫描后才能关闭。</p>}
+          </section>
+        ))}
+
+        {props.notifications.map((notification) => {
+          const badge = severityBadge(notification.finding.severity);
+          const dispatch = dispatchByFinding.get(notification.finding.id);
+          return (
+            <section className="card action-detail-card" key={notification.finding.id}>
+              <div className="action-detail-head">
+                <span className={`badge ${badge.className}`}>{badge.text}</span>
+                <span>{notification.finding.date}</span>
+              </div>
+              <h2>{notification.finding.title}</h2>
+              <dl className="action-story">
+                <div>
+                  <dt>发生了什么</dt>
+                  <dd>{notification.message}</dd>
+                </div>
+                <div>
+                  <dt>为什么现在告诉您</dt>
+                  <dd>{notification.reason}</dd>
+                </div>
+                <div>
+                  <dt>建议行动</dt>
+                  <dd>{notification.actionPath ?? '建议先联系老人确认当前状态。'}</dd>
+                </div>
+              </dl>
+              <div className="family-actions">
+                <button className="btn-primary" onClick={props.onContactElder}>
+                  联系老人
+                </button>
+                {dispatch?.lifecycle === 'new' && (
+                  <button className="btn-secondary" onClick={() => props.onAcknowledgeDispatch(dispatch.findingId)}>
+                    我已知悉
+                  </button>
+                )}
+                <button className="btn-secondary" onClick={() => props.onViewChange('detail')}>
+                  查看共享摘要
+                </button>
+              </div>
+              {dispatch && <p className="muted">送达状态：{describeDeliveries(dispatch)}</p>}
+            </section>
+          );
+        })}
+
+        {activeTasks.map((task) => (
+          <section className="card action-detail-card" key={task.id}>
+            <div className="action-detail-head">
+              <span className="badge badge-info">家庭待办</span>
+              <span>{task.status === 'in_progress' ? '处理中' : '待处理'}</span>
+            </div>
+            <h2>{task.title}</h2>
+            <p>{task.description}</p>
+            <button className="btn-secondary" onClick={() => props.onTaskStatus(task.id, 'completed')}>
+              标记已完成
+            </button>
+          </section>
+        ))}
+
+        {openHomeActions.length + props.notifications.length + activeTasks.length === 0 && (
+          <section className="card calm-empty">
+            <strong>目前没有待处理事项</strong>
+            <span>系统会在真正需要时通知您。</span>
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  if (props.view === 'profile') {
+    return (
+      <div className="family-dashboard family-profile-page">
+        <header className="page-title-block">
+          <span className="page-kicker">我的</span>
+          <h1>家庭、权限与通知</h1>
+          <p>管理连接和接收方式，不在这里堆健康数据。</p>
+        </header>
+        <section className="settings-list card">
+          <div className="settings-row">
+            <span>
+              <strong>已绑定老人</strong>
+              <small>{props.profile.name}</small>
+            </span>
+            <span>{props.familyLink.relation}</span>
+          </div>
+          <button type="button" onClick={() => props.onViewChange('medication')}>
+            <span>
+              <strong>用药与医护</strong>
+              <small>查看老人授权共享的药物和今日确认</small>
+            </span>
+            <b>›</b>
+          </button>
+          <button type="button" onClick={() => props.onViewChange('detail')}>
+            <span>
+              <strong>健康共享摘要</strong>
+              <small>只查看得到授权的重要变化</small>
+            </span>
+            <b>›</b>
+          </button>
+        </section>
+
+        <section className="card webhook-settings-card">
+          <span className="page-kicker">通知方式</span>
+          <h2>微信接收紧急通知</h2>
+          <p className="muted">token 只保存在本机。正式产品应由服务端安全发送。</p>
+          <div className="webhook-form">
+            <label htmlFor="webhook-provider">推送服务</label>
+            <select
+              id="webhook-provider"
+              value={webhookProvider}
+              onChange={(event) => setWebhookProvider(event.target.value as WebhookProvider)}
+            >
+              <option value="serverchan">Server酱</option>
+              <option value="pushplus">PushPlus</option>
+              <option value="custom">自定义 Webhook</option>
+            </select>
+            {webhookProvider === 'custom' && (
+              <input
+                value={webhookCustomUrl}
+                onChange={(event) => setWebhookCustomUrl(event.target.value)}
+                placeholder="https://your-server.example.com/push"
+              />
+            )}
+            <label htmlFor="webhook-token">SendKey / Token</label>
+            <input
+              id="webhook-token"
+              value={webhookToken}
+              onChange={(event) => setWebhookToken(event.target.value)}
+              placeholder="SCT… / 推送 token"
+              autoComplete="off"
+            />
+            <div className="webhook-actions">
+              <button className="btn-secondary" onClick={testWebhook}>
+                发送测试消息
+              </button>
+              <button className="btn-primary" onClick={saveWebhookSettings}>
+                保存
+              </button>
+            </div>
+            {webhookStatus && <p className="muted webhook-status">{webhookStatus}</p>}
+            {webhookConfigured && !webhookStatus && <p className="muted">当前已配置微信推送</p>}
+          </div>
+        </section>
+
+        <section className="settings-danger-zone">
+          <button className="btn-secondary" onClick={props.onRevokeSharing}>
+            暂停老人共享
+          </button>
+          {props.onClearData && (
+            <button className="danger-text-button" onClick={props.onClearData}>
+              清空本机全部数据
+            </button>
+          )}
         </section>
       </div>
     );

@@ -1,4 +1,4 @@
-export type MobileTabIcon = 'home' | 'health' | 'assistant' | 'report' | 'messages' | 'profile';
+export type MobileTabIcon = 'home' | 'health' | 'assistant' | 'space' | 'tasks' | 'report' | 'messages' | 'profile';
 
 export interface MobileTabItem<T extends string> {
   id: T;
@@ -20,6 +20,18 @@ function TabIcon({ name }: { name: MobileTabIcon }) {
       <>
         <path d="M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4.5 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" />
         <path d="M8 12h.01M12 12h.01M16 12h.01" />
+      </>
+    ),
+    space: (
+      <>
+        <path d="M3.5 11.5 12 4l8.5 7.5V21h-17Z" />
+        <path d="M8 21v-6h8v6M17 7.7V4h2v5.5" />
+      </>
+    ),
+    tasks: (
+      <>
+        <path d="M7 4h13v17H7Z" />
+        <path d="m3 8 1.5 1.5L7 7M3 14l1.5 1.5L7 13M10 9h7M10 15h7" />
       </>
     ),
     report: (
