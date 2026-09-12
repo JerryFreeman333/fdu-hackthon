@@ -675,6 +675,18 @@ button {
 .chat-bubble p {
   margin: 2px 0;
 }
+/* 回复分块（评审 P1-5）：主气泡正常字号；小字回执弱化；隐私行独立成行并加分隔。 */
+.chat-receipt {
+  font-size: 0.86em;
+  color: var(--ink-soft);
+}
+.chat-privacy {
+  font-size: 0.86em;
+  color: var(--ink-soft);
+  border-top: 1px dashed var(--line);
+  margin-top: 6px;
+  padding-top: 5px;
+}
 .chat-time {
   font-size: 12px;
   color: var(--ink-soft);

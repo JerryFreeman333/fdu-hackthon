@@ -134,6 +134,11 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
     window.speechSynthesis.speak(utterance);
   }
 
+  // TTS 只读主气泡（评审 P1-5）：记录回执与隐私行是小字辅助信息，不必念给老人听。
+  function mainSpeechText(m: ChatMessage): string {
+    return m.blocks?.find((block) => block.kind === 'main')?.text ?? m.text;
+  }
+
   const voiceHint = voiceMessage(voiceState);
 
   return (
@@ -152,12 +157,24 @@ export default function ChatView({ id, chat, onSend, quickInputs, profile, devic
           <div key={m.id} className={`chat-row ${m.role === 'elder' ? 'row-elder' : 'row-agent'}`}>
             {m.role === 'agent' && <div className="chat-avatar">安</div>}
             <div className="chat-bubble">
-              {m.text.split('\n').map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
+              {m.blocks
+                ? m.blocks.map((block, i) =>
+                    block.kind === 'main' ? (
+                      <div key={i} className="chat-main">
+                        {block.text.split('\n').map((line, lineIndex) => (
+                          <p key={lineIndex}>{line}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p key={i} className={block.kind === 'receipt' ? 'chat-receipt' : 'chat-privacy'}>
+                        {block.text}
+                      </p>
+                    ),
+                  )
+                : m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
               <div className="chat-time">{m.time}</div>
               {m.role === 'agent' && ttsSupported && (
-                <button className="btn-secondary" onClick={() => speak(m.text)} aria-label="朗读这条回复">
+                <button className="btn-secondary" onClick={() => speak(mainSpeechText(m))} aria-label="朗读这条回复">
                   🔊 朗读
                 </button>
               )}
