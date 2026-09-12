@@ -24,7 +24,11 @@ import {
 import { extractHealthValues } from '../engine/extract';
 import { canShareWithFamily, parsePrivacyIntent } from '../engine/privacy';
 import { runDetection } from '../engine/detect';
-import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../engine/userFacing';
+import {
+  buildFamilyAcknowledgement,
+  buildSelfSharingAcknowledgement,
+  buildUnacceptedClaimsReply,
+} from '../engine/userFacing';
 import {
   buildHistoricalSharingAnswer,
   inferSharingRecipient,
@@ -223,8 +227,7 @@ export function useElderChat({
       const labelText = familyLabels.length > 0 ? `（我听到的是${familyLabels.join('、')}等家人的情况）` : '';
       agentText = `我明白，您刚才说的是家里人的情况${labelText}，不会记到您本人的健康档案里。需要继续处理时，可以告诉我具体是谁。`;
     } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && understanding.claims.length > 0) {
-      agentText =
-        '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
+      agentText = buildUnacceptedClaimsReply(understanding.claims);
     } else {
       const selectedAdapter = intent === 'private' || intent === 'no_record' ? ruleBasedAdapter : llmAdapter;
       agentText = await generateAgentReply(

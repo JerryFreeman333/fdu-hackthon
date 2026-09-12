@@ -346,7 +346,6 @@ function structuralNegationStatus(clause: string, tags: SymptomTag[]): 'negated'
   let negatedSpans = 0;
   let positiveSpans = 0;
   for (const span of spans) {
-    const spanText = clause.slice(span.start, span.end);
     const isIdiomMasked = masked
       .slice(span.start, span.end)
       .split('')
@@ -355,10 +354,12 @@ function structuralNegationStatus(clause: string, tags: SymptomTag[]): 'negated'
       positiveSpans += 1;
       continue;
     }
-    // 关键词内部翻转（"头不晕""胸口不疼"）：否定字在命中片段内部、症状字在其后。
+    // 关键词内部翻转（"头不晕""胸口不疼"）：否定字在命中片段内部、症状字在其后即为否定。
     // 在摘除正面习语后的文本上检查，避免"腿没劲"这类整体命中的习语被误判为否定。
+    // 不设长度上限：程度词（"一点都不"）会把否定字包进较长的命中片段
+    // （"头一点都不晕"），按长度截断反而漏判、"腿一点也不肿"会被误记为发生。
     const morphemeInside = masked.slice(span.start, span.end - 1).search(NEGATION_MORPHEME);
-    if (morphemeInside >= 0 && spanText.length <= 5) {
+    if (morphemeInside >= 0) {
       negatedSpans += 1;
       continue;
     }

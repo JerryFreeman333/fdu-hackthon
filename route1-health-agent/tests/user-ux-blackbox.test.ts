@@ -1,6 +1,10 @@
 import { canShareWithFamily, parsePrivacyIntent, sharingLabel } from '../src/engine/privacy';
 import { visibleFamilyEvents } from '../src/engine/familyLedger';
-import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement } from '../src/engine/userFacing';
+import {
+  buildFamilyAcknowledgement,
+  buildSelfSharingAcknowledgement,
+  buildUnacceptedClaimsReply,
+} from '../src/engine/userFacing';
 import { acceptedSelfClaims, understandElderInput } from '../src/engine/understanding';
 import type { SymptomTag } from '../src/types';
 
@@ -180,4 +184,40 @@ runCase('clearing one-time share ids stops future access and re-grant does not r
     visibleFamilyEvents([event], 'granted', []).length === 0,
     're-granting persistent sharing must not resurrect an old one-time event',
   );
+});
+
+runCase('negated symptoms get an explicit acknowledgment instead of a subject interrogation', () => {
+  const input = understandElderInput('头一点都不晕了', TODAY);
+  const text = buildUnacceptedClaimsReply(input.claims);
+  assert(text.includes('头晕'), 'acknowledgment should name the denied symptom');
+  assert(text.includes('没有发生，或者已经好了'), 'acknowledgment should cover denial and recovery');
+  assert(text.includes('不会记成您的健康事件'), 'acknowledgment should state the record boundary');
+  assert(!text.includes('说的是您自己'), 'clear negation must not trigger the clarification interrogation');
+});
+
+runCase('concessive denial (摔是没摔) acknowledges the fall without triggering fall safety flow', () => {
+  const input = understandElderInput('摔是没摔，就是腿软了一下', TODAY);
+  const fall = input.claims.find((claim) => claim.tags.includes('fall'));
+  assert(fall && fall.status === 'negated', 'concessive fall denial should be a negated claim');
+  const text = buildUnacceptedClaimsReply([fall]);
+  assert(text.includes('跌倒'), 'acknowledgment should name the fall');
+  assert(text.includes('不会记成您的健康事件'), 'denied fall must not be recorded');
+});
+
+runCase('near miss gets reassurance without recording', () => {
+  const input = understandElderInput('差点摔倒', TODAY);
+  const nearMiss = input.claims.find((claim) => claim.status === 'near_miss');
+  assert(nearMiss, '差点摔倒 should stay a near_miss claim');
+  const text = buildUnacceptedClaimsReply([nearMiss]);
+  assert(text.includes('跌倒'), 'reassurance should name the event');
+  assert(text.includes('没有真的发生'), 'reassurance should make the not-happened boundary explicit');
+  assert(text.includes('不会记成健康事件'), 'near miss must not be recorded');
+});
+
+runCase('open-ended claims keep the clarification prompt', () => {
+  const text = buildUnacceptedClaimsReply([
+    { status: 'uncertain', tags: ['pain'] },
+    { status: 'negated', tags: ['dizziness'] },
+  ]);
+  assert(text.includes('说的是您自己'), 'uncertain/hypothetical mix should still ask what the elder meant');
 });

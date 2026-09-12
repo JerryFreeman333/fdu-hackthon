@@ -202,11 +202,11 @@ test('端到端：超长输入/子句过多时直接走规则，不发起 LLM �
   assert.equal(merged.claims.length, understandElderInput(longText, TODAY).claims.length);
 });
 
-test('端到端：规则漏识别的否定症状（头一点都不晕了）不再整句消失', async () => {
-  // "头"与"晕"隔 3 个字，超出 INTENT_RULES {0,2} 窗口：规则模式整句无 claim、界面零反馈。
-  const text = '头一点都不晕了';
+test('端到端：规则盲区的否定症状（没有眩晕）由 LLM 补识别，不再整句消失', async () => {
+  // "眩晕"不在 INTENT_RULES 里（裸"晕"仅在否定语境下限收窄），规则模式整句无 claim、界面零反馈。
+  const text = '今天没有眩晕';
   const ruleBased = understandElderInput(text, TODAY);
-  assert.equal(ruleBased.claims.length, 0, '规则模式：标签漏识别，整句无 claim（本轮修复的现状）');
+  assert.equal(ruleBased.claims.length, 0, '规则模式：标签漏识别，整句无 claim（LLM 补识别的目标场景）');
 
   const fetchImpl = jsonFetcher(chatCompletion('[{"i":0,"s":"negated","t":["dizziness"]}]')) as unknown as typeof fetch;
   const merged = await understandElderInputWithLlm(text, TODAY, [], BASE_CONFIG, fetchImpl);
@@ -232,10 +232,9 @@ test('端到端：混合句的否定半句不被整句丢弃（不晕，但是�
 });
 
 test('端到端：让步句式（摔是没摔，就是腿软了一下）两个事实都不丢', async () => {
-  // 老人口语常见的"X是没X，就是Y"：规则对 X（fall 需紧邻"倒/了"）和 Y（腿软）都不识别。
+  // 老人口语常见的"X是没X，就是Y"。兜底规则已补了该构式与"腿软"（见
+  // tag-fallback-regression.test.ts），这里锁定 LLM 仲裁路径给出一致且正确的结论。
   const text = '摔是没摔，就是腿软了一下';
-  const ruleBased = understandElderInput(text, TODAY);
-  assert.equal(ruleBased.claims.length, 0, '规则模式：两个事实都识别不出（本轮修复的现状）');
 
   const fetchImpl = jsonFetcher(
     chatCompletion('[{"i":0,"s":"negated","t":["fall"]},{"i":1,"s":"occurred","t":["fatigue"]}]'),
