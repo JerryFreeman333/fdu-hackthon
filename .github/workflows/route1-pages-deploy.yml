@@ -1,0 +1,61 @@
+name: route1-health-agent-pages-deploy
+
+# Deploy the Route 1 health agent (pure frontend) to GitHub Pages.
+# Public URL: https://jerryfreeman333.github.io/fdu-hackthon/
+# The --base flag keeps local dev (npm run dev) at the root path unchanged.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'route1-health-agent/**'
+      - '.github/workflows/route1-pages-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: route1-health-agent/package-lock.json
+
+      - name: Install dependencies
+        working-directory: route1-health-agent
+        run: npm ci
+
+      - name: Typecheck and build with Pages base path
+        working-directory: route1-health-agent
+        run: npm run build -- --base=/fdu-hackthon/
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: route1-health-agent/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
