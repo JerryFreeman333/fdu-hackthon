@@ -23,7 +23,6 @@ export default function RoleGate({ onSelect }: RoleGateProps) {
             <span>看看老人现在需不需要您的帮助</span>
           </button>
         </div>
-        <p className="role-note">这是演示版，主要功能都可以先在这台设备上体验。</p>
       </div>
     </div>
   );

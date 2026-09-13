@@ -270,7 +270,7 @@ function AppRoot({
   const healthKitSyncInFlightRef = useRef(false);
   const healthKitPollInFlightRef = useRef(false);
   const lastAppliedHealthKitRevisionRef = useRef<string>();
-  const { fontScale, setFontScale } = useFontScale();
+  const { fontScale, setFontScale } = useFontScale(role);
   const showToast = useCallback((text: string) => {
     setToast(text);
     window.setTimeout(() => setToast(null), 3200);
