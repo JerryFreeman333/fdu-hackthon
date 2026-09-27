@@ -12,6 +12,7 @@ import type { UserRole } from '../types';
  * - dispatch.acknowledge  { findingId }
  * - dispatch.append       { record }
  * - family.link           { link, sharing }
+ * - family.consent        { sharing, updatedAt }（老人端授权的唯一权威广播）
  * - chat.append           { message }
  * - chat.share            { sharedFindingIds, sharedFamilyEventIds }
  *
@@ -41,7 +42,15 @@ export type CrossTabMessage =
    * "有 N 条信号被隐私挡住"，而不是"今天还没有任何健康信号"。
    * payload: { today: string; signalCount: number; gatedAlertCount: number }
    */
-  | { type: 'signals.summary'; today: string; signalCount: number; gatedAlertCount: number };
+  | { type: 'signals.summary'; today: string; signalCount: number; gatedAlertCount: number }
+  /**
+   * 评审 P0-1 修复：老人端的共享授权是全系统唯一的权威状态。授权变化必须广播到
+   * 同浏览器其它 tab 与跨设备（PeerJS）家属端，否则家属端自己的 familySharing
+   * 恒为 'denied'，collectFamilyNotifications 永远算出空数组——家属端永远收不到通知。
+   * 载荷只有授权位与时间戳，没有任何健康内容，走 PeerJS 也安全。
+   * payload: { sharing: 'denied' | 'granted'; updatedAt: string }
+   */
+  | { type: 'family.consent'; sharing: 'denied' | 'granted'; updatedAt: string };
 
 export interface CrossTabMessageEnvelope {
   tabId: string;

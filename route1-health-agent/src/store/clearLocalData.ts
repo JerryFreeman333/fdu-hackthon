@@ -20,6 +20,14 @@ export function clearAllLocalData(store: PersistentHealthRecordStore): void {
       if (key && key.startsWith(LOCAL_DATA_PREFIX)) keysToRemove.push(key);
     }
     for (const key of keysToRemove) window.localStorage.removeItem(key);
+    // sessionStorage 里的本应用键（如按标签页记忆的角色）一并清掉，
+    // 否则清空数据后重开会被旧角色直接带回某一端。
+    const sessionKeysToRemove: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(LOCAL_DATA_PREFIX)) sessionKeysToRemove.push(key);
+    }
+    for (const key of sessionKeysToRemove) window.sessionStorage.removeItem(key);
   } catch {
     // 隐私模式下 localStorage 可能不可用：此时数据本来就只在内存里，不阻塞。
   }

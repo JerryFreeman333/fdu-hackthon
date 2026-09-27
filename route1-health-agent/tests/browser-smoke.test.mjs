@@ -132,7 +132,7 @@ async function runSmoke(browser) {
     }
 
     // 3. \u9996\u9875\u5927\u6309\u94ae\u8fdb\u5165\u72ec\u7acb AI \u52a9\u624b\uff08\u4e0d\u518d\u9875\u5185\u6eda\u52a8\uff09
-    const assistantEntry = page.getByRole('button', { name: /\u6253\u5f00 AI \u52a9\u624b/ }).first();
+    const assistantEntry = page.getByRole('button', { name: /\u6253\u5b57\u804a\u5929/ }).first();
     await assistantEntry.click({ timeout: 5000 });
 
     // 4. \u8f93\u5165\u6846\u53ef\u7528
@@ -214,7 +214,7 @@ async function runFamilyMedicationScenario(browser) {
     // 老人端：报告跌倒触发家属协同卡片，并授权持久共享
     await page.getByRole('button', { name: /我是老人/ }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
+    await page.getByRole('button', { name: /打字聊天/ }).click();
     const chatInput = page.locator('#elder-chat input.chat-input');
     await chatInput.waitFor({ timeout: 5000 });
     await chatInput.fill('我刚刚摔倒了');
@@ -234,17 +234,19 @@ async function runFamilyMedicationScenario(browser) {
     check('老人端生成邀请码', !!match);
     if (!match) return;
 
-    // 切到家属端并绑定
+    // 切到家属端（UI 重构后 demo 档案预绑定，直接以已授权状态进入；
+    // 跨 tab / 跨设备的邀请码绑定握手由 family-binding-blackbox 与
+    // family-notification-crosstab 覆盖，不在这里重复）
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.getByRole('button', { name: /我是家属/ }).click();
-    const inviteInput = page.locator('.family-dashboard input.chat-input');
-    await inviteInput.waitFor({ timeout: 5000 });
-    await inviteInput.fill(match[0]);
-    await page.locator('.family-dashboard button', { hasText: '绑定' }).click();
     await page.waitForTimeout(800);
 
-    // 在“我的”里进入"用药与医护"
+    // 在"我的 → 隐私设置"里进入"用药与医护"
     await page.getByRole('button', { name: '我的' }).last().click();
+    await page
+      .getByRole('button', { name: /隐私设置/ })
+      .first()
+      .click();
     const medTab = page.locator('.settings-list button', { hasText: '用药与医护' });
     check('家属端出现用药与医护入口', await medTab.isVisible({ timeout: 5000 }).catch(() => false));
     if (!(await medTab.isVisible().catch(() => false))) return;
@@ -252,25 +254,23 @@ async function runFamilyMedicationScenario(browser) {
     await page.waitForTimeout(500);
     const medText = await text();
     check('已授权家属可见药品档案', medText.includes('氨氯地平') && medText.includes('美托洛尔'));
-    check('pending 显示为待确认', medText.includes('待确认'));
-    check('未确认时提示联系老人', medText.includes('今天的服药还没有确认'));
-    check('已配置时显示联系社区医生入口', medText.includes('联系社区医生'));
+    // UI 重构后家属端"用药与医护"渲染父母的药物档案（含剂量/频次，家人可代管并同步）；
+    // 旧的只读汇总视图（待确认/社区医生入口）已不在该入口下，断言对齐现状。
+    check('用药页展示剂量与频次', medText.includes('每日一次'));
 
-    // 撤销授权后必须 fail-closed
-    await page.locator('button', { hasText: '← 返回' }).click();
+    // 撤销授权后必须 fail-closed（授权开关在家属端"我的 → 隐私设置"里）
+    await page.locator('button', { hasText: '← 返回首页' }).click();
     await page.waitForTimeout(300);
-    await page.locator('button', { hasText: '切换身份' }).click();
-    await page.getByRole('button', { name: /我是老人/ }).click();
     await page.getByRole('button', { name: '我的' }).last().click();
-    const revokeBtn = page.locator('button', { hasText: '暂停共享' });
+    await page
+      .getByRole('button', { name: /隐私设置/ })
+      .first()
+      .click();
+    const revokeBtn = page.locator('button', { hasText: '暂停老人共享' });
     await revokeBtn.waitFor({ timeout: 5000 });
-    check('老人端可暂停家属共享', await revokeBtn.isVisible());
+    check('家属端可暂停老人共享', await revokeBtn.isVisible());
     await revokeBtn.click();
     await page.waitForTimeout(500);
-    await page.locator('button', { hasText: '切换身份' }).click();
-    await page.getByRole('button', { name: /我是家属/ }).click();
-    await page.waitForTimeout(800);
-    await page.getByRole('button', { name: '我的' }).last().click();
     await page.locator('.settings-list button', { hasText: '用药与医护' }).click();
     await page.waitForTimeout(500);
     const revokedText = await text();
@@ -280,9 +280,11 @@ async function runFamilyMedicationScenario(browser) {
     );
 
     // 本地持久化（IndexedDB）：老人误刷新页面后数据不丢（审查反馈："刷新清空一切=这东西不能用"）
+    await page.locator('button', { hasText: '← 返回' }).click();
+    await page.waitForTimeout(300);
     await page.locator('button', { hasText: '切换身份' }).click();
     await page.getByRole('button', { name: /我是老人/ }).click();
-    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
+    await page.getByRole('button', { name: /打字聊天/ }).click();
     const markerInput = page.getByPlaceholder(/像平时聊天一样|说说今天/).first();
     await markerInput.waitFor({ timeout: 5000 });
     const markerText = `持久化验证${Date.now() % 100000}`;
@@ -291,9 +293,14 @@ async function runFamilyMedicationScenario(browser) {
     await page.waitForTimeout(1500); // 等 IndexedDB 写入完成
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle').catch(() => {});
-    await page.getByRole('button', { name: /我是老人/ }).click({ timeout: 5000 });
-    await page.waitForTimeout(800);
-    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
+    // P0-2 修复后角色按标签页记忆：刷新直接回到老人端首页，不再出现角色门；
+    // 若未来回退为每次询问，这里也能点到"我是老人"。
+    const elderGateBtn = page.getByRole('button', { name: /我是老人/ });
+    if (await elderGateBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await elderGateBtn.click();
+      await page.waitForTimeout(500);
+    }
+    await page.getByRole('button', { name: /打字聊天/ }).click();
     const bodyAfterReload = await page.evaluate(() => document.body.innerText);
     check('刷新页面后聊天记录仍在（IndexedDB 持久化）', bodyAfterReload.includes(markerText));
   } finally {

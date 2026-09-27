@@ -3,14 +3,17 @@ name: route1-health-agent-pages-deploy
 # Deploy the Route 1 health agent (pure frontend) to GitHub Pages.
 # Public URL: https://jerryfreeman333.github.io/fdu-hackthon/
 # The --base flag keeps local dev (npm run dev) at the root path unchanged.
+#
+# 评审整改：发布改为 CI 门禁——只有 route1-health-agent-ci 在 main 上跑绿之后
+# 才发布。之前 push 触发独立发布，CI 红着也照常上线（最近三个提交即如此）。
+# 注意：workflow_run 触发不能同时使用 push 的 paths 过滤；路径过滤由 CI 自身
+# 的触发条件承担，这里只认"CI 在 main 上成功"这一件事。
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'route1-health-agent/**'
-      - '.github/workflows/route1-pages-deploy.yml'
+  workflow_run:
+    workflows: [route1-health-agent-ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -25,8 +28,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # workflow_dispatch 没有 workflow_run 上下文，允许手动发布；自动触发必须 CI 绿。
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:

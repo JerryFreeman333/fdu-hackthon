@@ -64,6 +64,8 @@ interface FamilyDashboardProps {
   onContactElder: () => void;
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
+  /** 评审 P0-2 恢复出口：家属端主动解除本机与老人端的绑定（重新绑定需要新邀请码）。 */
+  onUnbindFamily?: () => void;
   /** P0-2：绑定是异步握手（跨 tab / 跨设备都要等老人端应答），结果带原因归类。 */
   onBindFamily: (inviteCode: string) => Promise<BindFamilyOutcome> | BindFamilyOutcome;
   /** 评审 P0-4：家属端也提供清空本机数据入口（试玩污染同样发生在家属端）。 */
@@ -83,6 +85,15 @@ function familyActionUrl(base: string, actionId?: string): string {
   } catch {
     return base;
   }
+}
+
+/** 确认时间转本地墙上时钟 HH:MM（acknowledgedAt 是 UTC ISO，不能直接 slice）。 */
+function formatAckTime(iso: string | undefined): string {
+  if (!iso) return '——';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '——';
+  const pad = (value: number): string => `${value}`.padStart(2, '0');
+  return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
 }
 
 const MEDICATION_STATUS_BADGES: Record<CareTask['status'], string> = {
@@ -358,21 +369,44 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   }
 
   if (props.view === 'medication' && props.medicationPage) {
-    return canViewSharedDetail && props.familyLink?.status === 'active' ? (
+    // 评审 P0-1 修复：把"没绑定"和"绑定了但未授权"分开说，不再都用
+    // "请先绑定家人"糊弄——授权被暂停时必须如实说"老人尚未授权"。
+    if (!props.familyLink || props.familyLink.status !== 'active') {
+      return (
+        <section className="card">
+          <h1>药物建档</h1>
+          <p>请先绑定家人，并由父母授权共享药物资料。</p>
+          <button className="btn-primary" onClick={() => props.onViewChange('privacy')}>
+            家庭与权限
+          </button>
+        </section>
+      );
+    }
+    if (!canViewSharedDetail) {
+      return (
+        <div className="family-detail">
+          <div className="family-back">
+            <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
+              ← 返回
+            </button>
+          </div>
+          <div className="card privacy-card">
+            <h3>当前未共享用药信息</h3>
+            <p>老人尚未授权家属查看详细用药信息，需要了解情况请直接联系老人。</p>
+            <button className="btn-primary" onClick={props.onContactElder}>
+              联系老人
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
       <>
         <button className="btn-secondary" onClick={() => props.onViewChange('home')}>
           ← 返回首页
         </button>
         {props.medicationPage}
       </>
-    ) : (
-      <section className="card">
-        <h1>药物建档</h1>
-        <p>请先绑定家人，并由父母授权共享药物资料。</p>
-        <button className="btn-primary" onClick={() => props.onViewChange('privacy')}>
-          家庭与权限
-        </button>
-      </section>
     );
   }
   if (props.view === 'archives') {
@@ -814,6 +848,9 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                   </button>
                 </div>
                 {dispatch && <p className="muted">送达状态：{describeDeliveries(dispatch)}</p>}
+                {dispatch?.lifecycle === 'acknowledged' && (
+                  <p className="muted">已于 {formatAckTime(dispatch.acknowledgedAt)} 确认已知悉。</p>
+                )}
               </section>
             );
           })}
@@ -1007,6 +1044,11 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
         </section>
 
         <section className="settings-danger-zone">
+          {props.onUnbindFamily && props.familyLink?.status === 'active' && (
+            <button className="btn-secondary" onClick={props.onUnbindFamily}>
+              解除与老人端的绑定
+            </button>
+          )}
           <button className="btn-secondary" onClick={props.onRevokeSharing}>
             暂停老人共享
           </button>

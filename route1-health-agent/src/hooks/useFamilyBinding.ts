@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { ElderProfile, FamilyLink } from '../types';
+import { useCallback, useEffect, useState } from 'react';
+import type { FamilyLink, FamilySharing } from '../types';
 import { formatLocalDate } from '../data/demo';
 import { performLinkHandshake, type FamilyLinkPayload, type LinkPeerConnection } from '../engine/familyLinkHandshake';
 
@@ -50,6 +50,98 @@ export function createInviteCode(today: string): string {
   return `AN-${today.slice(0, 4)}-${suffix}`;
 }
 
+/** 家属端收到的"老人端权威授权"（评审 P0-1 修复）：只有授权位与时间戳，没有健康内容。 */
+export interface RemoteConsent {
+  sharing: 'granted' | 'denied';
+  updatedAt: string;
+}
+
+/**
+ * 评审 P0-2 修复：绑定/授权状态的持久化。
+ *
+ * 之前这些状态"故意只存 React 内存"（每次刷新即蒸发），直接后果是：
+ * 家属端刷新一次就丢绑定、丢授权，且旧邀请码已失效、老人端已连接时又没有
+ * 重新生成入口——家属被锁死在恢复死循环里，期间错过所有通知。
+ * 现在与健康数据放进同一个本机信任域（localStorage，ankang-route1- 前缀，
+ * 清空本机数据时一并删除）：绑定、授权是"需要跨会话稳定"的状态，
+ * 恰恰不该易碎；"暂停共享 / 清空本机数据"仍是明示出口。
+ *
+ * 刻意**不**持久化的：pending 邀请码与 issuedInviteCode。它们是短命的握手
+ * 凭证——一旦写进共享存储，同浏览器家属 tab 会恢复出邀请码走 L1 本地比对，
+ * 绕过老人端握手校验，老人端的链接永远停在 pending。丢失.pending 邀请码的
+ * 代价只是"重新生成一次"，而握手语义被破坏的代价是整个信任模型。
+ */
+const FAMILY_STATE_STORAGE_KEY = 'ankang-route1-family-state-v1';
+
+interface PersistedFamilyState {
+  version: 1;
+  familySharing: FamilySharing;
+  consentUpdatedAt: string;
+  /** 只有 active 绑定才持久化；pending 邀请保持会话级（见上）。 */
+  familyLink: FamilyLink | null;
+  sharedFindingIds: string[];
+  sharedFamilyEventIds: string[];
+  /** 家属端视角收到的老人端权威授权（跨端广播 / 握手回执带来），刷新后不丢。 */
+  remoteConsent: RemoteConsent | null;
+}
+
+function isValidPersistedLink(value: unknown): value is FamilyLink {
+  if (typeof value !== 'object' || value === null) return false;
+  const link = value as Partial<FamilyLink>;
+  return (
+    typeof link.id === 'string' &&
+    typeof link.relation === 'string' &&
+    typeof link.displayName === 'string' &&
+    typeof link.maskedContact === 'string' &&
+    typeof link.inviteCode === 'string' &&
+    (link.status === 'active' || link.status === 'pending')
+  );
+}
+
+function isValidRemoteConsent(value: unknown): value is RemoteConsent {
+  if (typeof value !== 'object' || value === null) return false;
+  const consent = value as Partial<RemoteConsent>;
+  return (consent.sharing === 'granted' || consent.sharing === 'denied') && typeof consent.updatedAt === 'string';
+}
+
+function loadPersistedFamilyState(): PersistedFamilyState {
+  const empty: PersistedFamilyState = {
+    version: 1,
+    familySharing: 'denied',
+    consentUpdatedAt: '',
+    familyLink: null,
+    sharedFindingIds: [],
+    sharedFamilyEventIds: [],
+    remoteConsent: null,
+  };
+  if (typeof window === 'undefined') return empty;
+  try {
+    const raw = window.localStorage.getItem(FAMILY_STATE_STORAGE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<PersistedFamilyState>;
+    if (parsed.version !== 1) return empty;
+    return {
+      version: 1,
+      familySharing:
+        parsed.familySharing === 'granted' || parsed.familySharing === 'ask' ? parsed.familySharing : 'denied',
+      consentUpdatedAt: typeof parsed.consentUpdatedAt === 'string' ? parsed.consentUpdatedAt : '',
+      familyLink: isValidPersistedLink(parsed.familyLink) ? parsed.familyLink : null,
+      sharedFindingIds: Array.isArray(parsed.sharedFindingIds)
+        ? parsed.sharedFindingIds.filter((id): id is string => typeof id === 'string').slice(-MAX_PENDING_ONE_TIME_IDS)
+        : [],
+      sharedFamilyEventIds: Array.isArray(parsed.sharedFamilyEventIds)
+        ? parsed.sharedFamilyEventIds
+            .filter((id): id is string => typeof id === 'string')
+            .slice(-MAX_PENDING_ONE_TIME_IDS)
+        : [],
+      remoteConsent: isValidRemoteConsent(parsed.remoteConsent) ? parsed.remoteConsent : null,
+    };
+  } catch {
+    // 隐私模式下 localStorage 可能不可用 / 内容损坏：退回内存态，不阻塞主路径。
+    return empty;
+  }
+}
+
 interface UseFamilyBindingOptions {
   showToast: (text: string) => void;
   /** 注入的"今天"（评审 P1-4）：邀请码年份跟随当前日期，不再用模块加载时常量。 */
@@ -57,21 +149,46 @@ interface UseFamilyBindingOptions {
 }
 
 /**
- * Demo-only family authorization state.
- * Security-sensitive state deliberately lives in React memory and is not restored from localStorage.
- * Family binding, consent, invite codes, and one-time grants expire with the current browser session.
- * One-time grants stay held for the whole session and are only cleared by revoke/reset:
- * the family view must be able to show exactly what the elder was told was shared.
+ * 家庭协同状态：绑定、授权、邀请码与一次性授权。
+ *
+ * 评审 P0-2 之前这里的状态"故意只存内存"；现在持久化到本机（见
+ * FAMILY_STATE_STORAGE_KEY 注释），但**授权的权威永远在老人端**：
+ * - 老人端 updateFamilySharing 改的是自己的真实授权；
+ * - 家属端只通过 applyRemoteConsent 接收老人端广播/握手带来的授权，
+ *   自己永远不会替老人做授权决定。
  */
 export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) {
-  const [familySharing, setFamilySharing] = useState<ElderProfile['familySharing']>('denied');
-  const [consentUpdatedAt, setConsentUpdatedAt] = useState('');
-  const [familyLink, setFamilyLink] = useState<FamilyLink | null>(null);
+  const persisted = loadPersistedFamilyState();
+  const [familySharing, setFamilySharing] = useState<FamilySharing>(persisted.familySharing);
+  const [consentUpdatedAt, setConsentUpdatedAt] = useState(persisted.consentUpdatedAt);
+  const [familyLink, setFamilyLink] = useState<FamilyLink | null>(persisted.familyLink);
   const [issuedInviteCode, setIssuedInviteCode] = useState<string | null>(null);
-  const [sharedFindingIds, setSharedFindingIds] = useState<string[]>([]);
-  const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>([]);
+  const [sharedFindingIds, setSharedFindingIds] = useState<string[]>(persisted.sharedFindingIds);
+  const [sharedFamilyEventIds, setSharedFamilyEventIds] = useState<string[]>(persisted.sharedFamilyEventIds);
+  const [remoteConsent, setRemoteConsent] = useState<RemoteConsent | null>(persisted.remoteConsent);
 
-  function updateFamilySharing(next: ElderProfile['familySharing']) {
+  // 状态变化即整体写回；单 key 单写者，天然避免多字段间的撕裂。
+  // pending 邀请码 / issuedInviteCode 不落盘（见 FAMILY_STATE_STORAGE_KEY 注释）：
+  // 只有 active 绑定才写，同浏览器家属 tab 不会因此拿到"本机已生成"的邀请码。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const state: PersistedFamilyState = {
+        version: 1,
+        familySharing,
+        consentUpdatedAt,
+        familyLink: familyLink?.status === 'active' ? familyLink : null,
+        sharedFindingIds,
+        sharedFamilyEventIds,
+        remoteConsent,
+      };
+      window.localStorage.setItem(FAMILY_STATE_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // 隐私模式 / 配额满：状态退化为内存态，不影响功能。
+    }
+  }, [familySharing, consentUpdatedAt, familyLink, sharedFindingIds, sharedFamilyEventIds, remoteConsent]);
+
+  function updateFamilySharing(next: FamilySharing) {
     const updatedAt = localIsoTimestamp();
     setFamilySharing(next);
     setConsentUpdatedAt(updatedAt);
@@ -137,6 +254,9 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     if (!result.ok) return { ok: false, reason: result.reason, detail: result.detail };
     setIssuedInviteCode(null);
     setFamilyLink({ ...result.link });
+    // 评审 P0-1 修复：握手回执携带老人端当前授权，家属端绑定瞬间就知道
+    // "老人是否允许共享"，不再依赖本 tab 自己那份恒为 denied 的本地副本。
+    if (result.consent) applyRemoteConsent(result.consent);
     showToast('家属绑定成功。邀请码已失效。');
     return { ok: true };
   }
@@ -183,12 +303,38 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
+  /** 家属端接收老人端广播来的权威授权；内容相同则幂等跳过。useCallback 稳定，可进 effect deps。 */
+  /**
+   * 家属端接收老人端广播来的权威授权；内容相同则幂等跳过。
+   * 同时把本地 familySharing 采纳为该值：同浏览器多 tab 共享同一个持久化 key，
+   * 若家属端只更新 remoteConsent 而保留本地 denied，整体写回会把老人端的
+   * granted 覆盖回 denied，老人端刷新后授权就丢了。采纳后两端收敛一致，
+   * 权威仍然只有老人端（只有它自己的 UI 会直接改 familySharing）。
+   */
+  const applyRemoteConsent = useCallback((next: RemoteConsent) => {
+    setRemoteConsent((current) => {
+      if (current && current.sharing === next.sharing && current.updatedAt === next.updatedAt) return current;
+      return { sharing: next.sharing, updatedAt: next.updatedAt };
+    });
+    setFamilySharing(next.sharing);
+    setConsentUpdatedAt((current) => (current === next.updatedAt ? current : next.updatedAt));
+  }, []);
+
+  /** 家属端解除绑定（评审 P0-2 恢复出口）：清掉本机绑定与握手中的邀请码；老人端授权不受影响。 */
+  function unbindFamily() {
+    setFamilyLink(null);
+    setIssuedInviteCode(null);
+    setRemoteConsent(null);
+    showToast('已解除本机与老人端的绑定。重新绑定时需要老人端出示新的邀请码。');
+  }
+
   return {
     familySharing,
     consentUpdatedAt,
     familyLink,
     sharedFindingIds,
     sharedFamilyEventIds,
+    remoteConsent,
     promptFamilyShare,
     requestFamilyShare,
     keepFamilyPrivate,
@@ -198,5 +344,7 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
+    applyRemoteConsent,
+    unbindFamily,
   };
 }

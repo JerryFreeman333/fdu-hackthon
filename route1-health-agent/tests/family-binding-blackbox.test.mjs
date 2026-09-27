@@ -121,6 +121,8 @@ async function runSmoke() {
     await wait(600);
 
     // ===== 场景一（P0-2）：跨 tab 绑定握手 =====
+    // UI 重构后邀请码入口在"我的"页
+    await elderTab.getByRole('button', { name: '我的' }).last().click();
     const inviteBtn = elderTab.getByRole('button', { name: /生成家属邀请码/ }).first();
     await inviteBtn.click({ timeout: 5000 });
     await wait(400);
@@ -150,14 +152,17 @@ async function runSmoke() {
     // 正确码：跨 tab 握手绑定
     await inviteInput.fill(inviteCode);
     await familyTab.locator('.family-dashboard button', { hasText: '绑定' }).click();
-    await familyTab.getByText('绑定关系').waitFor({ state: 'visible', timeout: 10000 });
+    await familyTab.getByText('已通过邀请码绑定的家属').first().waitFor({ state: 'visible', timeout: 10000 });
     check('跨 tab 家属绑定成功（P0-2 死局已修复）', true);
 
     // 老人端实时看到绑定成功（老人端是应答方，状态就在本 tab 更新）
-    await elderTab.getByText('已绑定家属').first().waitFor({ state: 'visible', timeout: 5000 });
+    await elderTab.getByText('已经和家人连接').first().waitFor({ state: 'visible', timeout: 5000 });
     check('老人端实时显示绑定成功', true);
 
     // ===== 场景三（P0-3）：连发两条消息，回复不错位 =====
+    // UI 重构后聊天在独立页：首页 → 打字聊天
+    await elderTab.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+    await elderTab.getByRole('button', { name: /打字聊天/ }).click();
     const chatInput = elderTab.locator('#elder-chat input.chat-input');
     await chatInput.waitFor({ timeout: 5000 });
     // 占位气泡（P1-4）在规则模式下存活时间只有几十毫秒，用 MutationObserver

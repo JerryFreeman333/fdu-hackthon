@@ -124,9 +124,15 @@ export default function ElderSettingsPage({
           {familyLink?.status === 'active' ? '已经和家人连接' : familyLink ? '等待家人输入邀请码' : '还没有绑定家人'}
         </h2>
         {familyLink?.status === 'active' ? (
-          <p>
-            {familyLink.relation} · {familyLink.displayName}
-          </p>
+          <>
+            <p>
+              {familyLink.relation} · {familyLink.displayName}
+            </p>
+            <button className="btn-secondary" type="button" onClick={onGenerateInvite}>
+              重新生成邀请码
+            </button>
+            <p className="muted">给新的家人设备用；生成后现有绑定会被替换，家人需要用新码重新绑定。</p>
+          </>
         ) : familyLink ? (
           <>
             <p>请让家属输入：</p>

@@ -12,7 +12,26 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { seedDemoProfile } from './helpers/demo-seed.mjs';
+import { PROFILE_STORAGE_KEY } from './helpers/demo-seed.mjs';
+
+/** 个人模式种子：空数据起步——demo 预绑定会让真实派发引擎旁路，改走个人拓扑。 */
+const PERSONAL_SEED = {
+  version: 1,
+  dataMode: 'personal',
+  profile: {
+    name: '李奶奶',
+    age: 78,
+    conditions: [],
+    medications: [],
+    familyContact: '女儿 李芳',
+    familyPhone: '13911112222',
+    mobility: 'independent',
+    usesCane: false,
+    nightVision: 'normal',
+    cognition: 'stable',
+    familySharing: 'denied',
+  },
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -88,12 +107,24 @@ async function fetchReady() {
   throw new Error('preview server 未就绪');
 }
 
+async function elderHomeNav(page) {
+  await page.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+  await wait(400);
+}
+
 async function runWebhookSuite() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'zh-CN' });
   await context.grantPermissions(['notifications'], { origin: BASE });
   const page = await context.newPage();
-  seedDemoProfile(page);
+  await page.addInitScript(
+    ([key, value]) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {}
+    },
+    [PROFILE_STORAGE_KEY, JSON.stringify(PERSONAL_SEED)],
+  );
   // 家属端未绑定时只渲染"先完成家庭绑定"卡并提前 return，设置区在绑定后的主视图里。
   // 所以不走 UI 配置，而是在应用脚本运行前把配置种进 localStorage（等同"已配置过"）。
   await page.addInitScript(
@@ -121,10 +152,21 @@ async function runWebhookSuite() {
       .getByRole('button', { name: /我是老人/ })
       .first()
       .click({ timeout: 5000 });
+    // 个人模式：我的 → 允许共享（真实授权位 granted，派发门控要求）
+    await page.getByRole('button', { name: '我的' }).last().click();
     await page
-      .getByRole('button', { name: /告诉家属/ })
+      .getByRole('button', { name: /允许共享/ })
       .first()
       .click({ timeout: 5000 });
+    // 通过真实聊天产生一条可派发的急症发现（个人模式无合成种子）
+    await elderHomeNav(page);
+    await page.getByRole('button', { name: /打字聊天/ }).click();
+    const fallInput = page.locator('#elder-chat input.chat-input');
+    await fallInput.waitFor({ timeout: 5000 });
+    await fallInput.fill('我刚才在卫生间摔了一跤，现在胸口有点疼');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+    await page.getByRole('button', { name: '返回首页' }).click();
+    await wait(500);
     await page.getByRole('button', { name: '我的' }).last().click();
     await page
       .getByRole('button', { name: /生成家属邀请码/ })
@@ -152,8 +194,8 @@ async function runWebhookSuite() {
       .click({ timeout: 5000 });
     await page.locator('input[placeholder*="AN-"]').first().fill(inviteCode);
     await page.getByRole('button', { name: '绑定', exact: true }).first().click();
-    await page.getByRole('button', { name: '待处理' }).last().click();
-    // 等派发跑完：台账里出现微信推送记录（sendWebhookPush 是异步 fetch）。
+    // 绑定激活派发闸门 → 去消息页等台账出现微信推送记录（sendWebhookPush 是异步 fetch）。
+    await page.getByRole('navigation').getByRole('button', { name: '消息' }).click();
     await page.getByText('微信推送已送达').first().waitFor({ state: 'visible', timeout: 15000 });
 
     // 3. 派发断言：Server酱真的被调了，台账如实记录。
@@ -172,8 +214,12 @@ async function runWebhookSuite() {
     const ledgerText = await page.locator('body').innerText();
     check('送达台账如实记录微信推送结果', /微信推送已送达/.test(ledgerText));
 
-    // 4. 绑定后在“我的”里管理通知方式。
+    // 4. 绑定后在"我的 → 隐私设置"里管理通知方式。
     await page.getByRole('button', { name: '我的' }).last().click();
+    await page
+      .getByRole('button', { name: /隐私设置/ })
+      .first()
+      .click();
     const settingsCard = page.locator('.webhook-settings-card');
     await settingsCard.waitFor({ state: 'visible', timeout: 5000 });
     check('绑定后可见微信推送设置卡', await settingsCard.isVisible());

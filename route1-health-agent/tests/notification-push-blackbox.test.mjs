@@ -14,7 +14,26 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-import { seedDemoProfile } from './helpers/demo-seed.mjs';
+import { PROFILE_STORAGE_KEY } from './helpers/demo-seed.mjs';
+
+/** 个人模式种子：空数据起步——通过真实聊天产生可派发的发现，走完整授权+绑定链路。 */
+const PERSONAL_SEED = {
+  version: 1,
+  dataMode: 'personal',
+  profile: {
+    name: '李奶奶',
+    age: 78,
+    conditions: [],
+    medications: [],
+    familyContact: '女儿 李芳',
+    familyPhone: '13911112222',
+    mobility: 'independent',
+    usesCane: false,
+    nightVision: 'normal',
+    cognition: 'stable',
+    familySharing: 'denied',
+  },
+};
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.NOTIF_SMOKE_PORT ?? 4174);
@@ -91,7 +110,14 @@ async function runSmoke() {
   await context.grantPermissions(['notifications'], { origin: `http://localhost:${PORT}` });
 
   const page = await context.newPage();
-  seedDemoProfile(page);
+  await page.addInitScript(
+    ([key, value]) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {}
+    },
+    [PROFILE_STORAGE_KEY, JSON.stringify(PERSONAL_SEED)],
+  );
   page.on('console', (msg) => {
     if (msg.type() === 'error') log('console.error:', msg.text());
   });
@@ -167,16 +193,27 @@ async function runSmoke() {
     await elderBtn.click({ timeout: 3000 });
     await wait(800);
 
-    // 2. 同意家属共享
-    const grantBtn = page.getByRole('button', { name: /告诉家属/ }).first();
-    const grantVisible = await grantBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    // 2. 同意家属共享（个人模式：我的 → 允许共享）
+    await page.getByRole('button', { name: '我的' }).last().click();
+    const grantBtn = page.getByRole('button', { name: /允许共享/ }).first();
+    const grantVisible = await grantBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!grantVisible) {
-      check('老人端出现"同意共享"按钮', false);
-      throw new Error('未找到同意共享按钮，可能已经被默认同意');
+      check('老人端出现"允许共享"按钮', false);
+      throw new Error('未找到允许共享按钮，可能已经被默认同意');
     }
     await grantBtn.click();
-    await wait(800);
+    await wait(500);
     check('老人端同意家属共享', true);
+
+    // 2.5 通过真实聊天产生一条可派发的急症发现（个人模式无合成种子）
+    await page.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+    await page.getByRole('button', { name: /打字聊天/ }).click();
+    const fallInput = page.locator('#elder-chat input.chat-input');
+    await fallInput.waitFor({ timeout: 5000 });
+    await fallInput.fill('我刚才在卫生间摔了一跤，现在胸口有点疼');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+    await page.getByRole('button', { name: '返回首页' }).click();
+    await wait(500);
 
     // 3. 生成邀请码
     await page.getByRole('button', { name: '我的' }).last().click();

@@ -35,6 +35,13 @@ interface UseNotificationDispatchOptions {
   findings: Finding[];
   familySharing: FamilySharing;
   familyLink: FamilyLink | null;
+  /**
+   * 评审 P0-1 修复：是否允许本实例真正派发通知。授权的权威实例（老人端 /
+   * 同 tab 切换角色）为 true；从网络学到授权的家属消费端（remoteConsent 非空）
+   * 为 false——它的台账完全来自 dispatch.append 同步，自己再派发会与老人端
+   * 双重弹系统通知、双重发微信推送。默认 true 保持既有调用兼容。
+   */
+  canDispatch?: boolean;
   /** 测试/演练时允许注入自定义 deliver（例如不真弹系统通知） */
   deliver?: DeliverFn;
 }
@@ -48,6 +55,7 @@ export function useNotificationDispatch({
   findings,
   familySharing,
   familyLink,
+  canDispatch = true,
   deliver,
 }: UseNotificationDispatchOptions): DispatchOutcome & {
   acknowledge: (findingId: string) => void;
@@ -68,7 +76,7 @@ export function useNotificationDispatch({
     saveDispatchRecords(records);
   }, [records]);
 
-  const isDispatchable = familyLink?.status === 'active' && familySharing === 'granted';
+  const isDispatchable = canDispatch && familyLink?.status === 'active' && familySharing === 'granted';
 
   const effectiveDeliver = useCallback<DeliverFn>(
     async (notification) => {

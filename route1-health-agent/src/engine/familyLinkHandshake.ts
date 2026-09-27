@@ -23,6 +23,16 @@ export interface FamilyLinkPayload {
   status: 'active' | 'pending';
 }
 
+/**
+ * 评审 P0-1 修复：accepted 回执携带老人端当前授权。家属端绑定瞬间就知道
+ * "老人是否允许共享"，不再依赖本端那份恒为 denied 的本地副本。
+ * 载荷只有授权位与时间戳，没有健康内容。
+ */
+export interface LinkConsentPayload {
+  sharing: 'granted' | 'denied';
+  updatedAt: string;
+}
+
 export interface FamilyLinkMessage {
   kind: 'request' | 'accepted' | 'rejected';
   requestId: string;
@@ -32,6 +42,8 @@ export interface FamilyLinkMessage {
   reason?: 'code_mismatch' | 'not_elder';
   /** accepted 时携带：老人端生成的绑定关系 */
   link?: FamilyLinkPayload;
+  /** accepted 时携带：老人端当前授权（可能缺省——旧版本老人端不回填） */
+  consent?: LinkConsentPayload;
 }
 
 /** 通道抽象：与 useCrossTabSync / useCrossDeviceSync 的能力同构，避免类型耦合。 */
@@ -50,7 +62,7 @@ export interface LinkPeerConnection {
 export type LinkPeerDialer = (code: string) => Promise<LinkPeerConnection>;
 
 export type LinkHandshakeResult =
-  | { ok: true; link: FamilyLinkPayload }
+  | { ok: true; link: FamilyLinkPayload; consent?: LinkConsentPayload }
   | { ok: false; reason: 'rejected' | 'unreachable'; detail?: string };
 
 export interface LinkHandshakeOptions extends LinkHandshakeTransport {
@@ -89,16 +101,35 @@ function isValidLink(value: unknown): value is FamilyLinkPayload {
 export function matchLinkReply(
   envelope: unknown,
   requestId: string,
-): { kind: 'accepted'; link: FamilyLinkPayload } | { kind: 'rejected'; reason?: string } | null {
+):
+  | { kind: 'accepted'; link: FamilyLinkPayload; consent?: LinkConsentPayload }
+  | { kind: 'rejected'; reason?: string }
+  | null {
   if (typeof envelope !== 'object' || envelope === null) return null;
   const record = envelope as { type?: unknown; payload?: unknown };
   if (record.type !== FAMILY_LINK_MESSAGE_TYPE) return null;
   if (typeof record.payload !== 'object' || record.payload === null) return null;
   const payload = record.payload as Partial<FamilyLinkMessage>;
   if (payload.requestId !== requestId) return null;
-  if (payload.kind === 'accepted' && isValidLink(payload.link)) return { kind: 'accepted', link: payload.link };
+  if (payload.kind === 'accepted' && isValidLink(payload.link)) {
+    // 老人端未回填授权（旧版本/未配置）时不带 consent 键，保持应答形状稳定可深比较。
+    if (payload.consent && isValidConsent(payload.consent)) {
+      return {
+        kind: 'accepted',
+        link: payload.link,
+        consent: { sharing: payload.consent.sharing, updatedAt: payload.consent.updatedAt },
+      };
+    }
+    return { kind: 'accepted', link: payload.link };
+  }
   if (payload.kind === 'rejected') return { kind: 'rejected', reason: payload.reason };
   return null;
+}
+
+function isValidConsent(value: unknown): value is LinkConsentPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const consent = value as Partial<LinkConsentPayload>;
+  return (consent.sharing === 'granted' || consent.sharing === 'denied') && typeof consent.updatedAt === 'string';
 }
 
 /** L2：同浏览器跨 tab。先订阅再广播，窗口内等 accepted / rejected。 */
@@ -120,7 +151,8 @@ async function handshakeOverBroadcast(
     const unsubscribe = options.subscribe((envelope) => {
       const reply = matchLinkReply(envelope, requestId);
       if (!reply) return;
-      if (reply.kind === 'accepted') finish({ ok: true, link: reply.link });
+      if (reply.kind === 'accepted')
+        finish({ ok: true, link: reply.link, ...(reply.consent ? { consent: reply.consent } : {}) });
       else finish({ ok: false, reason: 'rejected', detail: reply.reason ?? 'code_mismatch' });
     });
     options.broadcast(FAMILY_LINK_MESSAGE_TYPE, {
@@ -163,7 +195,8 @@ async function handshakeOverPeer(options: LinkHandshakeOptions, requestId: strin
     connection.onMessage((message) => {
       const reply = matchLinkReply(message, requestId);
       if (!reply) return;
-      if (reply.kind === 'accepted') finish({ ok: true, link: reply.link });
+      if (reply.kind === 'accepted')
+        finish({ ok: true, link: reply.link, ...(reply.consent ? { consent: reply.consent } : {}) });
       else finish({ ok: false, reason: 'rejected', detail: reply.reason ?? 'code_mismatch' });
     });
     connection.send({

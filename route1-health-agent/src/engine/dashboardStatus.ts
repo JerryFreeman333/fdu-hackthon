@@ -17,6 +17,12 @@ import type { FamilyNotificationRecord } from './notify';
  *    被挡住包含两种来源（见 escalate.collectGatedFindings）：有 familyMessage 但
  *    未授权（授权门控），以及内容本身 private 而没有 familyMessage 的紧急发现
  *    （如未授权共享时的摔倒报告）——后者同样必须让家属知道"有事但被挡住"。
+ *
+ * 评审 P0-1 修复注：跨设备时家属端没有事件流，本地检测结果恒为空。
+ * 调用方（App.tsx）必须先把派发台账还原成通知（ledgerRecordToNotification，
+ * 按 findingId 与本地结果合并）再传入 notifications——台账内容本身经过
+ * 老人端授权门控，从 notifications 走 urgent/alert 分级是安全且必需的。
+ * 本函数因此不需要感知台账内容，只保留对"投递完整性"的 unknown 判定。
  */
 export type FamilyStatusTone = 'danger' | 'warn' | 'unknown' | 'ok';
 

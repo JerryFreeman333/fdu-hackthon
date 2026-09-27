@@ -107,7 +107,7 @@ async function runSosSuite() {
     await page.getByRole('button', { name: '关闭' }).click();
 
     // Case 2：胸痛消息的回复下方出现紧急联系行动条。
-    await page.getByRole('button', { name: /打开 AI 助手/ }).click();
+    await page.getByRole('button', { name: /打字聊天/ }).click();
     const input = page.locator('#elder-chat input.chat-input');
     await input.fill('胸口疼得厉害，喘不上气');
     await page.locator('#elder-chat button.btn-primary', { hasText: '发送' }).click();

@@ -91,11 +91,13 @@ async function runOnboardingSuite() {
     page.on('pageerror', (err) => log('pageerror:', err.message));
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 
-    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('先告诉我们你的身份').waitFor({ state: 'visible', timeout: 10000 });
     check('全新用户首先看到首启选择，而不是写死的演示档案', true);
 
-    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /老人端/ }).click();
     await page.getByRole('button', { name: /创建真实档案/ }).click();
+    // 重构后新增"账号与授权"中间步：微信登录不可用时先建本机档案
+    await page.getByRole('button', { name: /暂不登录，先创建本机档案/ }).click();
     await page.getByText('先认识一下您').waitFor({ state: 'visible', timeout: 5000 });
     await page.locator('#profile-name').fill('李奶奶');
     await page.locator('#profile-med').fill('降压药 每日一次');
@@ -134,7 +136,7 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /老人端/ }).click();
     await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     const headerName = await page.locator('.elder-welcome h1').textContent();
@@ -147,13 +149,13 @@ async function runOnboardingSuite() {
     const context = await browser.newContext({ locale: 'zh-CN' });
     const page = await context.newPage();
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /我是老人\/本人/ }).click();
+    await page.getByRole('button', { name: /老人端/ }).click();
     await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
     await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: '我的' }).last().click();
     await page.getByRole('button', { name: '清空本机全部数据' }).click();
-    await page.getByText('你好，我们还不知道你是谁').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByText('先告诉我们你的身份').waitFor({ state: 'visible', timeout: 10000 });
     check('清空本机数据后回到首启选择（删档重来）', true);
     await context.close();
   }

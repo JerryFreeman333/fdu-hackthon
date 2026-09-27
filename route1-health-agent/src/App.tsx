@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, ElderProfile, FamilyHealthEvent, FamilyLink, UserRole } from './types';
+import type { ChatMessage, ElderProfile, FamilyHealthEvent, FamilyLink, FamilySharing, UserRole } from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
@@ -29,6 +29,7 @@ import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications, collectGatedFindings } from './engine/escalate';
+import { isRecordFromToday, ledgerRecordToNotification } from './engine/notify';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
 import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
@@ -62,6 +63,35 @@ const FamilyDashboard = lazy(() => import('./components/FamilyDashboard'));
 const ProfileView = lazy(() => import('./components/ProfileView'));
 
 const VIEW_FALLBACK = <div className="boot-splash">正在打开…</div>;
+
+/**
+ * 评审 P0-2 修复：角色按**标签页**记忆（sessionStorage）。
+ * 之前角色只在建档时写入 preferredRole，之后"切换身份"不落盘——家属端刷新一次
+ * 就被弹回老人端首页。sessionStorage 是每个 tab 独立的：同一台浏览器开两个
+ * 标签页（老人端 + 家属端）刷新后各自保持身份；新开标签页仍回落到
+ * preferredRole，行为与之前一致。
+ */
+const TAB_ROLE_KEY = 'ankang-route1-tab-role';
+
+function readTabRole(): UserRole | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(TAB_ROLE_KEY);
+    return raw === 'elder' || raw === 'family' ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTabRole(nextRole: UserRole | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (nextRole) window.sessionStorage.setItem(TAB_ROLE_KEY, nextRole);
+    else window.sessionStorage.removeItem(TAB_ROLE_KEY);
+  } catch {
+    // sessionStorage 不可用时退化为原有行为（刷新回落 preferredRole）。
+  }
+}
 import RoleGate from './components/RoleGate';
 import FontSizeControl from './components/FontSizeControl';
 import DeviceDebugPanel, { type DeviceSyncState } from './components/DeviceDebugPanel';
@@ -189,6 +219,7 @@ export default function App() {
             const next: StoredProfile = { version: 1, profile, dataMode: 'personal', preferredRole: pendingRole };
             saveStoredProfile(next);
             setStoredProfile(next);
+            writeTabRole(pendingRole);
           }}
         />
       );
@@ -199,6 +230,7 @@ export default function App() {
           const next = demoStoredProfile(selectedRole);
           saveStoredProfile(next);
           setStoredProfile(next);
+          writeTabRole(selectedRole);
           if (initial.events.length === 0 && initial.chat.length === 0) setInitial(buildSeedSnapshot());
         }}
         onPersonal={(selectedRole) => {
@@ -227,7 +259,7 @@ function AppRoot({
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() =>
     initialHomeSafetyActions(demoMode),
   );
-  const [role, setRole] = useState<UserRole | null>(storedProfile.preferredRole ?? null);
+  const [role, setRole] = useState<UserRole | null>(() => readTabRole() ?? storedProfile.preferredRole ?? null);
   const [familyView, setFamilyView] = useState<FamilyView>('home');
   const [demoSharing, setDemoSharing] = useState(true);
   const [elderScreen, setElderScreen] = useState<ElderScreen>('home');
@@ -278,9 +310,11 @@ function AppRoot({
 
   const {
     familySharing,
+    consentUpdatedAt,
     familyLink,
     sharedFindingIds,
     sharedFamilyEventIds,
+    remoteConsent,
     promptFamilyShare,
     requestFamilyShare,
     keepFamilyPrivate,
@@ -290,6 +324,8 @@ function AppRoot({
     confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
+    applyRemoteConsent,
+    unbindFamily,
   } = useFamilyBinding({ showToast, today });
 
   // P1（评审安全项）：绑定握手是否已完成。PeerJS 对端在握手完成前是陌生人，
@@ -298,6 +334,19 @@ function AppRoot({
   const familyLinkActive = familyLink?.status === 'active';
   const familyLinkActiveRef = useRef(familyLinkActive);
   familyLinkActiveRef.current = familyLinkActive;
+
+  /**
+   * 评审 P0-1 修复：家属端看世界的授权口径。
+   * 授权的权威永远在老人端。本实例是"从网络学到授权的家属消费端"
+   * （remoteConsent 非空，经跨端广播 / 握手回执带来）时，以远端授权为准；
+   * 本实例就是权威本身（老人端，或同 tab 切换角色）时，用自己的 familySharing。
+   * 之前家属端用自己的 familySharing（恒为 denied）算通知列表 → 永远为空。
+   */
+  const effectiveFamilySharing: FamilySharing = remoteConsent
+    ? remoteConsent.sharing === 'granted'
+      ? 'granted'
+      : 'denied'
+    : familySharing;
 
   const activeProfile: ElderProfile = useMemo(
     () => ({ ...storedProfile.profile, familySharing }),
@@ -310,8 +359,8 @@ function AppRoot({
     [measurements],
   );
   const visibleFamilyFacts = useMemo(
-    () => visibleFamilyEvents(familyEvents, familySharing, sharedFamilyEventIds),
-    [familyEvents, familySharing, sharedFamilyEventIds],
+    () => visibleFamilyEvents(familyEvents, effectiveFamilySharing, sharedFamilyEventIds),
+    [familyEvents, effectiveFamilySharing, sharedFamilyEventIds],
   );
   const findings = useMemo(() => runDetection(events, today), [events, today]);
   const agentContext = useMemo(
@@ -319,14 +368,14 @@ function AppRoot({
     [activeProfile, events, today, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, familySharing, sharedFindingIds, today),
-    [findings, familySharing, sharedFindingIds, today],
+    () => collectFamilyNotifications(findings, effectiveFamilySharing, sharedFindingIds, today),
+    [findings, effectiveFamilySharing, sharedFindingIds, today],
   );
   // 第三种未知（评审 P0-2）：今日存在但被隐私门控挡住的 alert/urgent 数量。
   // 家属首页状态必须知道它，否则会把被挡住的紧急信号表述成"今天总体正常"。
   const gatedAlertCount = useMemo(
-    () => collectGatedFindings(findings, familySharing, sharedFindingIds, today).length,
-    [findings, familySharing, sharedFindingIds, today],
+    () => collectGatedFindings(findings, effectiveFamilySharing, sharedFindingIds, today).length,
+    [findings, effectiveFamilySharing, sharedFindingIds, today],
   );
   // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
   // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
@@ -375,7 +424,27 @@ function AppRoot({
     findings,
     familySharing,
     familyLink,
+    // 评审 P0-1 修复：派发只发生在"权威实例"上（老人端 / 同 tab 切角色）。
+    // 从网络学到授权的家属消费端（remoteConsent 非空）不派发——否则同浏览器
+    // 双 tab（持久化恢复出 granted+active）会双重弹通知、双重发微信推送。
+    canDispatch: remoteConsent === null,
   });
+
+  /**
+   * 评审 P0-1 修复：家属端通知 = 本地检测结果 ∪ 派发台账。
+   * 跨设备（PeerJS）时家属端没有老人的事件流、无法本地重跑检测，派发台账
+   * （经 dispatch.append 同步，内容本身就是授权门控后的家属安全表述）是它
+   * 唯一的通知来源；同浏览器时按 findingId 去重。未确认的历史记录也保留
+   * 在列表里——"你没处理的通知"不能因为过了一天就消失。
+   */
+  const familyNotifications = useMemo(() => {
+    const known = new Set(familyNotifs.map((notification) => notification.finding.id));
+    const fromLedger = dispatchRecords
+      .filter((record) => !known.has(record.findingId))
+      .filter((record) => record.lifecycle === 'new' || isRecordFromToday(record, today))
+      .map(ledgerRecordToNotification);
+    return [...familyNotifs, ...fromLedger];
+  }, [familyNotifs, dispatchRecords, today]);
 
   // 另一端广播来的"今日信号摘要"（P0-1 配套，只有数量没有内容）：
   // 跨设备时家属端自己的事件流是空的，必须用老人端广播来的数量才能如实显示
@@ -425,6 +494,16 @@ function AppRoot({
             gatedAlertCount: payload.gatedAlertCount,
           });
         }
+      } else if (envelope.type === 'family.consent') {
+        // 评审 P0-1 修复：家属端接收老人端广播来的权威授权。
+        // 陌生对端（未完成绑定）发来的授权消息一律忽略，防止伪造"已授权"诱导泄漏；
+        // 授权只属于老人端——本实例是老人端时绝不接受远端授权。
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
+        if (role !== 'family') return;
+        const payload = envelope.payload as { sharing?: unknown; updatedAt?: unknown };
+        if ((payload?.sharing !== 'granted' && payload?.sharing !== 'denied') || typeof payload?.updatedAt !== 'string')
+          return;
+        applyRemoteConsent({ sharing: payload.sharing, updatedAt: payload.updatedAt });
       } else if (envelope.type === 'family.link') {
         // P0-2：绑定握手。只有老人端应答（家属端保持沉默，避免多 tab 时错误的
         // rejected 抢在正确的 accepted 之前到达）；accepted/rejected 的消费方是
@@ -436,10 +515,20 @@ function AppRoot({
         const link = familyLinkRequestRef.current(payload.code);
         // 回执只走请求来的通道（P1）：同浏览器 tab 的请求只回 BroadcastChannel，
         // 陌生人拨入的 PeerJS 请求只回 PeerJS——绑定回执不向无关通道广播。
+        // 评审 P0-1 修复：accepted 回执带上老人端当前授权，家属端绑定瞬间
+        // 就拿到正确的授权口径（不依赖后续广播的时序）。
         sync.broadcast(
           'family.link',
           link
-            ? { kind: 'accepted', requestId: payload.requestId, link }
+            ? {
+                kind: 'accepted',
+                requestId: payload.requestId,
+                link,
+                consent: {
+                  sharing: familySharing === 'granted' ? 'granted' : 'denied',
+                  updatedAt: consentUpdatedAt,
+                },
+              }
             : { kind: 'rejected', requestId: payload.requestId, reason: 'code_mismatch' },
           envelope.via === 'peer' ? { local: false, peer: true } : { local: true, peer: false },
         );
@@ -495,10 +584,12 @@ function AppRoot({
     demoMode,
     demoSharing,
     familySharing,
+    consentUpdatedAt,
     familyLink,
     activeProfile.name,
     storedProfile,
     onProfileChange,
+    applyRemoteConsent,
   ]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
@@ -553,6 +644,26 @@ function AppRoot({
       },
     );
   }, [role, sync, today, todaySignalCount, gatedAlertCount, familyLinkActive]);
+
+  // 评审 P0-1 修复：老人端广播授权（family.consent）。授权是全系统唯一的权威状态，
+  // 变化必须到达家属端——否则家属端自己的副本永远 denied，collectFamilyNotifications
+  // 永远算出空数组，家属永远收不到通知。载荷只有授权位与时间戳，没有健康内容，
+  // 走 PeerJS 也安全。demo 模式的 sharing 是 prop 级 override，不走这条通道。
+  // sentAt 参与去重签名：跨设备对端断线重连（sync.status.mode 变化）后能强制
+  // 重发一次最新授权，避免重连的家属端拿着过期授权。
+  useEffect(() => {
+    if (demoMode) return;
+    if (!familyLinkActive) return;
+    sync.broadcast(
+      'family.consent',
+      {
+        sharing: familySharing === 'granted' ? 'granted' : 'denied',
+        updatedAt: consentUpdatedAt,
+        sentAt: new Date().toISOString(),
+      },
+      { peer: true },
+    );
+  }, [demoMode, familyLinkActive, familySharing, consentUpdatedAt, sync, sync.status.mode]);
 
   // 家属端可见的信号量取"本 tab 计算"与"老人端广播"的较大值：
   // 同浏览器双 tab 靠 events.append 已能对齐；跨设备时本 tab 没有事件流，
@@ -729,6 +840,7 @@ function AppRoot({
   function selectRole(nextRole: UserRole) {
     if (nextRole === 'elder') setElderScreen('home');
     if (nextRole === 'family') setFamilyView('home');
+    writeTabRole(nextRole);
     setRole(nextRole);
   }
 
@@ -741,6 +853,7 @@ function AppRoot({
   }, [role]);
 
   function resetRole() {
+    writeTabRole(null);
     setRole(null);
   }
 
@@ -1167,14 +1280,18 @@ function AppRoot({
                 </ElderHealthPage>
               </HealthArchivePage>
             }
-            profile={demoMode ? { ...activeProfile, familySharing: demoSharing ? 'granted' : 'denied' } : activeProfile}
+            profile={
+              demoMode
+                ? { ...activeProfile, familySharing: demoSharing ? 'granted' : 'denied' }
+                : { ...activeProfile, familySharing: effectiveFamilySharing }
+            }
             familyLink={demoMode ? demoFamilyLink : familyLink}
             notifications={
               demoMode
                 ? demoSharing
                   ? collectFamilyNotifications(findings, 'granted', sharedFindingIds, today)
                   : []
-                : familyNotifs
+                : familyNotifications
             }
             dispatchRecords={dispatchRecords}
             onAcknowledgeDispatch={handleAcknowledge}
@@ -1194,6 +1311,7 @@ function AppRoot({
               setDemoSharing(false);
               revokeFamilyShare();
             }}
+            onUnbindFamily={unbindFamily}
             onBindFamily={(code) => bindFamily(code, familyLinkTransport as FamilyLinkTransport)}
             onViewChange={setFamilyView}
             view={familyView}
