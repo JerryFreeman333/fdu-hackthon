@@ -3,7 +3,7 @@ import type { UserRole } from '../types';
 
 export type FontScale = 'normal' | 'large' | 'extraLarge';
 
-const FONT_SCALE_KEY = 'ankang-route1-font-scale-v1';
+const FONT_SCALE_KEY = 'ankang-route1-font-scale-v2';
 
 function loadSavedFontScale(): FontScale | null {
   const saved = window.localStorage.getItem(FONT_SCALE_KEY);
