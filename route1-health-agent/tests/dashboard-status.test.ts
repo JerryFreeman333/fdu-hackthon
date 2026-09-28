@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FamilyNotification } from '../src/engine/escalate';
-import { collectGatedFindings } from '../src/engine/escalate';
+import { collectGatedFindings, collectTodayMinorFindings } from '../src/engine/escalate';
 import type { FamilyNotificationRecord } from '../src/engine/notify';
 import { familyStatus, currentFamilyNotifications } from '../src/engine/dashboardStatus';
 
@@ -229,4 +229,35 @@ void test('撤销授权闭环：台账历史 urgent 在 current 过滤后，head
   const status = familyStatus(currentFamilyNotifications([notification('urgent')], 'denied'), records, 2, 1);
   assert.equal(status.tone, 'unknown');
   assert.equal(status.title, '有 1 件事被隐私设置挡住了');
+});
+
+void test('collectTodayMinorFindings：只收今日 info/watch，urgent/alert 归 gated 分支管', () => {
+  const findings = [
+    finding('info', 'f-info'),
+    finding('watch', 'f-watch'),
+    finding('urgent', 'f-urgent'),
+    { ...finding('info', 'f-info-old'), date: '2026-09-08' },
+  ];
+  assert.deepEqual(
+    collectTodayMinorFindings(findings, '2026-09-09')
+      .map((item) => item.id)
+      .sort(),
+    ['f-info', 'f-watch'],
+  );
+});
+
+void test('info 级发现存在 → unknown"有轻微变化被记录"，绝不绿色"总体正常"', () => {
+  const status = familyStatus([], [], 3, 0, 1);
+  assert.equal(status.tone, 'unknown');
+  assert.equal(status.title, '今天有 1 条轻微变化被记录');
+  const multi = familyStatus([], [], 5, 0, 2);
+  assert.equal(multi.title, '今天有 2 条轻微变化被记录');
+});
+
+void test('gated urgent 仍优先于轻微变化分支；无发现的日子保持 ok', () => {
+  const gated = familyStatus([], [], 3, 1, 2);
+  assert.equal(gated.title, '有 1 件事被隐私设置挡住了');
+  const calm = familyStatus([], [], 24, 0, 0);
+  assert.equal(calm.tone, 'ok');
+  assert.equal(calm.title, '今天总体正常');
 });

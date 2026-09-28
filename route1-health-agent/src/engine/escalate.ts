@@ -82,6 +82,17 @@ export function collectGatedFindings(
   });
 }
 
+/**
+ * 今日 info/watch 级发现（评审 P1："今天总体正常"对 info 级信号过强）。
+ * 这类发现按通知策略不进入家属通知，但它们是真实记录——老人报过头晕的日子，
+ * 家属端绝不能显示绿色"今天总体正常"。与 collectGatedFindings 一样只暴露数量。
+ */
+export function collectTodayMinorFindings(findings: Finding[], today: string = ''): Finding[] {
+  return findings.filter(
+    (finding) => !FAMILY_LEVELS.includes(finding.severity) && (today === '' || finding.date === today),
+  );
+}
+
 export function severityBadge(sev: Severity): { text: string; className: string } {
   switch (sev) {
     case 'urgent':

@@ -50,6 +50,8 @@ interface FamilyDashboardProps {
   /** 今日存在、但因老人未授权而被隐私门控挡住的 alert/urgent 数量（评审 P0-2）：
    * 大于 0 时 dashboardStatus 必须显示"被隐私设置挡住"，绝不显示"今天总体正常" */
   gatedAlertCount: number;
+  /** 今日 info/watch 级发现数量（评审 P1）：不触发家属通知，但同样禁止绿色"总体正常" */
+  todayMinorFindingCount: number;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
   tasks: CareTask[];
@@ -150,6 +152,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     props.dispatchRecords,
     props.todaySignalCount,
     props.gatedAlertCount,
+    props.todayMinorFindingCount,
   );
   // ===== 微信推送设置（评审 P0-6/P1-3）=====
   const initialWebhook = loadWebhookConfig();

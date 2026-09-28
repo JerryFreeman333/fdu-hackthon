@@ -64,6 +64,7 @@ export function familyStatus(
   dispatchRecords: FamilyNotificationRecord[],
   todaySignalCount: number,
   gatedAlertCount = 0,
+  todayMinorFindingCount = 0,
 ): FamilyStatus {
   const urgent = notifications.filter((notification) => notification.finding.severity === 'urgent');
   if (urgent.length > 0) {
@@ -94,6 +95,23 @@ export function familyStatus(
       detail: `今日已收到 ${todaySignalCount} 条健康信号，其中 ${gatedAlertCount} 条被系统标记为需要关注，但按老人的隐私设置暂未向您开放。系统无法替您判断老人是否安好：建议直接联系老人确认；老人在老人端同意共享后，您就能看到这些内容。`,
       tone: 'unknown',
       reasons: [`gated_alerts=${gatedAlertCount}`, `signals_today=${todaySignalCount}`],
+    };
+  }
+
+  // 第四种未知（评审 P1："今天总体正常"对 info 级信号过强）：info/watch 级发现
+  // 按通知策略不进入家属通知，但它们是真实记录——老人报过头晕的日子，绿色
+  // "今天总体正常"就是把"没到介入阈值"说成"没事"。ok 只能属于今天确实没有
+  // 健康发现的日子；到这里还没被前面分支接住的今日发现必然都是轻微级别
+  // （urgent/alert 已在可见通知与 gated 分支中处理）。
+  if (todayMinorFindingCount > 0) {
+    return {
+      title:
+        todayMinorFindingCount === 1
+          ? '今天有 1 条轻微变化被记录'
+          : `今天有 ${todayMinorFindingCount} 条轻微变化被记录`,
+      detail: `系统记录到老人今日的轻微变化或日常波动（不构成需要介入的告警，共 ${todayMinorFindingCount} 条）。想了解具体内容请直接联系老人；出现需要关注的情况时系统会再提醒您。`,
+      tone: 'unknown',
+      reasons: [`today_minor_findings=${todayMinorFindingCount}`, `signals_today=${todaySignalCount}`],
     };
   }
 
