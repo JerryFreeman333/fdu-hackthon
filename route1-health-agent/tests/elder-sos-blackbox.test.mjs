@@ -12,15 +12,15 @@ import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { seedDemoProfile } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const PORT = Number(process.env.ELDER_SOS_PORT ?? 4177);
 const BASE = `http://localhost:${PORT}`;
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
-let serverProcess = null;
+let previewHandle = null;
 const results = [];
 
 function log(...args) {
@@ -47,43 +47,13 @@ function run(cmd, args, envExtra = {}) {
   });
 }
 
-function startPreview() {
-  return new Promise((resolvePromise, reject) => {
-    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (chunk) => {
-      const text = chunk.toString();
-      if (text.includes('Local:') || text.includes('localhost')) resolvePromise();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    serverProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) reject(new Error(`vite preview 退出码 ${code}`));
-    });
-    setTimeout(() => reject(new Error('vite preview 启动超时')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 
 function stopPreview() {
-  if (serverProcess) {
-    try {
-      serverProcess.kill('SIGTERM');
-    } catch {}
-    serverProcess = null;
-  }
-}
-
-async function fetchReady() {
-  for (let i = 0; i < 40; i += 1) {
-    try {
-      const res = await fetch(`${BASE}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview server 未就绪');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function runSosSuite() {
@@ -128,7 +98,6 @@ async function main() {
   await run(NPM, ['run', 'build'], stripLlmEnv);
   await startPreview();
   try {
-    await fetchReady();
     await runSosSuite();
   } finally {
     stopPreview();

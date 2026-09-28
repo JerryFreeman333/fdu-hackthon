@@ -19,6 +19,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { PROFILE_STORAGE_KEY } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -44,7 +45,7 @@ const PERSONAL_SEED = {
   },
 };
 
-let serverProcess = null;
+let previewHandle = null;
 
 function log(...args) {
   console.log('[binding-smoke]', ...args);
@@ -62,37 +63,12 @@ async function ensureBuild() {
     await run('npm', ['run', 'build']);
   }
 }
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (chunk) => {
-      const text = chunk.toString();
-      process.stdout.write('[preview] ' + text);
-      if (text.includes('Local:') || text.includes('localhost')) resolve();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    setTimeout(() => reject(new Error('vite preview timeout')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 function stopPreview() {
-  try {
-    serverProcess?.kill('SIGTERM');
-  } catch {}
-  serverProcess = null;
-}
-async function fetchReady() {
-  for (let i = 0; i < 40; i += 1) {
-    try {
-      const res = await fetch(`http://localhost:${PORT}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview not ready');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function runSmoke() {
@@ -234,7 +210,6 @@ async function runSmoke() {
   await ensureBuild();
   await startPreview();
   try {
-    await fetchReady();
     await runSmoke();
   } finally {
     stopPreview();

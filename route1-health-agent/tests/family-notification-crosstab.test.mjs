@@ -17,6 +17,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { PROFILE_STORAGE_KEY } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -42,7 +43,7 @@ const PERSONAL_SEED = {
   },
 };
 
-let serverProcess = null;
+let previewHandle = null;
 
 function log(...args) {
   console.log('[crosstab-smoke]', ...args);
@@ -60,48 +61,18 @@ async function ensureBuild() {
     await run('npm', ['run', 'build']);
   }
 }
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (data) => {
-      const text = String(data);
-      if (text.includes(String(PORT))) resolve();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    serverProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) reject(new Error(`vite preview 退出码 ${code}`));
-    });
-    setTimeout(() => reject(new Error('vite preview 启动超时')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 function stopPreview() {
-  if (serverProcess) {
-    try {
-      serverProcess.kill('SIGTERM');
-    } catch {}
-    serverProcess = null;
-  }
-}
-async function fetchReady() {
-  for (let i = 0; i < 40; i += 1) {
-    try {
-      const res = await fetch(`http://localhost:${PORT}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview server 未就绪');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function main() {
   await ensureBuild();
   await startPreview();
-  await fetchReady();
-  log(`preview 服务已就绪 (http://localhost:${PORT})`);
+  log(`preview 服务已就绪 (http://127.0.0.1:${PORT})`);
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'zh-CN' });

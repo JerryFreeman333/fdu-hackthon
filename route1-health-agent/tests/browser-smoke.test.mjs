@@ -5,15 +5,15 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { seedDemoProfile } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.BROWSER_SMOKE_PORT ?? 4173);
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
-let serverProcess = null;
+let previewHandle = null;
 
 const results = [];
 
@@ -45,44 +45,13 @@ async function ensureBuild() {
   }
 }
 
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (chunk) => {
-      const text = chunk.toString();
-      process.stdout.write('[preview] ' + text);
-      if (text.includes('Local:') || text.includes('localhost')) resolve();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    serverProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) reject(new Error(`vite preview \u9000\u51fa\u7801 ${code}`));
-    });
-    setTimeout(() => reject(new Error('vite preview \u542f\u52a8\u8d85\u65f6')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 
 function stopPreview() {
-  if (serverProcess) {
-    try {
-      serverProcess.kill('SIGTERM');
-    } catch {}
-    serverProcess = null;
-  }
-}
-
-async function fetchReady() {
-  for (let i = 0; i < 40; i++) {
-    try {
-      const res = await fetch(`http://localhost:${PORT}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview server \u672a\u5c31\u7ee7');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function runSmoke(browser) {
@@ -314,8 +283,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     await startPreview();
-    await fetchReady();
-    log(`preview \u670d\u52a1\u5df2\u5c31\u7ee7 (http://localhost:${PORT})`);
+    log(`preview \u670d\u52a1\u5df2\u5c31\u7ee7 (http://127.0.0.1:${PORT})`);
     await runSmoke(browser);
     await runFamilyMedicationScenario(browser);
   } finally {

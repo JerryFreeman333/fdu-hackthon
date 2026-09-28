@@ -15,6 +15,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { PROFILE_STORAGE_KEY } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 
 /** 个人模式种子：空数据起步——通过真实聊天产生可派发的发现，走完整授权+绑定链路。 */
 const PERSONAL_SEED = {
@@ -38,9 +39,8 @@ const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.NOTIF_SMOKE_PORT ?? 4174);
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
-let serverProcess = null;
+let previewHandle = null;
 
 function log(...args) {
   console.log('[notif-push-smoke]', ...args);
@@ -63,44 +63,13 @@ async function ensureBuild() {
   }
 }
 
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (chunk) => {
-      const text = chunk.toString();
-      process.stdout.write('[preview] ' + text);
-      if (text.includes('Local:') || text.includes('localhost')) resolve();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    serverProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) reject(new Error(`vite preview 退出码 ${code}`));
-    });
-    setTimeout(() => reject(new Error('vite preview 启动超时')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 
 function stopPreview() {
-  if (serverProcess) {
-    try {
-      serverProcess.kill('SIGTERM');
-    } catch {}
-    serverProcess = null;
-  }
-}
-
-async function fetchReady() {
-  for (let i = 0; i < 40; i++) {
-    try {
-      const res = await fetch(`http://localhost:${PORT}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview server 未就绪');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function runSmoke() {
@@ -295,8 +264,7 @@ async function main() {
   await ensureBuild();
   try {
     await startPreview();
-    await fetchReady();
-    log(`preview 服务已就绪 (http://localhost:${PORT})`);
+    log(`preview 服务已就绪 (http://127.0.0.1:${PORT})`);
     await runSmoke();
   } finally {
     stopPreview();

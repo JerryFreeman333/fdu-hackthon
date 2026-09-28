@@ -18,13 +18,13 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { seedDemoProfile as seedDemoProfileContext } from './helpers/demo-seed.mjs';
+import { startPreview as startPreviewShared } from './helpers/preview-server.mjs';
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const PORT = Number(process.env.CROSS_SMOKE_PORT ?? 4175);
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const VITE_CLI = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
-let serverProcess = null;
+let previewHandle = null;
 
 function log(...args) {
   console.log('[cross-device-smoke]', ...args);
@@ -42,39 +42,12 @@ async function ensureBuild() {
     await run(NPM, ['run', 'build']);
   }
 }
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    serverProcess = spawn(process.execPath, [VITE_CLI, 'preview', '--port', String(PORT), '--strictPort'], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const onData = (chunk) => {
-      const text = chunk.toString();
-      process.stdout.write('[preview] ' + text);
-      // Vite 在 CI=true 下会强制 ANSI 着色，"Local" 与 ":" 之间夹着转义序列，
-      // 不能只认 'Local:'；URL 里的 localhost 不着色，作为兜底。
-      if (text.includes('Local:') || text.includes('localhost')) resolve();
-    };
-    serverProcess.stdout.on('data', onData);
-    serverProcess.stderr.on('data', onData);
-    setTimeout(() => reject(new Error('vite preview timeout')), 30000);
-  });
+async function startPreview() {
+  previewHandle = await startPreviewShared({ port: PORT, prefix: '[preview]' });
 }
 function stopPreview() {
-  try {
-    serverProcess?.kill('SIGTERM');
-  } catch {}
-  serverProcess = null;
-}
-async function fetchReady() {
-  for (let i = 0; i < 40; i++) {
-    try {
-      const res = await fetch(`http://localhost:${PORT}/`);
-      if (res.ok) return;
-    } catch {}
-    await wait(250);
-  }
-  throw new Error('preview not ready');
+  previewHandle?.stop();
+  previewHandle = null;
 }
 
 async function runSmoke() {
@@ -219,7 +192,6 @@ async function main() {
   await ensureBuild();
   try {
     await startPreview();
-    await fetchReady();
     await runSmoke();
   } finally {
     stopPreview();
