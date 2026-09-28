@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { FamilyNotification } from '../src/engine/escalate';
 import { collectGatedFindings } from '../src/engine/escalate';
 import type { FamilyNotificationRecord } from '../src/engine/notify';
-import { familyStatus } from '../src/engine/dashboardStatus';
+import { familyStatus, currentFamilyNotifications } from '../src/engine/dashboardStatus';
 
 const NOW = '2026-09-09T08:30:00.000Z';
 
@@ -211,4 +211,22 @@ void test('collectGatedFindings：未授权时返回今日 alert/urgent，授权
   assert.equal(collectGatedFindings(findings, 'ask', ['f-urgent'], '2026-09-09').length, 1);
   // 非今日的 finding 不计入（与 collectFamilyNotifications 的今日门控一致）
   assert.equal(collectGatedFindings(findings, 'denied', [], '2026-09-01').length, 0);
+});
+
+void test('currentFamilyNotifications：denied/ask 时台账历史不充当当前状态，granted 时原样透传', () => {
+  const ledgerHistory = [notification('urgent'), notification('alert')];
+  assert.equal(currentFamilyNotifications(ledgerHistory, 'granted'), ledgerHistory);
+  assert.deepEqual(currentFamilyNotifications(ledgerHistory, 'denied'), []);
+  assert.deepEqual(currentFamilyNotifications(ledgerHistory, 'ask'), []);
+  assert.deepEqual(currentFamilyNotifications([], 'granted'), []);
+});
+
+void test('撤销授权闭环：台账历史 urgent 在 current 过滤后，headline 回到"被隐私设置挡住"', () => {
+  // 场景（P0-1 回归）：授权期间摔倒通知已送达台账 → 老人撤销共享。
+  // 修复前：notifications 直传 familyStatus，urgent 分支压过 gated 分支，
+  // 家属端首页顶着"今天需要立即介入"并把历史当当前急症展示。
+  const records = [record('f-urgent', 'urgent', 'sent', '已送达')];
+  const status = familyStatus(currentFamilyNotifications([notification('urgent')], 'denied'), records, 2, 1);
+  assert.equal(status.tone, 'unknown');
+  assert.equal(status.title, '有 1 件事被隐私设置挡住了');
 });

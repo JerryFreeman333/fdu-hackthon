@@ -41,6 +41,24 @@ function hasUndeliveredPush(record: FamilyNotificationRecord): boolean {
   );
 }
 
+/**
+ * 家属端"当前状态"可见的通知子集。
+ *
+ * 派发台账是历史记录：授权期间送达的通知在撤销授权后仍保留在消息页
+ * （"已经告诉对方的内容，我不会假装它已经被撤回"），但它们不再是现在
+ * 进行时——撤销授权后，首页 headline、优先卡与隐私设置页必须回到
+ * "被隐私设置挡住"的真实状态，绝不能把授权期间送达的历史渲染成当前急症
+ * （familyStatus 的 urgent 分支会压过 gated 分支，历史记录一漏进来，
+ * 撤销就形同虚设）。本地检测来源的通知无需此处过滤：
+ * collectFamilyNotifications 本身就按当前授权门控（denied 时为空）。
+ */
+export function currentFamilyNotifications(
+  notifications: FamilyNotification[],
+  familySharing: 'granted' | 'denied' | 'ask',
+): FamilyNotification[] {
+  return familySharing === 'granted' ? notifications : [];
+}
+
 export function familyStatus(
   notifications: FamilyNotification[],
   dispatchRecords: FamilyNotificationRecord[],

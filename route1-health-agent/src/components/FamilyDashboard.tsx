@@ -9,7 +9,7 @@ import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 import { buildMedicationCareView } from '../engine/medicationCare';
-import { familyStatus } from '../engine/dashboardStatus';
+import { familyStatus, currentFamilyNotifications } from '../engine/dashboardStatus';
 import {
   loadWebhookConfig,
   saveWebhookConfig,
@@ -142,7 +142,15 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [bindError, setBindError] = useState<string | null>(null);
   const [binding, setBinding] = useState(false);
-  const state = familyStatus(props.notifications, props.dispatchRecords, props.todaySignalCount, props.gatedAlertCount);
+  // "当前状态"只看现行授权下仍可见的通知；台账里授权期间送达的历史记录
+  // 继续留在消息页，但不得充当首页/隐私页的当前急症（撤销授权必须如实生效）。
+  const currentNotifications = currentFamilyNotifications(props.notifications, props.profile.familySharing);
+  const state = familyStatus(
+    currentNotifications,
+    props.dispatchRecords,
+    props.todaySignalCount,
+    props.gatedAlertCount,
+  );
   // ===== 微信推送设置（评审 P0-6/P1-3）=====
   const initialWebhook = loadWebhookConfig();
   const [webhookProvider, setWebhookProvider] = useState<WebhookProvider>(initialWebhook?.provider ?? 'serverchan');
@@ -632,7 +640,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
 
   if (props.view === 'home') {
     const priorityHomeAction = openHomeActions[0];
-    const priorityNotification = props.notifications[0];
+    const priorityNotification = currentNotifications[0];
     const priorityTask = activeTasks[0];
     return (
       <div className="family-dashboard family-home-page">
@@ -1133,11 +1141,11 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             <span className="muted">不是监控所有指标，只看是否需要您介入。</span>
           </div>
         </div>
-        {props.notifications.length === 0 ? (
+        {currentNotifications.length === 0 ? (
           <p className="family-empty">目前没有新的家属通知。系统会在真正需要时提醒您。</p>
         ) : (
           <div className="family-feed">
-            {props.notifications.slice(0, 3).map((notification) => {
+            {currentNotifications.slice(0, 3).map((notification) => {
               const badge = severityBadge(notification.finding.severity);
               const dispatch = dispatchByFinding.get(notification.finding.id);
               return (

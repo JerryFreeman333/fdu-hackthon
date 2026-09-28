@@ -275,9 +275,27 @@ async function caseFamilyRevocation(browser) {
     );
     assert(converged, 'family side did not adopt the revoked consent');
 
+    // 家属端首页必须如实回到"被隐私设置挡住"：台账里授权期间送达的历史不得
+    // 再充当当前急症（修复前 headline 顶着"今天需要立即介入"并渲染历史内容）。
+    await familyPage.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+    const gated = await waitFor(() =>
+      familyPage
+        .locator('body')
+        .innerText()
+        .then((t) => t.includes('被隐私设置挡住') && !t.includes('发生跌倒')),
+    );
+    assert(gated, 'family home still shows pre-revocation urgent content as current state');
+
+    // 消息页保留已送达的历史："已经告诉对方的内容，我不会假装它已经被撤回"。
+    await familyPage.getByRole('navigation').getByRole('button', { name: '消息' }).click();
+    assert(
+      (await familyPage.locator('body').innerText()).includes('发生跌倒'),
+      'delivered notification history disappeared from the messages page',
+    );
+
+    // 撤销后的新急症绝不派发给家属（撤销 toast 的承诺："之后的新变化不会继续提供给家属"）。
     await elderPage.getByRole('navigation').getByRole('button', { name: '首页' }).click();
     await elderChat(elderPage, '我现在胸口很闷');
-    await familyPage.getByRole('navigation').getByRole('button', { name: '消息' }).click();
     const leaked = await waitFor(
       () => familyPage.locator('body').innerText().then((t) => t.includes('胸')),
       6000,
