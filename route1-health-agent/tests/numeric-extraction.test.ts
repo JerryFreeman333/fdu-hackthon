@@ -58,3 +58,12 @@ expectSingle('心率一百五', 'restingHr', 150);
 expectOne('走了一千五百步', 'steps', 1500);
 
 console.log('PASS: Arabic and Chinese numeral extraction regression suite');
+
+// ===== P0-3 回归：口语约数不得拼成精确值（"起夜三四次"≠34次） =====
+
+expectOne('昨晚起夜三四次', 'nightWakes', 3.5);
+expectOne('夜里醒了七八次', 'nightWakes', 7.5);
+assert(extractHealthValues('起夜三四五次').length === 0, 'bare digit runs of 3+ are not precise numbers');
+assert(extractHealthValues('睡了四五个小时').length > 0, 'adjacent-digit approximations still extract for real units');
+assert(extractHealthValues('血氧九二').length === 0, 'descending lazy digit readings must not fabricate 92%');
+assert(extractHealthValues('心率八八').length === 0, 'repeated lazy digit readings must not fabricate a precise value');

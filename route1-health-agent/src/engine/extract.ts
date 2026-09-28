@@ -30,7 +30,15 @@ const DIGITS: Record<string, number> = {
 
 function parseChineseNumber(input: string): number | null {
   if (/^\d/.test(input)) return Number(input);
-  if (/^[零〇一二两三四五六七八九]{2}$/.test(input)) return DIGITS[input[0]] * 10 + DIGITS[input[1]];
+  // 口语约数："三四次 / 两三步 / 七八个"这类"升序相邻裸数字"是"约 N 个"，
+  // 绝不是"三十四 / 二十三"——中文复合数必须带 十/百/千，裸数字只表达
+  // 近似区间。升序对取两端平均，与"3到4次"的区间中位口径一致。
+  // 其余裸数字串（降序/相同对如"血氧九二"、三位以上如"三四五"）不构成
+  // 可信的精确数，返回 null 由调用方如实丢弃，绝不拼造精确值写进健康基线。
+  if (/^[零〇一二两三四五六七八九]{2}$/.test(input) && DIGITS[input[0]] > 0 && DIGITS[input[0]] < DIGITS[input[1]]) {
+    return (DIGITS[input[0]] + DIGITS[input[1]]) / 2;
+  }
+  if (/^[零〇一二两三四五六七八九]{2,}$/.test(input)) return null;
   if (input in DIGITS) return DIGITS[input];
 
   let total = 0;
