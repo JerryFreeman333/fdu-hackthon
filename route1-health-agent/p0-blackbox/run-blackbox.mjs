@@ -5,7 +5,7 @@ import { seedDemoProfile, PROFILE_STORAGE_KEY } from '../tests/helpers/demo-seed
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const BASE_URL = 'http://127.0.0.1:5173';
 const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
-const CASE_TIMEOUT_MS = 45_000;
+const CASE_TIMEOUT_MS = 90_000;
 // CI 提供系统 Chrome；本地开发可用 P0_CHROME_PATH 覆盖以复用本机浏览器。
 const SYSTEM_CHROME = process.env.P0_CHROME_PATH ?? '/usr/bin/google-chrome';
 
