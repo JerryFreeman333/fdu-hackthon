@@ -130,6 +130,62 @@ async function runOnboardingSuite() {
     await context.close();
   }
 
+  // ===== 场景 D（P1 遗留）：demo 会话遗留的事件/聊天不得继承给新建的个人档案 =====
+  // 泄漏入口：档案失效（旧版本/坏数据被 isValidStoredProfile 视为无档案）但事件
+  // 存储还在 → 启动 hydrate 把 demo 遗留当"用户自己的记录"恢复 → 建档张爷爷后
+  // 继承王秀兰的全部演示信号。修复 = 建档完成时清空遗留快照并归零会话内存。
+  {
+    const context = await browser.newContext({ locale: 'zh-CN' });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    // demo 会话说一句话，让事件与聊天经 save effect 落盘
+    await page.getByRole('button', { name: /老人端/ }).click();
+    await page.getByRole('button', { name: /体验王秀兰演示档案/ }).click();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    await page.getByRole('button', { name: /打字聊天/ }).click();
+    const demoInput = page.locator('#elder-chat input.chat-input');
+    await demoInput.waitFor({ timeout: 5000 });
+    await demoInput.fill('演示期间的心跳很快');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+    await page.waitForTimeout(1500);
+    // 模拟档案失效：只丢档案键，事件存储原样保留，刷新后回到首启选择
+    await page.evaluate(() => localStorage.removeItem('ankang-route1-profile-v1'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByText('先告诉我们你的身份').waitFor({ state: 'visible', timeout: 10000 });
+    // 新建个人档案
+    await page.getByRole('button', { name: /老人端/ }).click();
+    await page.getByRole('button', { name: /创建真实档案/ }).click();
+    await page.getByRole('button', { name: /暂不登录，先创建本机档案/ }).click();
+    await page.getByText('先认识一下您').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('#profile-name').fill('张爷爷');
+    await page.getByRole('button', { name: '好了，开始使用' }).click();
+    await page.locator('.elder-welcome h1').waitFor({ state: 'visible', timeout: 5000 });
+    // 泄漏的可见面在聊天视图（历史气泡）与健康信号，不在首页欢迎语
+    await page.getByRole('button', { name: /打字聊天/ }).click();
+    await page.locator('#elder-chat input.chat-input').waitFor({ timeout: 5000 });
+    const chatBody = await page.locator('body').innerText();
+    check(
+      '个人建档不继承 demo 会话的事件与聊天（P1 泄漏回归）',
+      !chatBody.includes('王秀兰') && !chatBody.includes('演示期间的心跳很快'),
+    );
+    // 清空之后保存管线必须仍然健康：个人会话的新聊天正常持久化（已在聊天视图内）
+    const personalInput = page.locator('#elder-chat input.chat-input');
+    await personalInput.waitFor({ timeout: 5000 });
+    await personalInput.fill('个人会话的第一句话');
+    await page.locator('#elder-chat button', { hasText: '发送' }).click();
+    await page.waitForTimeout(1200);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const elderGateBtn = page.getByRole('button', { name: /我是老人/ });
+    if (await elderGateBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await elderGateBtn.click();
+      await page.waitForTimeout(500);
+    }
+    await page.getByRole('button', { name: /打字聊天/ }).click();
+    const bodyAfterReload = await page.evaluate(() => document.body.innerText);
+    check('清空后个人会话持久化仍然健康（刷新不丢新聊天）', bodyAfterReload.includes('个人会话的第一句话'));
+    await context.close();
+  }
+
   await browser.close();
 }
 

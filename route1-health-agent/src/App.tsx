@@ -28,7 +28,7 @@ import {
 import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
-import { collectFamilyNotifications, collectGatedFindings } from './engine/escalate';
+import { collectFamilyNotifications, collectGatedFindings, collectTodayMinorFindings } from './engine/escalate';
 import { isRecordFromToday, ledgerRecordToNotification } from './engine/notify';
 import { visibleFamilyEvents } from './engine/familyLedger';
 import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
@@ -216,6 +216,15 @@ export default function App() {
         <OnboardingFlow
           role={pendingRole}
           onComplete={(profile) => {
+            // P1（评审遗留）：个人建档完成 = 本机第一次出现个人档案。此刻存储里
+            // 若还有事件/聊天，只可能来自 demo 会话或旧版档案的遗留（此前不存在
+            // 任何个人档案）——启动时的 hydrate 会把它们当"用户自己的记录"恢复，
+            // 张爷爷就会继承王秀兰的全部演示信号。个人模式从空白开始：清掉遗留
+            // 快照，并把本次会话的初始快照同步归零，防止内存态继续回流。
+            // 双 tab 注意：另一个 demo tab 之后的写回仍会重新落盘（已知边界，
+            // 见交接文档 §4.4），这里的清空扼住的是"建档即继承"的主泄漏路径。
+            healthRecordStore.clear();
+            setInitial(emptySnapshot());
             const next: StoredProfile = { version: 1, profile, dataMode: 'personal', preferredRole: pendingRole };
             saveStoredProfile(next);
             setStoredProfile(next);
@@ -377,6 +386,9 @@ function AppRoot({
     () => collectGatedFindings(findings, effectiveFamilySharing, sharedFindingIds, today).length,
     [findings, effectiveFamilySharing, sharedFindingIds, today],
   );
+  // 第四种未知（评审 P1）：今日 info/watch 级发现不触发家属通知，但它们是真实
+  // 记录——家属端绝不能在这样的日子里显示绿色"今天总体正常"。
+  const todayMinorFindingCount = useMemo(() => collectTodayMinorFindings(findings, today).length, [findings, today]);
   // 今日信号量：主诉 / 聊天 / 设备 / 拍照 任一来源今天有事件就算一条。
   // 这条计数是 dashboardStatus 区分"今日真的没事"和"今日还没说话"的关键输入。
   const todaySignalCount = useMemo(
@@ -453,6 +465,7 @@ function AppRoot({
     today: string;
     signalCount: number;
     gatedAlertCount: number;
+    minorFindingCount: number;
   } | null>(null);
 
   // 把本地派发台账的变更广播给其它 tab，让"老人端"和"家属端"在同一浏览器内
@@ -482,7 +495,12 @@ function AppRoot({
       } else if (envelope.type === 'signals.summary') {
         // P1：陌生人（未绑定 PeerJS 对端）报来的信号摘要不接受，防止伪造"有急事被挡住"。
         if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
-        const payload = envelope.payload as { today?: string; signalCount?: number; gatedAlertCount?: number };
+        const payload = envelope.payload as {
+          today?: string;
+          signalCount?: number;
+          gatedAlertCount?: number;
+          minorFindingCount?: number;
+        };
         if (
           typeof payload?.today === 'string' &&
           typeof payload.signalCount === 'number' &&
@@ -492,6 +510,8 @@ function AppRoot({
             today: payload.today,
             signalCount: payload.signalCount,
             gatedAlertCount: payload.gatedAlertCount,
+            // 兼容尚未携带该字段的旧对端（混版本双 tab）：缺省视为 0
+            minorFindingCount: typeof payload.minorFindingCount === 'number' ? payload.minorFindingCount : 0,
           });
         }
       } else if (envelope.type === 'family.consent') {
@@ -638,12 +658,12 @@ function AppRoot({
     if (role !== 'elder') return;
     sync.broadcast(
       'signals.summary',
-      { today, signalCount: todaySignalCount, gatedAlertCount },
+      { today, signalCount: todaySignalCount, gatedAlertCount, minorFindingCount: todayMinorFindingCount },
       {
         peer: familyLinkActive,
       },
     );
-  }, [role, sync, today, todaySignalCount, gatedAlertCount, familyLinkActive]);
+  }, [role, sync, today, todaySignalCount, gatedAlertCount, todayMinorFindingCount, familyLinkActive]);
 
   // 评审 P0-1 修复：老人端广播授权（family.consent）。授权是全系统唯一的权威状态，
   // 变化必须到达家属端——否则家属端自己的副本永远 denied，collectFamilyNotifications
@@ -671,6 +691,7 @@ function AppRoot({
   const remoteSummaryForToday = remoteSignalSummary && remoteSignalSummary.today === today ? remoteSignalSummary : null;
   const combinedSignalCount = Math.max(todaySignalCount, remoteSummaryForToday?.signalCount ?? 0);
   const combinedGatedCount = Math.max(gatedAlertCount, remoteSummaryForToday?.gatedAlertCount ?? 0);
+  const combinedTodayMinorCount = Math.max(todayMinorFindingCount, remoteSummaryForToday?.minorFindingCount ?? 0);
   const { tasks, updateStatus, ensureMedicationCheck } = useCareTasks({ findings, today });
   const {
     handleElderSend: handleHealthChatSend,
@@ -1319,6 +1340,7 @@ function AppRoot({
             tabId={sync.tabId}
             todaySignalCount={combinedSignalCount}
             gatedAlertCount={demoMode && demoSharing ? 0 : combinedGatedCount}
+            todayMinorFindingCount={combinedTodayMinorCount}
             onClearData={handleClearAllData}
           />
         </Suspense>
