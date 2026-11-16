@@ -6,7 +6,9 @@ param(
     [double]$Confidence = 0.20,
     [int]$MinTrackPoints = 3,
     [double]$ClusterDistance = 0.75,
-    [double]$MinRelationConfidence = 0.18
+    [double]$MinRelationConfidence = 0.18,
+    [string]$CapturedAt = "runtime",
+    [string]$HomeId = ""
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -55,7 +57,9 @@ Write-Host "===== [3/4] 运行视觉识别 + 3D anchor =====" -ForegroundColor C
     --model $Model `
     --confidence $Confidence `
     --min-track-points $MinTrackPoints `
-    --cluster-distance $ClusterDistance
+    --cluster-distance $ClusterDistance `
+    --captured-at $CapturedAt `
+    --home-id $HomeId
 if ($LASTEXITCODE -ne 0) { throw "语义识别/3D 定位失败" }
 
 Write-Host "===== [4/4] 推断候选空间拓扑 =====" -ForegroundColor Cyan

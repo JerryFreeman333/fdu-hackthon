@@ -1,6 +1,7 @@
 import type { HazardData, HazardItem, ItemInfo, PathItem, SceneMode } from '../types';
 import type { HomeSafetyActionPlan } from '../hometwin/actionPlan';
 import type { Route2Role } from './roleMode';
+import { escapeHtml } from './dom';
 
 export interface PanelCallbacks {
   onSelectHazard(h: HazardItem): void;
@@ -46,9 +47,9 @@ function renderActionPlan(body: HTMLElement, plan: HomeSafetyActionPlan | null, 
     const list = el<HTMLDivElement>('div', 'action-list');
     for (const action of plan.actions) {
       const row = el<HTMLDivElement>('div', `action-row action-${action.status}`, `
-        <div class="action-head"><b>${action.title}</b><span class="badge">${actionStatusLabel(action.status)}</span></div>
-        <div class="muted small">${action.description}</div>
-        <div class="action-meta">riskId: ${action.riskId}</div>
+        <div class="action-head"><b>${escapeHtml(action.title)}</b><span class="badge">${actionStatusLabel(action.status)}</span></div>
+        <div class="muted small">${escapeHtml(action.description)}</div>
+        <div class="action-meta">riskId: ${escapeHtml(action.riskId)}</div>
       `);
       list.append(row);
     }
@@ -94,7 +95,16 @@ function renderRoleHome(data: HazardData, body: HTMLElement, cb: PanelCallbacks,
     const tip = el<HTMLDivElement>('div', 'role-note', '需要家人处理的环境问题不会要求您自己判断。系统会把需要介入的事项交给子女/照护者。');
     body.append(tip);
   } else {
-    body.append(el<HTMLDivElement>('div', 'family-summary', `当前 ${data.hazards.length} 个演示风险项；只有已具备空间证据的数据才允许进入真实模式。`));
+    const calibratedHazards = data.hazards.filter((h) => Boolean(h.realPos)).length;
+    body.append(
+      el<HTMLDivElement>(
+        'div',
+        'family-summary',
+        mode === 'demo'
+          ? `当前 ${data.hazards.length} 个演示风险项；只有已具备空间证据的数据才允许进入真实模式。`
+          : `预置 ${data.hazards.length} 个风险项，其中 ${calibratedHazards} 个已完成真实空间标定；未标定项不显示在场景中，也不作为已确认风险。`,
+      ),
+    );
     renderActionPlan(body, actionPlan, cb.onRescan, rescanOffline);
   }
 
@@ -150,18 +160,28 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
   const homeController = renderRoleHome(data, residentHome.body, cb, mode, 'resident', actionPlan);
   let familyController = renderRoleHome(data, familyHome.body, cb, mode, 'family', actionPlan, rescanOffline);
 
+  const uncalibratedCount =
+    mode === 'demo'
+      ? 0
+      : data.hazards.filter((h) => !h.realPos).length +
+        data.paths.filter((p) => !p.realPoints || p.realPoints.length < 2).length +
+        data.items.filter((item) => !item.realPos).length;
   const stats = el<HTMLDivElement>('div', 'stats', `
     <span class="badge lv-high">高 ${counts.high}</span>
     <span class="badge lv-mid">中 ${counts.medium}</span>
     <span class="badge lv-low">低 ${counts.low}</span>
-    <div class="muted small">${mode === 'demo' ? '演示数据来自预置 Home Twin' : '仅显示已完成真实空间标定的数据，不伪造未标定结果'}</div>
+    <div class="muted small">${
+      mode === 'demo'
+        ? '演示数据来自预置 Home Twin'
+        : `仅显示已完成真实空间标定的数据，不伪造未标定结果${uncalibratedCount > 0 ? `；另有 ${uncalibratedCount} 项未完成 3D 标定，未在场景中显示` : ''}`
+    }</div>
   `);
   const hazardList = el<HTMLDivElement>('div', 'hazard-list');
   data.hazards.forEach(h => {
     const calibrated = mode === 'demo' || Boolean(h.realPos);
     const row = el<HTMLButtonElement>('button', 'hazard-row' + (calibrated ? '' : ' disabled'), `
       <span class="dot ${LEVEL_CLASS[h.level]}"></span>
-      <div class="hazard-text"><b>${h.title}</b><span class="muted small">${calibrated ? h.location : '尚未完成真实空间标定'}</span></div>
+      <div class="hazard-text"><b>${escapeHtml(h.title)}</b><span class="muted small">${calibrated ? escapeHtml(h.location) : '尚未完成真实空间标定'}</span></div>
     `);
     row.disabled = !calibrated;
     row.onclick = () => cb.onSelectHazard(h);
@@ -175,7 +195,7 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
     const calibrated = mode === 'demo' || Boolean(p.realPoints && p.realPoints.length >= 2);
     const btn = el<HTMLButtonElement>('button', 'path-row' + (calibrated ? '' : ' disabled'), `
       <span class="path-ico ${p.mode === 'night' ? 'night' : ''}">${p.mode === 'night' ? '🌙' : '☀'}</span>
-      <div class="hazard-text"><b>${p.title}</b><span class="muted small">${calibrated ? `影响 ${p.hazardIds.length} 个已标注风险` : '尚未完成真实空间标定'}</span></div>
+      <div class="hazard-text"><b>${escapeHtml(p.title)}</b><span class="muted small">${calibrated ? `影响 ${p.hazardIds.length} 个已标注风险` : '尚未完成真实空间标定'}</span></div>
     `);
     btn.disabled = !calibrated;
     let active = false;
@@ -195,11 +215,22 @@ export function initPanel(data: HazardData, cb: PanelCallbacks, mode: SceneMode,
     const calibrated = mode === 'demo' || Boolean(item.realPos);
     const btn = el<HTMLButtonElement>('button', 'item-row', `
       <span class="path-ico">🔍</span>
-      <div class="hazard-text"><b>${item.title}</b><span class="muted small">${calibrated ? item.location : `${item.location}（文字记录，位置待确认）`}</span></div>
+      <div class="hazard-text"><b>${escapeHtml(item.title)}</b><span class="muted small">${calibrated ? escapeHtml(item.location) : `${escapeHtml(item.location)}（文字记录，位置待确认）`}</span></div>
     `);
     btn.onclick = () => cb.onSelectItem(item);
     residentFind.body.append(btn);
   });
+  if (data.items.length === 0) {
+    residentFind.body.append(
+      el<HTMLDivElement>(
+        'div',
+        'muted small',
+        mode === 'demo'
+          ? '演示数据缺少物品清单。'
+          : '本次家庭空间没有可用于找东西的已识别物品。系统不会用演示物品或猜测位置补上；需要时请重新拍摄或让家人确认。'
+      )
+    );
+  }
 
   function setRole(nextRole: Route2Role): void {
     role = nextRole;
@@ -237,12 +268,12 @@ export function showHazardCard(h: HazardItem, levelNames: Record<string, string>
   card.innerHTML = `
     <button class="card-close" title="关闭">✕</button>
     <div class="card-head">
-      <span class="badge ${LEVEL_CLASS[h.level]}">${levelNames[h.level] ?? h.level}</span>
-      <b>${h.title}</b>
+      <span class="badge ${LEVEL_CLASS[h.level]}">${escapeHtml(levelNames[h.level] ?? h.level)}</span>
+      <b>${escapeHtml(h.title)}</b>
     </div>
-    <div class="card-line"><span class="muted">位置</span>${h.location}</div>
-    <div class="card-line"><span class="muted">风险</span>${h.risk}</div>
-    <div class="card-line"><span class="muted">建议</span>${h.advice}</div>
+    <div class="card-line"><span class="muted">位置</span>${escapeHtml(h.location)}</div>
+    <div class="card-line"><span class="muted">风险</span>${escapeHtml(h.risk)}</div>
+    <div class="card-line"><span class="muted">建议</span>${escapeHtml(h.advice)}</div>
   `;
   card.classList.remove('hidden');
   card.querySelector('.card-close')!.addEventListener('click', () => card.classList.add('hidden'));

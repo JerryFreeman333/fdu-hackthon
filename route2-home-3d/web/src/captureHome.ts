@@ -1,11 +1,12 @@
 import './captureHome.css';
+import { captureReadiness, type CaptureHomeState } from './captureStatus';
 
-type Home = { homeId: string; status: string; message: string; modelUrl?: string; jobId?: string };
+type Home = CaptureHomeState & { homeId: string; message: string; jobId?: string };
 const KEY = 'ankang-route2-home-id';
 const steps = ['站在房间入口，打开灯，保持镜头清晰。', '缓慢向前移动并拍摄四周，让相邻画面有重叠。', '拍到墙角、地面和主要家具；避免只站在原地旋转。', '回看视频，确认没有长时间模糊或被手指遮挡，再上传。'];
 
 export async function captureHome() {
-  document.body.innerHTML = `<main class="capture-home"><header><a href="http://127.0.0.1:5173/">‹ 返回助手</a><span>家庭空间</span></header><h1>把熟悉的家，装进手机</h1><p>按照指引拍一段视频，我们会用您拍摄的内容建立房间模型。</p><section class="capture-card"><h2>建立我的家庭空间</h2><p id="capture-instruction"></p><div class="capture-steps"></div><video id="capture-video" playsinline muted></video><p id="capture-clock"></p><div class="capture-actions"><button id="camera">打开摄像头</button><button id="record" hidden>开始拍摄</button><button id="pause" hidden>暂停</button><button id="stop" hidden>完成拍摄</button><button id="retake" hidden>重新拍摄</button></div><label class="capture-file">也可以选择手机已经拍好的视频<input id="capture-file" type="file" accept="video/mp4,video/webm,video/quicktime" /></label><button id="upload" hidden>上传并建立空间</button><p id="capture-status" role="status"></p><progress id="capture-progress" max="100" value="0" hidden></progress><button id="retry" hidden>重新处理已上传视频</button><button id="view" hidden>查看我的家庭空间</button></section><p class="capture-note">首次建议拍摄一个房间，慢慢移动。请勿攀爬或倒退拍摄，可请家人协助。视频会提交到当前连接的建模服务。</p><a href="?demo=1">查看示例空间</a></main>`;
+  document.body.innerHTML = `<main class="capture-home"><header><a href="http://127.0.0.1:5173/">‹ 返回助手</a><span>家庭空间</span></header><h1>把熟悉的家，装进手机</h1><p>按照指引拍一段视频，我们会用您拍摄的内容建立房间模型。</p><section class="capture-card"><h2>建立我的家庭空间</h2><p id="capture-instruction"></p><div class="capture-steps"></div><video id="capture-video" playsinline muted></video><p id="capture-clock"></p><div class="capture-actions"><button id="camera">打开摄像头</button><button id="record" hidden>开始拍摄</button><button id="pause" hidden>暂停</button><button id="stop" hidden>完成拍摄</button><button id="retake" hidden>重新拍摄</button></div><label class="capture-file">也可以选择手机已经拍好的视频<input id="capture-file" type="file" accept="video/mp4,video/webm,video/quicktime" /></label><button id="upload" hidden>上传并建立空间</button><p id="capture-status" role="status"></p><div id="capture-readiness" hidden><p><b>房间外观模型：</b><span id="capture-model-readiness"></span></p><p><b>物品与位置识别：</b><span id="capture-semantic-readiness"></span></p></div><progress id="capture-progress" max="100" value="0" hidden></progress><button id="retry" hidden>重新处理已上传视频</button><button id="view" hidden>查看房间外观</button><a id="enter" class="capture-enter" hidden>进入家庭空间 · 找东西 →</a></section><p class="capture-note">首次建议拍摄一个房间，慢慢移动。请勿攀爬或倒退拍摄，可请家人协助。视频会提交到当前连接的建模服务。</p><a href="?demo=1">查看示例空间</a></main>`;
   const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const assistantUrl = new URL(window.location.href); assistantUrl.port = '5173'; assistantUrl.pathname = '/'; assistantUrl.search = ''; assistantUrl.hash = '';
   document.querySelector<HTMLAnchorElement>('.capture-home header a')!.href = assistantUrl.href;
@@ -34,8 +35,14 @@ export async function captureHome() {
   }
   function display(next: Home) {
     home = next; say(next.message);
-    show('retry', ['waiting_worker', 'failed'].includes(next.status));
-    show('view', next.status === 'ready' && !!next.modelUrl);
+    const readiness = captureReadiness(next);
+    show('capture-readiness', readiness.visible);
+    el('capture-model-readiness').textContent = readiness.modelText;
+    el('capture-semantic-readiness').textContent = readiness.semanticText;
+    show('retry', ['waiting_worker', 'failed'].includes(next.status) || readiness.model === 'failed');
+    show('view', readiness.canViewModel);
+    show('enter', readiness.canViewModel);
+    el<HTMLAnchorElement>('enter').href = `/?home=${encodeURIComponent(next.homeId)}`;
     busy = ['queued', 'extracting', 'reconstructing', 'training'].includes(next.status);
     el<HTMLButtonElement>('upload').disabled = busy;
     el<HTMLButtonElement>('camera').disabled = busy;
@@ -116,7 +123,13 @@ export async function captureHome() {
       const viewer = new GS.Viewer({ rootElement: mount, sharedMemoryForWorkers: false });
       const close = document.createElement('button'); close.textContent = '返回家庭空间'; close.className = 'capture-close'; mount.append(close);
       close.onclick = () => { void viewer.dispose(); mount.remove(); };
-      try { await viewer.addSplatScene(home.modelUrl, { showLoadingUI: true }); viewer.start(); say('模型已加载。物品位置需要后续确认。'); }
+      try {
+        await viewer.addSplatScene(home.modelUrl, { showLoadingUI: true });
+        viewer.start();
+        say(home.semanticReady
+          ? '房间外观与视觉识别结果已生成。物品位置来自画面与 COLMAP 3D 证据；路线和风险结论仍需人工确认。'
+          : '房间模型已加载。物品位置和风险结论尚未完成，当前只能查看空间外观，不能用于找东西或安全结论。');
+      }
       catch { void viewer.dispose(); mount.remove(); throw new Error('模型加载失败，请检查文件与设备支持后重试。'); }
     } catch (e) { say(String(e)); }
   };

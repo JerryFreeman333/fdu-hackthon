@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,7 @@ from PIL import Image
 from ultralytics import YOLOWorld
 
 CATEGORIES = ["bed", "door", "rug", "cable", "threshold", "toilet"]
+HOME_ID = re.compile(r"^[a-f0-9]{32}$")
 PROMPTS = [
     "bed",
     "door",
@@ -47,7 +50,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--confidence", type=float, default=0.20)
     parser.add_argument("--min-track-points", type=int, default=3)
     parser.add_argument("--cluster-distance", type=float, default=0.75)
+    parser.add_argument("--captured-at", default="runtime", help="ISO-8601 capture time; runtime for standalone runs")
+    parser.add_argument("--home-id", default="", help="32-hex capture task id")
     return parser.parse_args()
+
+
+def capture_time(value: str) -> str:
+    if value == "runtime":
+        return value
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        fail("--captured-at 必须是带时区的 ISO-8601 时间")
+    if parsed.tzinfo is None:
+        fail("--captured-at 必须包含时区")
+    return value
 
 
 def load_colmap_points(points_file: Path) -> dict[int, tuple[float, float, float]]:
@@ -140,6 +157,10 @@ def main() -> int:
         fail("--confidence 必须在 (0, 1) 内")
     if args.min_track_points < 1:
         fail("--min-track-points 必须 >= 1")
+    if args.home_id and not HOME_ID.fullmatch(args.home_id):
+        fail("--home-id 必须是 32 位十六进制任务编号")
+    home_id = args.home_id or args.images.parent.name or "home"
+    captured_at = capture_time(args.captured_at)
 
     points3d = load_colmap_points(args.colmap / "points3D.txt")
     image_tracks = load_image_tracks(args.colmap / "images.txt")
@@ -265,9 +286,9 @@ def main() -> int:
             )
 
     snapshot = {
-        "homeId": args.images.parent.name or "home",
+        "homeId": home_id,
         "version": 1,
-        "capturedAt": "runtime",
+        "capturedAt": captured_at,
         "scaleConfidence": 0.0,
         "rooms": [
             {"id": "unknown-room", "label": "待分区", "kind": "other"}

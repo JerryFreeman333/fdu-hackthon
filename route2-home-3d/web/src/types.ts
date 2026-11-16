@@ -25,7 +25,8 @@ export interface ItemInfo {
   title: string;
   location: string;
   say: string;
-  demoPos: [number, number, number];
+  /** 合成演示场景里的位置；真实识别结果没有与查看器对齐的坐标时可以为空。 */
+  demoPos?: [number, number, number];
   realPos: [number, number, number] | null;
 }
 

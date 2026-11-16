@@ -4,6 +4,12 @@ import type { HazardData, HazardItem, ItemInfo, SceneMode } from './types';
 import { buildDemoHomeTwin } from './hometwin/fromHazardData';
 import { validateHomeTwin, type HomeTwinSnapshot, type RouteStatus } from './hometwin/model';
 import { planBedToToilet, type RoutePlanResult } from './hometwin/routePlanner';
+import {
+  fetchCaptureHome,
+  itemsFromSnapshot,
+  loadSemanticSnapshot,
+  type CaptureHomeSummary
+} from './hometwin/semanticSnapshot';
 import { acceptRescanActionPlan, parseHomeSafetyActionPlan, type HomeSafetyActionPlan } from './hometwin/actionPlan';
 import { prepareRescanFiles, revokeRescanPreview, type RescanInputResult } from './hometwin/rescanInput';
 import { submitRescanBatch, waitForRescanJob, checkRescanService, type RescanSubmitResponse } from './hometwin/rescanClient';
@@ -14,6 +20,8 @@ import { createPathVisual, highlightDangerZones } from './scene/paths';
 import { initPanel, showHazardCard, hideHazardCard, setHint } from './ui/panel';
 import { createRoleSwitcher, readStoredRole, hasStoredRole, updateRoleSwitcher, type Route2Role } from './ui/roleMode';
 import { buildJourney, type JourneyStep } from './ui/journey';
+import { escapeHtml } from './ui/dom';
+import { buildItemSpeech, speakGuide } from './ui/speech';
 
 const DEMO_SPLAT_URL = 'models/home.ply';
 const ACTION_PLAN_URL = 'data/family-action-plan.json';
@@ -43,12 +51,16 @@ async function loadJson<T>(url: string): Promise<T | null> {
   }
 }
 
-function renderJourney(role: Route2Role, hasModel: boolean, mount: HTMLElement, onAction: (stepId: string) => void): void {
+function renderJourney(role: Route2Role, mode: SceneMode, mount: HTMLElement, onAction: (stepId: string) => void): void {
   mount.innerHTML = '';
+  const hasModel = mode === 'real';
   const steps = buildJourney(role, hasModel);
   const header = document.createElement('div');
   header.className = 'journey-header';
-  header.innerHTML = `<b>${role === 'resident' ? '今天怎么用' : '家庭使用流程'}</b><span>${hasModel ? '家庭空间已建立' : '首次建立家庭空间'}</span>`;
+  // Demo 场景有预置房间，但没有真实家庭采集；不能显示“家庭空间已建立”。
+  header.innerHTML = `<b>${role === 'resident' ? '今天怎么用' : '家庭使用流程'}</b><span>${
+    hasModel ? '家庭空间已建立' : mode === 'demo' ? '合成演示场景 · 未建立真实家庭空间' : '首次建立家庭空间'
+  }</span>`;
   mount.append(header);
 
   const list = document.createElement('div');
@@ -58,7 +70,7 @@ function renderJourney(role: Route2Role, hasModel: boolean, mount: HTMLElement, 
     item.className = `journey-step journey-${step.state}`;
     item.dataset.stepId = step.id;
     item.type = 'button';
-    item.innerHTML = `<span class="journey-index">${index + 1}</span><span><b>${step.title}</b><small>${step.description}</small></span>`;
+    item.innerHTML = `<span class="journey-index">${index + 1}</span><span><b>${escapeHtml(step.title)}</b><small>${escapeHtml(step.description)}</small></span>`;
     item.onclick = () => onAction(step.id);
     list.append(item);
   });
@@ -69,8 +81,17 @@ async function main() {
   const dataResponse = await fetch('data/hazards.json');
   if (!dataResponse.ok) throw new Error(`无法读取场景数据: HTTP ${dataResponse.status}`);
   const data = (await dataResponse.json()) as HazardData;
-  const mode: SceneMode = (await hasRealModel()) ? 'real' : 'demo';
-  const actionPlan = parseHomeSafetyActionPlan(await loadJson(ACTION_PLAN_URL));
+
+  // ?home=<id>：从拍摄流程带回真实的家庭空间，而不是永远落在预置演示数据上。
+  const params = new URLSearchParams(window.location.search);
+  const requestedHomeId = params.get('home');
+  const capturedHome: CaptureHomeSummary | null = requestedHomeId ? await fetchCaptureHome(requestedHomeId) : null;
+  const capturedModelUrl = capturedHome?.modelReady && capturedHome.modelUrl ? capturedHome.modelUrl : null;
+  const mode: SceneMode = capturedModelUrl ? 'real' : (await hasRealModel()) ? 'real' : 'demo';
+
+  // 预置风险/行动基线属于演示家庭。真实拍摄的家庭空间没有人工确认过的风险清单，
+  // 不能把演示风险画到别人家里；宁可为空并如实说明。
+  const actionPlan = parseHomeSafetyActionPlan(capturedModelUrl ? null : await loadJson(ACTION_PLAN_URL));
   let currentActionPlan: HomeSafetyActionPlan | null = actionPlan;
   let lastRescanInput: RescanInputResult | null = null;
   let rescanInFlight = false;
@@ -78,9 +99,14 @@ async function main() {
 
   let homeTwin: HomeTwinSnapshot | null = null;
   let routePlan: RoutePlanResult | null = null;
+  let panelData: HazardData = data;
 
   const badge = document.getElementById('scene-badge')!;
-  badge.textContent = mode === 'real' ? '真实重建 · Gaussian Splatting' : '合成演示场景 · 预置数据';
+  badge.textContent = capturedModelUrl
+    ? '你的家庭空间 · Gaussian Splatting'
+    : mode === 'real'
+      ? '真实重建 · Gaussian Splatting'
+      : '合成演示场景 · 预置数据';
   badge.className = 'badge ' + (mode === 'real' ? 'badge-real' : 'badge-demo');
 
   if (mode === 'demo') {
@@ -88,6 +114,38 @@ async function main() {
     const errors = validateHomeTwin(homeTwin);
     if (errors.length) throw new Error(`Home Twin 数据校验失败: ${errors.join('; ')}`);
     routePlan = planBedToToilet(homeTwin);
+  } else if (capturedModelUrl) {
+    const semantic = await loadSemanticSnapshot(capturedHome);
+    if (semantic.snapshot) {
+      homeTwin = semantic.snapshot;
+      routePlan = planBedToToilet(homeTwin);
+      panelData = {
+        meta: {
+          note: '物品位置来自本次拍摄的视觉识别结果（COLMAP 任意坐标系，未做米制标定）。这里只展示有画面证据的识别结果；风险与路线仍需人工确认。',
+          levels: data.meta.levels,
+          provenance: 'vision',
+          capturedAt: capturedHome?.capturedAt,
+          scaleConfidence: 0
+        },
+        hazards: [],
+        paths: [],
+        items: itemsFromSnapshot(homeTwin).map(item => ({ ...item, realPos: null }))
+      };
+    } else {
+      // 失败也要说清楚失败在哪一步，不能退回演示物品清单冒充识别结果。
+      panelData = {
+        meta: {
+          note: `本次没有可用的视觉识别结果：${semantic.errors.join('；') || '未生成'}。房间外观仍可查看，但不会显示猜测的物品位置。`,
+          levels: data.meta.levels,
+          provenance: 'vision',
+          capturedAt: capturedHome?.capturedAt,
+          scaleConfidence: 0
+        },
+        hazards: [],
+        paths: [],
+        items: []
+      };
+    }
   }
 
   const app = new SceneManager(mode);
@@ -97,10 +155,10 @@ async function main() {
     app.initDemo((on) => room.setNight(on));
   } else {
     setHint('正在加载真实高斯泼溅模型…');
-    await app.initReal(DEMO_SPLAT_URL);
+    await app.initReal(capturedModelUrl ?? DEMO_SPLAT_URL);
   }
 
-  const markers = createHazardMarkers(data.hazards, mode, (cb) => app.onUpdate(cb));
+  const markers = createHazardMarkers(panelData.hazards, mode, (cb) => app.onUpdate(cb));
   app.scene.add(markers.group);
   const rings = createItemRings((cb) => app.onUpdate(cb));
   app.scene.add(rings.group);
@@ -118,19 +176,19 @@ async function main() {
     if (!hit) return;
     const id = markers.idOf(hit.object);
     if (!id) return;
-    const hazard = data.hazards.find((x) => x.id === id);
+    const hazard = panelData.hazards.find((x) => x.id === id);
     if (hazard) openHazard(hazard);
   });
 
   function openHazard(h: HazardItem) {
     hasUserSelection = true;
     markers.setSelected(h.id);
-    showHazardCard(h, data.meta.levels);
+    showHazardCard(h, panelData.meta.levels);
     const p = markers.positionOf(h.id);
     if (p) app.flyTo(p.clone().add(new THREE.Vector3(1.4, 1.1, 1.4)), p.clone().add(new THREE.Vector3(0, 0.25, 0)), 1.2);
   }
 
-  const pathVisuals = data.paths
+  const pathVisuals = panelData.paths
     .filter((p) => mode === 'demo' || (p.realPoints && p.realPoints.length >= 2))
     .map((p) => createPathVisual(p, mode, (cb) => app.onUpdate(cb)));
   pathVisuals.forEach((v) => { v.group.visible = false; app.scene.add(v.group); });
@@ -160,7 +218,10 @@ async function main() {
     p.hazardIds.forEach((id: string) => { const q = markers.positionOf(id); if (q) posMap.set(id, q); });
     const zones = highlightDangerZones(p, posMap, mode);
     if (zones) { dangerZones = zones; app.scene.add(zones); }
-    const names = p.hazardIds.map((id: string) => data.hazards.find((h) => h.id === id)?.title).filter(Boolean).join('、');
+    const names = p.hazardIds
+      .map((id: string) => panelData.hazards.find((h) => h.id === id)?.title)
+      .filter(Boolean)
+      .join('、');
     setHint(`${p.title} — 影响风险: ${names || '暂无已标注风险'}` + routeStatusSuffix());
     app.flyTo(v.center().clone().add(new THREE.Vector3(3.2, 3.4, 3.8)), v.center(), 1.6);
   }
@@ -185,13 +246,18 @@ async function main() {
 
   function refreshJourney(): void {
     if (!journeyMount) return;
-    renderJourney(currentRole, true, journeyMount, (stepId) => {
+    renderJourney(currentRole, mode, journeyMount, (stepId) => {
       if (stepId === 'find') document.querySelector<HTMLButtonElement>('[data-role-tab="find"]')?.click();
       else if (stepId === 'review') document.querySelector<HTMLButtonElement>('[data-role-tab="family-hazards"]')?.click();
       else if (stepId === 'act') document.querySelector<HTMLButtonElement>('[data-role-tab="family-home"]')?.click();
       else if (stepId === 'return') setHint('后续只需回来查看变化和待处理事项，不需要重新学习整套系统。');
       else if (stepId === 'create') setHint(mode === 'demo' ? '当前 Demo 已预载家庭空间；真实产品中这里由子女完成一次家庭采集。' : '请先完成一次家庭空间采集。');
-      else if (stepId === 'home-ready') setHint('家庭空间已建立，可以直接使用找东西。');
+      else if (stepId === 'home-ready')
+        setHint(
+          mode === 'real'
+            ? '家庭空间已建立，可以直接使用找东西。'
+            : '当前是合成演示场景，还没有真实家庭空间；找东西使用的是预置位置。',
+        );
       else if (stepId === 'help') setHint('需要复杂处理时，系统会把事项交给家人/照护者。');
     });
   }
@@ -276,22 +342,37 @@ async function main() {
     const p = new THREE.Vector3(pos[0], pos[1], pos[2]);
     rings.pulseAt(p, 0x53d8ff);
     app.flyTo(p.clone().add(new THREE.Vector3(1.0, 0.8, 1.0)), p.clone(), 1.3);
-    setHint(`找到「${item.title}」: ${item.location} — ${item.say}`);
+    const guide = `找到「${item.title}」: ${item.location} — ${item.say}`;
+    setHint(guide);
+    // README 已声明“语音指引”；此前只有相机飞行和文字。不支持 TTS 时静默降级。
+    speakGuide(buildItemSpeech(item));
   }
 
-  panelController = initPanel(data, {
+  panelController = initPanel(panelData, {
     onSelectHazard: openHazard,
     onSelectPath: selectPath,
     onSelectItem: selectItem,
     onRescan,
   }, mode, currentActionPlan, currentRole, { rescanOffline });
 
+  // 真实家庭空间的路线状态必须主动说出来：算出了 candidate / needs_confirmation 却
+  // 只在用户点开某条路径时才显示，等于让"路线已就绪"变成默认假设。
+  if (capturedModelUrl) {
+    if (routePlan) {
+      const reason = routePlan.reason ? ` — ${routePlan.reason}` : '';
+      const fallback = routePlan.fallback?.locationText ? `；参考位置：${routePlan.fallback.locationText}` : '';
+      setHint(`已加载你的家庭空间。床→卫生间：${ROUTE_STATUS_TEXT[routePlan.status]}${reason}${fallback}`);
+    } else {
+      setHint('已加载你的家庭空间，但本次没有可用的视觉识别结果：房间外观可查看，找东西与路线暂不可用，不会显示猜测的位置。');
+    }
+  }
+
   // 启动即探测复扫服务：不在线时在复扫入口常驻提示，而不是等用户选完文件才失败。
   void checkRescanService(RESCAN_ENDPOINT).then((status) => {
     rescanOffline = !status.online;
     panelController.setRescanOffline(rescanOffline);
     // The async service probe is lower priority than a find/route result.
-    if (hasUserSelection) return;
+    if (hasUserSelection || capturedModelUrl) return;
     if (rescanOffline) {
       setHint('复扫服务未启动：家属端「重新扫描确认」暂不可用。启动方式：python -m uvicorn backend.app:app --port 8010。找东西等功能不受影响。');
     } else if (!hasStoredRole()) {
@@ -300,7 +381,7 @@ async function main() {
   });
 
   const requestedItemId = new URLSearchParams(window.location.search).get('find');
-  const requestedItem = requestedItemId ? data.items.find((item) => item.id === requestedItemId) : undefined;
+  const requestedItem = requestedItemId ? panelData.items.find((item) => item.id === requestedItemId) : undefined;
   if (requestedItem) {
     currentRole = 'resident';
     if (roleSwitcherEl) updateRoleSwitcher(roleSwitcherEl, currentRole);
@@ -317,7 +398,10 @@ async function main() {
   });
 }
 
-(new URLSearchParams(window.location.search).get('demo') === '1'
+const entryParams = new URLSearchParams(window.location.search);
+// ?home=<id> 是拍摄完成后回到主场景的入口；?demo=1 是合成演示入口。
+// 两者都没有时才进入拍摄页——否则拍完的人会被送回拍摄页，永远看不到识别结果。
+(entryParams.get('demo') === '1' || entryParams.get('home')
   ? main()
   : import('./captureHome').then(module => module.captureHome())).catch((err) => {
   console.error(err);

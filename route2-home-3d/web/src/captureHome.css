@@ -15,5 +15,9 @@ html:has(.capture-home), body:has(.capture-home) { height:auto; min-height:100%;
 .capture-file { display:block; padding:16px 0; }
 .capture-file input { display:block; width:100%; margin:12px 0; }
 #capture-progress { width:100%; }
+#capture-readiness { margin:18px 0; padding:14px 16px; background:#f6faff; border:1px solid #dce9f8; border-radius:14px; }
+#capture-readiness p { margin:6px 0; }
+#capture-readiness b { color:#20324b; }
 .capture-model { position:fixed; inset:0; z-index:100; background:#111; }
 .capture-close { position:absolute; top:20px; left:20px; z-index:1000; padding:16px; }
+.capture-enter { display:inline-block; margin-left:12px; padding:13px 19px; border-radius:14px; background:#0f9d70; color:white!important; text-decoration:none; font-weight:600; }

@@ -58,6 +58,8 @@ npm run dev
 
 有真实 `home.ply` 时，进入真实重建模式。未完成真实空间定位的数据不会被 Web 端伪造成已知结果。
 
+依赖安全：`web/` 的 `npm audit` 当前 0 漏洞。Vite 固定到 6.4.6，`source-map-js` 通过 `overrides` 固定到 `^1.2.2`；这些只参与本地开发/构建，不进入浏览器运行时。不要用 `npm audit fix --force` 自动跨 major 改写依赖。
+
 ## 真实 3D + 语义定位管线
 
 ### 环境
