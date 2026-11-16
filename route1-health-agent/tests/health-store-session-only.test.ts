@@ -22,6 +22,7 @@ const privateEvent: HealthEvent = {
 const snapshot: HealthRecordSnapshot = {
   events: [privateEvent],
   familyEvents: [],
+  historyEvents: [],
   chat: [{ id: 'chat-private-1', role: 'elder', text: '胸口不舒服', time: '2026-09-09T08:00:00Z' }],
 };
 
@@ -40,7 +41,7 @@ describe('health record session isolation', () => {
     store.save(snapshot);
     store.clear();
 
-    assert.deepEqual(store.load(), { events: [], familyEvents: [], chat: [] });
+    assert.deepEqual(store.load(), { events: [], familyEvents: [], historyEvents: [], chat: [] });
   });
 
   it('does not depend on browser persistence APIs', () => {

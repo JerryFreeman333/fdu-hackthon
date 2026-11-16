@@ -14,7 +14,7 @@
     "security:check": "node scripts/security-check.mjs",
     "verify:llm": "node scripts/verify-llm-understanding.mjs",
     "proxy": "node scripts/local-llm-proxy.mjs",
-    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:sos && npm run test:browser:onboarding && npm run test:browser:webhook && npm run test:browser:notif && npm run test:browser:cross-device && npm run test:browser:binding && npm run test:browser:crosstab",
+    "ci": "npm run format:check && npm run typecheck && npm test && npm run build && npm run security:check && npm run test:browser && npm run test:browser:sos && npm run test:browser:onboarding && npm run test:browser:webhook && npm run test:browser:notif && npm run test:browser:cross-device && npm run test:browser:binding && npm run test:browser:crosstab && npm run test:browser:family-safety && npm run test:browser:history-share",
     "preview": "vite preview",
     "test:browser": "node tests/browser-smoke.test.mjs",
     "test:browser:sos": "node tests/elder-sos-blackbox.test.mjs",
@@ -24,6 +24,8 @@
     "test:browser:cross-device": "node tests/cross-device-status-blackbox.test.mjs",
     "test:browser:binding": "node tests/family-binding-blackbox.test.mjs",
     "test:browser:crosstab": "node tests/family-notification-crosstab.test.mjs",
+    "test:browser:family-safety": "node tests/family-safety-blackbox.test.mjs",
+    "test:browser:history-share": "node tests/family-history-sharing-blackbox.test.mjs",
     "healthkit:bridge": "node scripts/healthkit-bridge.mjs",
     "test:healthkit": "node scripts/test-healthkit.mjs"
   },
@@ -39,7 +41,10 @@
     "@vitejs/plugin-react": "^4.3.4",
     "playwright": "^1.63.0",
     "typescript": "~5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^6.4.6"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2"
   },
   "engines": {
     "node": ">=22.0.0",

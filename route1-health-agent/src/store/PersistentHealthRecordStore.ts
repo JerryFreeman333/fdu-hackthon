@@ -1,4 +1,4 @@
-import type { ChatMessage, FamilyHealthEvent } from '../types';
+import type { ChatMessage, FamilyHealthEvent, HistoricalHealthEvent } from '../types';
 import type { HealthRecordSnapshot, HealthRecordStore } from './HealthRecordStore';
 import type { HealthEvent } from '../pipeline/events';
 
@@ -31,12 +31,14 @@ interface StoredEnvelope {
   snapshot: HealthRecordSnapshot;
 }
 
-const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], chat: [] };
+const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], historyEvents: [], chat: [] };
 
 function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
   return {
     events: snapshot.events.map((event) => ({ ...event })) as HealthEvent[],
     familyEvents: snapshot.familyEvents.map((event) => ({ ...event })) as FamilyHealthEvent[],
+    // 旧版本快照没有 historyEvents：水合时按空账本兼容，不丢弃其它历史数据。
+    historyEvents: (snapshot.historyEvents ?? []).map((event) => ({ ...event })) as HistoricalHealthEvent[],
     chat: snapshot.chat.map((message) => ({ ...message })) as ChatMessage[],
   };
 }
@@ -104,7 +106,12 @@ export class PersistentHealthRecordStore implements HealthRecordStore {
       if (envelope.version !== SNAPSHOT_VERSION) return false;
       if (!isValidSnapshot(envelope.snapshot)) return false;
       this.cache = cloneSnapshot(envelope.snapshot);
-      return this.cache.events.length > 0 || this.cache.familyEvents.length > 0 || this.cache.chat.length > 0;
+      return (
+        this.cache.events.length > 0 ||
+        this.cache.familyEvents.length > 0 ||
+        this.cache.historyEvents.length > 0 ||
+        this.cache.chat.length > 0
+      );
     } catch (error) {
       console.warn('[health-store] 本地历史数据读取失败，按无历史启动：', error);
       return false;

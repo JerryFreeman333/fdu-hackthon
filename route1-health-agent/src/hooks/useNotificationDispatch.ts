@@ -5,7 +5,8 @@ import {
   acknowledgeNotification as acknowledgeRecord,
   countUnacknowledged,
   dispatchFamilyNotifications,
-  sortNotificationRecords,
+  pendingRetryChannels,
+  mergeNotificationRecord,
   type DeliveryOutcome,
   type DeliverFn,
   type FamilyNotificationRecord,
@@ -13,20 +14,17 @@ import {
 import { sendBrowserPush } from '../adapters/BrowserNotificationChannel';
 import { loadWebhookConfig, sendWebhookPush } from '../adapters/WebhookPushChannel';
 import { loadDispatchRecords, saveDispatchRecords } from '../engine/notifyPersistence';
-
-function isUndeliveredPush(record: FamilyNotificationRecord): boolean {
-  return record.deliveries.some(
-    (delivery) =>
-      delivery.channel === 'browser_push' && (delivery.status === 'failed' || delivery.status === 'unavailable'),
-  );
-}
+import { dispatchSignature } from '../engine/dispatchSignature';
+import { FAMILY_SAFETY_FINDING_PREFIX, isFamilySafetyFinding } from '../engine/familySafetyNotify';
+import { collectFamilyNotifications } from '../engine/escalate';
 
 /**
  * 把"安全信号是否真正送到家属手上"接到 UI 上。
  *
  * - 仅当家属已绑定（familyLink.status === 'active'）且长期授权为 granted 时
  *   才会真正调起派发引擎；其余状态只做门控评估，不发任何渠道。
- * - 同一 finding 永不重复打扰家属：dedup 完全交给 notify.ts 的台账去管。
+ * - 同一 finding 默认不重复打扰家属；家人安全事件在未确认时允许隔天重申。
+ *   dedup 完全交给 notify.ts 的台账去管。
  * - 渠道抛错不吞：deliver 抛错会被 notify.ts 记成 failed，UI 上能看到。
  * - 状态走 React 内存，与项目其它 session-only 状态保持一致；
  *   跨刷新去重留到下一轮专门处理。
@@ -42,6 +40,17 @@ interface UseNotificationDispatchOptions {
    * 双重弹系统通知、双重发微信推送。默认 true 保持既有调用兼容。
    */
   canDispatch?: boolean;
+  /**
+   * 老人显式一次性共享的 findingId（含家人安全通道）。长期授权为 denied 时，
+   * 这些 finding 仍然必须走派发；只把它们画进页面而不产生台账，就是把
+   * “这次会告诉家属”变成一句空话。
+   */
+  oneTimeSharedFindingIds?: string[];
+  /**
+   * 老人端不为自己转述的家人事件弹本机系统通知：弹出对象错了，
+   * 而且会让老人误以为“家属已经收到”。微信外送与家属端补发不受影响。
+   */
+  suppressBrowserPushForFamilySafety?: boolean;
   /** 测试/演练时允许注入自定义 deliver（例如不真弹系统通知） */
   deliver?: DeliverFn;
 }
@@ -56,6 +65,8 @@ export function useNotificationDispatch({
   familySharing,
   familyLink,
   canDispatch = true,
+  oneTimeSharedFindingIds = [],
+  suppressBrowserPushForFamilySafety = false,
   deliver,
 }: UseNotificationDispatchOptions): DispatchOutcome & {
   acknowledge: (findingId: string) => void;
@@ -76,16 +87,34 @@ export function useNotificationDispatch({
     saveDispatchRecords(records);
   }, [records]);
 
-  const isDispatchable = canDispatch && familyLink?.status === 'active' && familySharing === 'granted';
+  const hasOneTimeShare = oneTimeSharedFindingIds.length > 0;
+  const isDispatchable =
+    canDispatch && familyLink?.status === 'active' && (familySharing === 'granted' || hasOneTimeShare);
+  const dispatchableRef = useRef(isDispatchable);
+  dispatchableRef.current = isDispatchable;
+  const eligibleIdsRef = useRef(new Set<string>());
+  eligibleIdsRef.current = new Set(
+    collectFamilyNotifications(findings, familySharing, oneTimeSharedFindingIds).map(
+      (notification) => notification.finding.id,
+    ),
+  );
+  const dispatchQueueRef = useRef(Promise.resolve());
 
   const effectiveDeliver = useCallback<DeliverFn>(
     async (notification) => {
       if (deliver) return deliver(notification);
       // 渠道一：浏览器系统通知；adapter 内部对不支持/未授权/抛错都返回
       // 明确的 DeliveryOutcome，台账如实记录，绝不假装送达。
-      const outcomes: DeliveryOutcome[] = [
-        sendBrowserPush(`family-${notification.finding.id}`, notification.finding.title, notification.message),
-      ];
+      const suppressBrowserPush = suppressBrowserPushForFamilySafety && isFamilySafetyFinding(notification.finding);
+      const outcomes: DeliveryOutcome[] = suppressBrowserPush
+        ? [
+            {
+              channel: 'browser_push',
+              status: 'unavailable',
+              detail: '老人端不为自己转述的家人事件弹本机通知',
+            },
+          ]
+        : [sendBrowserPush(`family-${notification.finding.id}`, notification.finding.title, notification.message)];
       // 渠道二（评审 P0-6/P1-3）：配置了微信推送时把同一条通知推到家属微信，
       // 不依赖"家属此刻开着这个网页"。失败同样进台账，绝不静默。
       const webhookConfig = loadWebhookConfig();
@@ -99,7 +128,7 @@ export function useNotificationDispatch({
       }
       return outcomes;
     },
-    [deliver],
+    [deliver, suppressBrowserPushForFamilySafety],
   );
 
   useEffect(() => {
@@ -108,19 +137,14 @@ export function useNotificationDispatch({
       return;
     }
     // 仅当发现列表真的发生变化时才再跑派发，避免每帧重复触发系统通知。
-    const signature = findings
-      .filter((finding) => finding.severity === 'alert' || finding.severity === 'urgent')
-      .map(
-        (finding) =>
-          `${finding.id}:${finding.familyEligible !== false ? 'eligible' : 'blocked'}:${finding.familyMessage ? 'msg' : 'nomsg'}`,
-      )
-      .sort()
-      .join('|');
+    // 严重度、正文和日期都必须进入签名：同一天从 alert 升级到 urgent、
+    // 或家人安全事件跨午夜重申，只要签名不变，派发 effect 就不会重跑。
+    const signature = dispatchSignature(findings, oneTimeSharedFindingIds);
     if (signature === lastDispatchedSignatureRef.current) return;
     lastDispatchedSignatureRef.current = signature;
 
-    let cancelled = false;
-    void (async () => {
+    dispatchQueueRef.current = dispatchQueueRef.current.then(async () => {
+      if (!dispatchableRef.current || signature !== lastDispatchedSignatureRef.current) return;
       const now = new Date().toISOString();
       const result = await dispatchFamilyNotifications(
         findings,
@@ -129,48 +153,87 @@ export function useNotificationDispatch({
         recordsRef.current,
         now,
         effectiveDeliver,
+        oneTimeSharedFindingIds,
       );
-      if (cancelled) return;
-      setRecords(result.records);
-    })();
-  }, [findings, familySharing, isDispatchable, effectiveDeliver]);
+      setRecords((current) => result.records.reduce(mergeNotificationRecord, current));
+    });
+  }, [findings, familySharing, isDispatchable, effectiveDeliver, oneTimeSharedFindingIds]);
 
-  // 跨刷新重试：上次会话推送失败（权限被拒 / 浏览器不支持 / 抛错）且未被家属确认的
-  // 记录，在新会话里如果能派发了，就把推送重跑一次，避免"上次没送到就一直不送"。
-  // 用 once-only 信号 + 同步 deliveredInSession 字段防止无限重试。
-  useEffect(() => {
-    if (!isDispatchable) return;
-    const initial = recordsRef.current;
-    const needsRetry = initial.filter((record) => record.lifecycle === 'new').filter(isUndeliveredPush);
-    if (needsRetry.length === 0) return;
+  // 失败重试：浏览器通知/微信推送失败（权限被拒、不支持、网络错误）且未确认的记录，
+  // 只重跑失败的那个渠道。旧实现只在 mount 时跑一次——会话中途权限被拒绝、网络恢复
+  // 都不会再试，台账永远停在 failed。
+  // 上限：每条记录最多重试 3 次，避免一个长期失败的 webhook 每 60 秒骚扰一次。
+  const retryCountsRef = useRef<Map<string, number>>(new Map());
+  const retryInFlightRef = useRef(false);
 
-    let cancelled = false;
-    void (async () => {
-      for (const record of needsRetry) {
-        if (cancelled) return;
-        const outcome: DeliveryOutcome = sendBrowserPush(`family-${record.findingId}`, record.title, record.message);
-        if (cancelled) return;
+  const retryFailedChannels = useCallback(async (): Promise<void> => {
+    if (retryInFlightRef.current || !dispatchableRef.current) return;
+    retryInFlightRef.current = true;
+    try {
+      const needsRetry = recordsRef.current
+        .filter((record) => record.lifecycle === 'new')
+        .filter((record) => eligibleIdsRef.current.has(record.findingId))
+        .map((record) => ({
+          record,
+          channels: pendingRetryChannels(record).filter(
+            (channel) =>
+              !(
+                channel === 'browser_push' &&
+                suppressBrowserPushForFamilySafety &&
+                record.findingId.startsWith(FAMILY_SAFETY_FINDING_PREFIX)
+              ),
+          ),
+        }))
+        .filter((item) => item.channels.length > 0)
+        .filter((item) => (retryCountsRef.current.get(item.record.findingId) ?? 0) < 3);
+      for (const { record, channels } of needsRetry) {
+        if (!dispatchableRef.current || !eligibleIdsRef.current.has(record.findingId)) continue;
+        const outcomes: DeliveryOutcome[] = [];
+        if (channels.includes('browser_push')) {
+          outcomes.push(sendBrowserPush(`family-${record.findingId}`, record.title, record.message));
+        }
+        if (channels.includes('webhook_push')) {
+          const webhookConfig = loadWebhookConfig();
+          if (webhookConfig) {
+            outcomes.push(
+              await sendWebhookPush(webhookConfig, {
+                title: record.title,
+                body: record.message,
+              }),
+            );
+          }
+        }
+        if (outcomes.length === 0) continue;
+        retryCountsRef.current.set(record.findingId, (retryCountsRef.current.get(record.findingId) ?? 0) + 1);
         const at = new Date().toISOString();
         setRecords((current) =>
           current.map((item) =>
-            item.findingId === record.findingId
+            item.findingId === record.findingId &&
+            (item.updatedAt ?? item.createdAt) === (record.updatedAt ?? record.createdAt)
               ? {
                   ...item,
-                  deliveries: item.deliveries.map((delivery) =>
-                    delivery.channel === 'browser_push' ? { ...outcome, at } : delivery,
-                  ),
+                  deliveries: item.deliveries.map((delivery) => {
+                    const outcome = outcomes.find((entry) => entry.channel === delivery.channel);
+                    return outcome ? { ...outcome, at } : delivery;
+                  }),
                 }
               : item,
           ),
         );
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // 只在 mount + isDispatchable 翻转时跑一次，不要因为 records 变化再次重试。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDispatchable]);
+    } finally {
+      retryInFlightRef.current = false;
+    }
+  }, [suppressBrowserPushForFamilySafety]);
+
+  useEffect(() => {
+    if (!isDispatchable) return;
+    void retryFailedChannels();
+    const timer = window.setInterval(() => {
+      void retryFailedChannels();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [isDispatchable, retryFailedChannels]);
 
   const acknowledge = useCallback((findingId: string) => {
     const at = new Date().toISOString();
@@ -180,15 +243,7 @@ export function useNotificationDispatch({
   // 跨 tab 同步入口：另一 tab 把它的台账或确认动作同步过来时，由 App.tsx 调用。
   // mergeRecord 用 findingId 去重，避免把同一 finding 的本地记录覆盖成远端稍旧的版本。
   const mergeRecord = useCallback((incoming: FamilyNotificationRecord) => {
-    setRecords((current) => {
-      const known = current.find((record) => record.findingId === incoming.findingId);
-      if (known) {
-        // 保留本地已确认时间，避免被远端未确认版本覆盖
-        if (known.lifecycle === 'acknowledged' && incoming.lifecycle !== 'acknowledged') return current;
-        return current.map((record) => (record.findingId === incoming.findingId ? incoming : record));
-      }
-      return sortNotificationRecords([...current, incoming]);
-    });
+    setRecords((current) => mergeNotificationRecord(current, incoming));
   }, []);
 
   const mergeAcknowledge = useCallback((findingId: string) => {

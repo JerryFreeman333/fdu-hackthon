@@ -13,11 +13,13 @@ function database(): Promise<IDBDatabase> {
 }
 export default function HealthArchivePage({
   children,
+  historySection,
   onRecognize,
   demoMode = false,
   owner = '',
 }: {
   children: ReactNode;
+  historySection?: ReactNode;
   onRecognize?: (file: File) => void;
   demoMode?: boolean;
   owner?: string;
@@ -282,6 +284,7 @@ export default function HealthArchivePage({
           识别这份图片档案
         </button>
       )}
+      {historySection}
       <details className="card archive-health" open={healthOpen} onToggle={(e) => setHealthOpen(e.currentTarget.open)}>
         <summary>健康数据与图片识别</summary>
         {children}

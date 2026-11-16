@@ -235,9 +235,9 @@ async function runFamilyMedicationScenario(browser) {
       .getByRole('button', { name: /隐私设置/ })
       .first()
       .click();
-    const revokeBtn = page.locator('button', { hasText: '暂停老人共享' });
+    const revokeBtn = page.locator('button', { hasText: '暂停演示共享' });
     await revokeBtn.waitFor({ timeout: 5000 });
-    check('家属端可暂停老人共享', await revokeBtn.isVisible());
+    check('家属端可暂停演示共享', await revokeBtn.isVisible());
     await revokeBtn.click();
     await page.waitForTimeout(500);
     await page.locator('.settings-list button', { hasText: '用药与医护' }).click();

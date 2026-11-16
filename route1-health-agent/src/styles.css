@@ -788,6 +788,73 @@ button {
   font-size: 14px;
   flex-shrink: 0;
 }
+.history-entry-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.history-entry {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.history-original,
+.shared-history-text {
+  overflow-wrap: anywhere;
+}
+.history-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.history-share-actions button {
+  min-height: 44px;
+  font-size: 15px;
+}
+.history-share-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.history-share-state {
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+.history-revoke {
+  color: #a53d32;
+  border-color: #edc7c0;
+}
+.history-share-preview {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #d9e3ef;
+  border-radius: 16px;
+  background: #f7faff;
+}
+.history-redaction-label {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 15px;
+}
+.history-redaction-label input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
+.shared-history-card {
+  border-color: #d9e3ef;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+}
+.shared-history-text {
+  margin: 6px 0;
+  color: var(--ink);
+  line-height: 1.55;
+}
 
 /* ---------- chat ---------- */
 .chat-view {

@@ -37,7 +37,10 @@ export interface FamilyStatus {
 function hasUndeliveredPush(record: FamilyNotificationRecord): boolean {
   return record.deliveries.some(
     (delivery) =>
-      delivery.channel === 'browser_push' && (delivery.status === 'failed' || delivery.status === 'unavailable'),
+      // 微信推送失败同样意味着"系统试过但没送到"，不能因为只看浏览器通知
+      // 就在首页显示绿色"今天总体正常"。
+      (delivery.channel === 'browser_push' || delivery.channel === 'webhook_push') &&
+      (delivery.status === 'failed' || delivery.status === 'unavailable'),
   );
 }
 
@@ -65,6 +68,10 @@ export function familyStatus(
   todaySignalCount: number,
   gatedAlertCount = 0,
   todayMinorFindingCount = 0,
+  /** 当前窗口内、已授权的家人安全事件数（今天/昨天）。 */
+  familySafetyActiveCount = 0,
+  /** 当前窗口内、被隐私/授权挡住的家人安全事件数；只暴露数量，不暴露内容。 */
+  gatedFamilySafetyCount = 0,
 ): FamilyStatus {
   const urgent = notifications.filter((notification) => notification.finding.severity === 'urgent');
   if (urgent.length > 0) {
@@ -73,6 +80,36 @@ export function familyStatus(
       detail: '出现需要马上确认安全情况的信号。请先联系老人并按提示的安全路径处理。',
       tone: 'danger',
       reasons: [`urgent_notifications=${urgent.length}`],
+    };
+  }
+
+  // 家人安全事件本身是 urgent 级，但它们不属于老人本人的检测发现，也不一定在今天发生。
+  // 这里单独兜住：页面下方已经显示"需要立即确认"，页头就不能再说"今天没有信号"。
+  if (familySafetyActiveCount > 0) {
+    return {
+      title:
+        familySafetyActiveCount === 1
+          ? '家人发生安全事件，需要立即确认'
+          : `有 ${familySafetyActiveCount} 件家人安全事件需要立即确认`,
+      detail:
+        '老人转述了家里人的急症或受伤情况，内容已按授权向您共享。请先联系老人确认现场情况，再按提示的安全路径处理。',
+      tone: 'danger',
+      reasons: [`family_safety_active=${familySafetyActiveCount}`],
+    };
+  }
+
+  // 家人安全事件被挡住时，页面下方会显示"另有 N 条被隐私设置挡住"；
+  // 页头必须与它一致，不能落到"今天还没有任何健康信号"这种看似平静的句子。
+  if (gatedFamilySafetyCount > 0) {
+    return {
+      title:
+        gatedFamilySafetyCount === 1
+          ? '有 1 条家人安全提醒被隐私设置挡住'
+          : `有 ${gatedFamilySafetyCount} 条家人安全提醒被隐私设置挡住`,
+      detail:
+        '老人提到了家里人的急症或受伤情况，但按当前授权您看不到具体内容。系统不能替您判断现场是否安全，建议直接联系老人确认。',
+      tone: 'unknown',
+      reasons: [`gated_family_safety=${gatedFamilySafetyCount}`],
     };
   }
 
@@ -119,16 +156,23 @@ export function familyStatus(
   // 这些是"系统尝试提醒但没送到位"的信号，必须在首页标出来，不能装作没事。
   const undelivered = dispatchRecords.filter((record) => record.lifecycle === 'new' && hasUndeliveredPush(record));
   if (undelivered.length > 0) {
-    const failed = undelivered.filter((record) =>
-      record.deliveries.some((delivery) => delivery.channel === 'browser_push' && delivery.status === 'failed'),
-    ).length;
-    const unavailable = undelivered.length - failed;
+    const countFor = (channel: 'browser_push' | 'webhook_push', status: 'failed' | 'unavailable'): number =>
+      undelivered.filter((record) =>
+        record.deliveries.some((delivery) => delivery.channel === channel && delivery.status === status),
+      ).length;
+    const failed = countFor('browser_push', 'failed');
+    const unavailable = countFor('browser_push', 'unavailable');
+    const webhookFailed = countFor('webhook_push', 'failed');
+    const webhookUnavailable = countFor('webhook_push', 'unavailable');
     const detailParts: string[] = [];
     if (failed > 0) detailParts.push(`${failed} 条系统通知发送失败`);
     if (unavailable > 0) detailParts.push(`${unavailable} 条系统通知未开启`);
+    if (webhookFailed > 0) detailParts.push(`${webhookFailed} 条微信推送发送失败`);
+    // 未配置推送服务是"渠道未启用"，不是发送失败；文案必须区分，否则会误导家属去查网络。
+    if (webhookUnavailable > 0) detailParts.push(`${webhookUnavailable} 条微信推送未启用`);
     return {
       title: '今天没有新通知，但系统通知未全部送达',
-      detail: `有${detailParts.join('、')}。请在"现在最需要知道的"里逐条确认，或开启浏览器系统通知权限。`,
+      detail: `有${detailParts.join('、')}。请在"现在最需要知道的"里逐条确认，或检查通知与推送设置。`,
       tone: 'unknown',
       reasons: [`undelivered_pushes=${undelivered.length}`],
     };

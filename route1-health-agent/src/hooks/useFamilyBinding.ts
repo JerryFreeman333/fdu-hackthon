@@ -303,6 +303,22 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     setSharedFamilyEventIds((current) => [...new Set([...current, ...ids])].slice(-MAX_PENDING_ONE_TIME_IDS));
   }
 
+  /**
+   * 家属端接收老人端的一次性共享清单。
+   *
+   * 这是一份完整快照而不是增量：老人端撤销/清空后广播空数组，家属端必须
+   * 跟着清掉，否则本地仍会保留已经失效的一次性授权。只接受有长度上限的
+   * 字符串数组；调用方负责先做角色与绑定门控。
+   */
+  const applyRemoteShareIds = useCallback((next: { sharedFindingIds?: string[]; sharedFamilyEventIds?: string[] }) => {
+    const clean = (ids: unknown): string[] =>
+      Array.isArray(ids)
+        ? ids.filter((id): id is string => typeof id === 'string' && id.length <= 160).slice(-MAX_PENDING_ONE_TIME_IDS)
+        : [];
+    if (next.sharedFindingIds !== undefined) setSharedFindingIds(clean(next.sharedFindingIds));
+    if (next.sharedFamilyEventIds !== undefined) setSharedFamilyEventIds(clean(next.sharedFamilyEventIds));
+  }, []);
+
   /** 家属端接收老人端广播来的权威授权；内容相同则幂等跳过。useCallback 稳定，可进 effect deps。 */
   /**
    * 家属端接收老人端广播来的权威授权；内容相同则幂等跳过。
@@ -325,6 +341,12 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     setFamilyLink(null);
     setIssuedInviteCode(null);
     setRemoteConsent(null);
+    // 解绑后本机不再持有任何一次性共享授权。若不清，重新绑定到另一位老人时
+    // 旧的共享 ID 仍会放行同名事件（事件 ID 可被猜测/复用），属于越权残留。
+    setFamilySharing('denied');
+    setConsentUpdatedAt('');
+    setSharedFindingIds([]);
+    setSharedFamilyEventIds([]);
     showToast('已解除本机与老人端的绑定。重新绑定时需要老人端出示新的邀请码。');
   }
 
@@ -344,6 +366,7 @@ export function useFamilyBinding({ showToast, today }: UseFamilyBindingOptions) 
     confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
+    applyRemoteShareIds,
     applyRemoteConsent,
     unbindFamily,
   };

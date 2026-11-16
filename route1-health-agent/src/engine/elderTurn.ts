@@ -21,6 +21,8 @@ import type {
   FamilyHealthEvent,
   FamilyShareMode,
   Finding,
+  HealthMeasurement,
+  HistoricalHealthEvent,
   SymptomTag,
 } from '../types';
 import { METRICS } from '../types';
@@ -30,14 +32,19 @@ import { generateAgentReply, ruleBasedAdapter, tagLabel, type LlmAdapter } from 
 import { extractHealthValues } from './extract';
 import { canShareWithFamily, parsePrivacyIntent } from './privacy';
 import { runDetection } from './detect';
-import { buildFamilyAcknowledgement, buildSelfSharingAcknowledgement, buildUnacceptedClaimsReply } from './userFacing';
+import {
+  buildFamilyAcknowledgement,
+  buildHistoricalSelfClaimsReply,
+  buildSelfSharingAcknowledgement,
+  buildUnacceptedClaimsReply,
+} from './userFacing';
 import {
   buildHistoricalSharingAnswer,
   inferSharingRecipient,
   loadSharingAudit,
   type SharingAuditCandidate,
 } from './sharingAudit';
-import { acceptedSelfClaims, hasDeathReport, type StructuredElderInput } from './understanding';
+import { acceptedSelfClaims, hasDeathReport, historicalSelfClaims, type StructuredElderInput } from './understanding';
 import { removeCorrectedChatHealthEvents } from './correction';
 
 type FamilySubject = Exclude<ElderSubject, 'self' | 'unknown'>;
@@ -77,6 +84,8 @@ export interface ElderTurnPlan {
   correction: { messageId: string; tags?: SymptomTag[] } | null;
   eventsToAppend: HealthEvent[];
   familyEventsToAppend: FamilyHealthEvent[];
+  /** 既往事实独立账本：绝不混入 eventsToAppend / Observation.date。 */
+  historyEventsToAppend: HistoricalHealthEvent[];
   sharingAuditEntries: SharingAuditCandidate[];
   shareFamilyEventIds: string[];
   /** 仅完整记录路径给出（与旧版一致：提前返回的分支不触发告警共享）。 */
@@ -102,6 +111,8 @@ function shouldPersistClaim(claim: StructuredElderInput['claims'][number]): bool
   return (
     claim.subject === 'self' &&
     claim.status === 'occurred' &&
+    // P2-A：既往事实走独立账本，绝不写成带过去日期的 Observation。
+    claim.timeScope !== 'historical' &&
     claim.eventDate !== null &&
     (claim.tags.length > 0 || claim.hasHealthValue)
   );
@@ -117,10 +128,7 @@ function shouldPersistFamilyClaim(
   subject: FamilySubject;
 } {
   return (
-    isFamilySubject(claim.subject) &&
-    claim.status !== 'hypothetical' &&
-    claim.eventDate !== null &&
-    (claim.tags.length > 0 || claim.hasHealthValue)
+    isFamilySubject(claim.subject) && claim.status !== 'hypothetical' && (claim.tags.length > 0 || claim.hasHealthValue)
   );
 }
 
@@ -130,6 +138,9 @@ function isCurrentReassurance(text: string): boolean {
 
 const SAFETY_TAGS = new Set([
   'fall',
+  'syncope',
+  'melena',
+  'bpLow',
   'medicationMissed',
   'chestPain',
   'neuroChange',
@@ -143,6 +154,12 @@ const SAFETY_TAGS = new Set([
 
 const SAFETY_NOTICES: Record<string, string> = {
   fall: '现在最重要的是先确认安全：先别着急起身，看看有没有明显疼痛、出血、意识异常，或者站不起来。',
+  syncope:
+    '现在最重要的是确认意识和呼吸：先平躺或侧卧，不要急着站起来；如果还没完全清醒、反复晕厥，或伴胸痛、呼吸困难、说话肢体异常，立即拨打当地急救电话。',
+  melena:
+    '现在最重要的是尽快联系医生：记录黑便/便血的次数和颜色，不要自行吃止痛药或止血药；如果伴头晕、心慌、乏力或晕倒，立即就医。',
+  bpLow:
+    '现在最重要的是先坐下或平躺：站起来动作放慢，按设备说明复测；如果站起来发黑、头晕、站不稳，或伴胸痛、晕厥，立即联系家人或急救。',
   spo2Low:
     '现在最重要的是保持呼吸：先坐稳、保持手部温暖，按设备说明复测一次；如果仍低或伴嘴唇发紫、测不到呼吸，立即告诉我们或找家人。',
   hrHigh: '现在最重要的是先停下休息：走动起来都不要急，按设备说明复测；如果仍快或伴胸闷、头晕，立即告诉我们或找家人。',
@@ -153,6 +170,23 @@ const SAFETY_NOTICES: Record<string, string> = {
 };
 
 const NO_RECORD_LINE = '这段内容不会保存到健康记录或家属端。';
+
+function historicalClaimSummary(claim: StructuredElderInput['claims'][number]): string {
+  const labels = [...new Set(claim.tags)].map(tagLabel);
+  const values = extractHealthValues(claim.text).map(
+    (item) => `${METRICS[item.metric].label} ${item.value}${item.unit}`,
+  );
+  return [...labels, ...values].join('、') || claim.text;
+}
+
+/** 既往事实录入回执：明确日期/日期不详，并声明不用于今天的安全判断。 */
+function buildHistoricalReceipt(claims: StructuredElderInput['claims']): string {
+  if (claims.length === 0) return '';
+  const entries = claims
+    .slice(0, 3)
+    .map((claim) => `${historicalClaimSummary(claim)}（${claim.eventDate ?? '日期不详'}）`);
+  return `已记入既往情况：${entries.join('；')}。不用于今天的安全判断。`;
+}
 
 export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTurnPlan> {
   const {
@@ -176,7 +210,11 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
   const hasUrgentFinding = findings.some((finding) => finding.severity === 'urgent');
   let forceSafetyActions = false;
 
-  const acceptedClaims = acceptedSelfClaims(understanding);
+  // P2-A：既往事实（含“前天”这种日期明确的历史）单独记账。
+  // acceptedSelfClaims 的语义保持不变（理解层/时间回归依赖它），这里只把
+  // historical claim 从“今天事件流”里分流出去。
+  const acceptedClaims = acceptedSelfClaims(understanding).filter((claim) => claim.timeScope !== 'historical');
+  const historyClaims = historicalSelfClaims(understanding);
   const acceptedTags = [...new Set(acceptedClaims.flatMap((claim) => claim.tags))];
   const familyClaims = understanding.claims.filter(shouldPersistFamilyClaim);
   const familyOnlyClaims = understanding.claims.filter(
@@ -216,6 +254,8 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
     const familyLabels = [...new Set(familyOnlyClaims.flatMap((claim) => claim.tags))].map(tagLabel);
     const labelText = familyLabels.length > 0 ? `（我听到的是${familyLabels.join('、')}等家人的情况）` : '';
     agentText = `我明白，您刚才说的是家里人的情况${labelText}，不会记到您本人的健康档案里。需要继续处理时，可以告诉我具体是谁。`;
+  } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && historyClaims.length > 0) {
+    agentText = buildHistoricalSelfClaimsReply(historyClaims);
   } else if (acceptedTags.length === 0 && acceptedClaims.length === 0 && understanding.claims.length > 0) {
     agentText = buildUnacceptedClaimsReply(understanding.claims);
   } else {
@@ -243,6 +283,7 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
       correction: null,
       eventsToAppend: [],
       familyEventsToAppend: [],
+      historyEventsToAppend: [],
       sharingAuditEntries: [],
       shareFamilyEventIds: [],
       shareFindingIds: [],
@@ -264,9 +305,31 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
         )
       : '';
 
+  // 既往事实永远只进独立账本：eventDate 可为 null，绝不用 today 冒充。
+  const historyEventsToAppend: HistoricalHealthEvent[] = historyClaims.map((claim, claimIndex) => ({
+    id: `history-live-${idSeed}-${claimIndex}`,
+    eventDate: claim.eventDate,
+    recordedAt: receivedAt,
+    source: 'chat',
+    text: claim.text,
+    tags: claim.tags,
+    hasHealthValue: claim.hasHealthValue,
+    status: claim.status,
+    visibility,
+    sourceMessageId,
+  }));
+
+  const historyReceipt =
+    historyClaims.length > 0 && !agentText.includes('既往情况') ? buildHistoricalReceipt(historyClaims) : '';
+
   const familyEventsToAppend: FamilyHealthEvent[] = familyClaims.map((claim, claimIndex) => ({
     id: `family-live-${idSeed}-${claimIndex}`,
-    timestamp: `${claim.eventDate ?? today}T12:00:00`,
+    // timestamp 是"老人什么时候说的"，不是"事情什么时候发生"。
+    // 旧实现把 eventDate 写进 timestamp，日期不详时只能丢事件或用今天冒充；
+    // 现在两个语义分开，日期不详保留 null。
+    timestamp: receivedAt,
+    eventDate: claim.eventDate,
+    timeScope: claim.timeScope,
     source: 'chat',
     subject: claim.subject,
     text: claim.text,
@@ -326,53 +389,66 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
         },
       }),
     );
-    for (const extracted of extractedValues) {
-      incomingEvents.push(
-        measurementToEvent({
-          id: `chat-value-${idSeed}-${claimIndex}-${extracted.metric}`,
-          timestamp: `${eventDate}T12:00:00`,
-          metric: extracted.metric,
-          value: extracted.value,
-          unit: extracted.unit,
-          source: 'chat',
-          confidence: 0.9,
-          visibility,
-          metadata: {
-            sourceText: extracted.sourceText,
-            extraction: 'rule',
-            privacy: visibility,
-            receivedAt,
-            eventDate,
-            sourceMessageId,
-          },
-        }),
-      );
+    for (const [valueIndex, extracted] of extractedValues.entries()) {
+      const measurement: HealthMeasurement = {
+        // 同一句话里可能有同一个指标的多个读数（"腋温37.6，耳温38.4"）。
+        // id 必须带序号，否则合并事件时按 id 去重会把其中一条静默丢掉。
+        id: `chat-value-${idSeed}-${claimIndex}-${valueIndex}-${extracted.metric}`,
+        timestamp: `${eventDate}T12:00:00`,
+        metric: extracted.metric,
+        value: extracted.value,
+        unit: extracted.unit,
+        source: 'chat',
+        confidence: 0.9,
+        visibility,
+        metadata: {
+          sourceText: extracted.sourceText,
+          extraction: 'rule',
+          privacy: visibility,
+          receivedAt,
+          eventDate,
+          sourceMessageId,
+        },
+      };
+      // 体温部位必须随读数一起落库：缺失时写显式 unknown，绝不默认成某个部位。
+      if (extracted.metric === 'temperature') {
+        measurement.temperatureSite = extracted.temperatureSite ?? 'unknown';
+        measurement.metadata = {
+          ...measurement.metadata,
+          temperatureSite: measurement.temperatureSite,
+        };
+      }
+      incomingEvents.push(measurementToEvent(measurement));
     }
   }
 
-  // 没有可记录事件的分支（纯家属消息、澄清、召回、更正确认等）：
-  // 回复保持旧版文本不变，整条作为主气泡。
+  // 没有可记录事件的分支（纯家属消息、澄清、召回、更正确认、既往事实等）。
   if (incomingEvents.length === 0) {
     const finalFamilyText = familyAcknowledgement || agentText;
     // P2 修复：混合意图（隐私请求 + 症状）在症状没被识别成事件时，隐私请求
     // 仍必须得到独立成行的显式回应，不能让"不要告诉孩子"这句话凭空消失。
     const earlyReplyBlocks: ChatMessageBlock[] = [{ kind: 'main', text: finalFamilyText }];
+    if (historyReceipt) {
+      earlyReplyBlocks.push({ kind: 'receipt', text: historyReceipt });
+    }
     if (intent === 'private') {
       earlyReplyBlocks.push({ kind: 'privacy', text: '好的，这部分不会告诉家属。' });
     }
+    const earlyReplyText = [finalFamilyText, historyReceipt].filter(Boolean).join('\n');
     return {
       recordIntent: 'record',
       replyBlocks: earlyReplyBlocks,
-      replyText: finalFamilyText,
+      replyText: earlyReplyText,
       safetyAction: forceSafetyActions || hasUrgentFinding,
       correction,
       eventsToAppend: [],
       familyEventsToAppend,
+      historyEventsToAppend,
       sharingAuditEntries,
       shareFamilyEventIds,
       shareFindingIds: [],
       medicationMissed: false,
-      toast: finalFamilyText.replace(/\n/g, ' '),
+      toast: earlyReplyText.replace(/\n/g, ' '),
     };
   }
 
@@ -413,6 +489,7 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
     correctionNotice,
     recordReceipt,
     safetyNotice && !guidance.includes(safetyNotice) ? safetyNotice : '',
+    historyReceipt,
     sharingReceipt,
   ].filter(Boolean);
   const replyText = receiptParts.join('\n');
@@ -422,7 +499,7 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
   // 共享与隐私声明独立成行。
   const mainText = guidance || recordReceipt || agentText;
   const replyBlocks: ChatMessageBlock[] = [{ kind: 'main', text: mainText }];
-  for (const receipt of [correctionNotice, recordReceipt, safetyNotice].filter(
+  for (const receipt of [correctionNotice, recordReceipt, safetyNotice, historyReceipt].filter(
     (part) => part && !mainText.includes(part),
   )) {
     replyBlocks.push({ kind: 'receipt', text: receipt });
@@ -453,6 +530,7 @@ export async function planElderTurn(request: ElderTurnRequest): Promise<ElderTur
     correction,
     eventsToAppend: incomingEvents,
     familyEventsToAppend,
+    historyEventsToAppend,
     sharingAuditEntries,
     shareFamilyEventIds,
     shareFindingIds,

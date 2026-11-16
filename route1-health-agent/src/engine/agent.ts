@@ -5,6 +5,12 @@ import { SYMPTOM_LABELS } from '../types';
 import { suggestFollowUpQuestions } from './questions';
 import { parsePrivacyIntent } from './privacy';
 import { extractHealthValues } from './extract';
+import {
+  classifyTemperature,
+  isFeverishTemperature,
+  resolveTemperatureSite,
+  temperatureBand,
+} from './detection/temperatureBands';
 
 interface IntentRule {
   tag: SymptomTag;
@@ -13,6 +19,25 @@ interface IntentRule {
 }
 
 const INTENT_RULES: IntentRule[] = [
+  {
+    tag: 'syncope',
+    // P0：晕厥/意识丧失此前没有任何标签，老人说“我刚才晕倒了”会被整句静默丢弃。
+    // 只收真正的意识丧失表达；“头晕”“眼前发黑”仍归 dizziness，避免把普通眩晕
+    // 升级成急救事件。否定/“差点晕倒”由理解层的 statusFromText 负责降级。
+    patterns: [
+      /晕倒/,
+      /昏倒/,
+      /晕过去/,
+      /昏过去/,
+      /失去意识/,
+      /意识丧失/,
+      /不省人事/,
+      /眼前一黑.{0,6}(?:摔|倒|坐地上|倒地)/,
+    ],
+    replies: [
+      '先让老人平躺或侧卧，别急着站起来。确认现在是否完全清醒、能不能正常说话和活动；如果还没完全恢复、反复晕、胸痛、呼吸困难或说话肢体异常，立即拨打当地急救电话。',
+    ],
+  },
   {
     tag: 'fatigue',
     patterns: [/很?累/, /乏/, /没(有)?劲/, /提不起(精神|劲)/, /体力(不|跟不)上/, /腿(?:都|发)?软/],
@@ -47,7 +72,16 @@ const INTENT_RULES: IntentRule[] = [
     tag: 'dizziness',
     // 兜底下限（主修复在理解层 LLM 仲裁）：窗口 {0,2}→{0,4} 覆盖"头一点都不晕"；
     // 否定语境的裸"晕"（不晕/没晕）单独补——正面裸"晕"刻意不收（晕车/晕船类误报面大）。
-    patterns: [/头晕/, /头.{0,4}晕/, /头昏/, /(?:不|没(?:有)?|未)晕/, /站不稳/, /眼前发黑/, /天旋地转/],
+    patterns: [
+      /头晕/,
+      /头.{0,4}晕/,
+      /头昏/,
+      /(?:不|没(?:有)?|未)晕/,
+      /站不稳/,
+      /眼前发黑/,
+      /(?:站|坐|躺)(?:起来|起|立).{0,6}(?:发黑|黑朦|眼黑)/,
+      /天旋地转/,
+    ],
     replies: ['先坐稳，别硬站着。我想确认一下，这样更容易判断当下行动是否安全。'],
   },
   {
@@ -57,16 +91,13 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'bpHigh',
-    patterns: [
-      /血压(有)?(高|偏高)/,
-      /血压\s*(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)(?:\s*[/／,，比\-至~]\s*(?:\d{2,3}|[零〇一二两三四五六七八九十百]+))?/,
-      /高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
-      /低压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
-      /高压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*低压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
-      /收缩压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*舒张压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
-      /舒张压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)\s*收缩压(?:\d{2,3}|[零〇一二两三四五六七八九十百]+)/,
-    ],
+    patterns: [/血压(有)?(高|偏高)/, /高压(?:有)?(?:点)?(?:高|偏高)/, /低压(?:有)?(?:点)?(?:高|偏高)/],
     replies: ['先坐下来安静一会儿，再按设备说明复测。单次读数不要自己下结论。'],
+  },
+  {
+    tag: 'bpLow',
+    patterns: [/血压(?:有)?(?:点)?(?:低|偏低)/, /低压(?:有)?(?:点)?(?:低|偏低)/],
+    replies: ['先坐下或躺下，别急着站起来。低血压的判断要看读数、症状和用药，先按设备说明复测。'],
   },
   {
     tag: 'chestPain',
@@ -129,25 +160,81 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     tag: 'glucoseHigh',
-    patterns: [
-      /(?:血糖|空腹血糖|餐后血糖)[^。\n]{0,12}(?:高|偏高|太高|飙|上去)/,
-      /(?:血糖|空腹血糖|餐后血糖).{0,8}?(?:1[5-9]|[2-3]\d|十[二三四五六七八九零]|二十|三十)/,
-    ],
+    patterns: [/(?:血糖|空腹血糖|餐后血糖)[^。\n]{0,12}(?:高|偏高|太高|飙|上去)/],
     replies: ['血糖偏高，先复测一次确认测量时间和是否空腹；持续偏高或伴口渴、乏力，告诉我或联系医生。'],
   },
   {
     tag: 'glucoseLow',
-    patterns: [
-      /(?:血糖|空腹血糖)[^。\n]{0,12}(?:低|偏低|低血糖|掉到|太低)/,
-      /(?:血糖|空腹血糖).{0,8}?(?:[1-3]\.\d|[1-3]\b)/,
-    ],
+    patterns: [/(?:血糖|空腹血糖)[^。\n]{0,12}(?:低|偏低|低血糖|掉到|太低)/],
     replies: ['血糖偏低，按医生方案补糖，15 分钟内复测；如果出现意识变化、站不稳或出冷汗，立即告诉我或找家人。'],
+  },
+  {
+    tag: 'fever',
+    patterns: [/发烧/, /发热/, /低烧/, /高烧/, /体温(?:高|偏高)/, /烧到/, /烧了/],
+    replies: ['发热先记下体温和测量时间，多喝水、注意休息；如果高烧不退、喘、意识不清或明显虚弱，尽快联系医生或家人。'],
+  },
+  {
+    tag: 'melena',
+    patterns: [/黑便/, /大便发黑/, /柏油样便/, /便血/],
+    replies: [
+      '大便发黑或便血不能只当成“上火”。先别再自行吃止痛药，尽快联系医生；如果伴头晕、心慌、乏力或晕倒，立即就医。',
+    ],
+  },
+  {
+    tag: 'palpitations',
+    patterns: [/心慌/, /心悸/, /心跳得厉害/, /心跳很乱/],
+    replies: ['先坐下休息，慢慢呼吸。如果心慌同时有胸痛、喘、晕倒或明显乏力，不要等，立即联系家人或急救。'],
+  },
+  {
+    tag: 'weightLoss',
+    patterns: [/瘦了/, /体重(?:下降|减轻|掉了)/, /轻了[一二三四五六七八九十两\d]+(?:斤|公斤|千克)/],
+    replies: ['体重短期下降值得记下来。先确认是吃得少、活动变化，还是别的原因；如果持续下降，建议尽快和医生核对。'],
   },
 ];
 
 export interface ParsedInput {
   tags: SymptomTag[];
   matchedTexts: string[];
+}
+
+/**
+ * 数值读数必须按方向打标签，不能“只要出现血压数字就叫血压高”。
+ * 旧规则把 95/60 也标成 bpHigh，导致低血压表现被当成高血压处理。
+ * 这里复用结构化抽取（含 mg/dL -> mmol/L 换算），只做方向判断，不产生诊断。
+ */
+function vitalDirectionTags(text: string): Array<{ tag: SymptomTag; text: string }> {
+  const values = extractHealthValues(text);
+  const tags: Array<{ tag: SymptomTag; text: string }> = [];
+  const systolic = values.find((value) => value.metric === 'systolic')?.value;
+  const diastolic = values.find((value) => value.metric === 'diastolic')?.value;
+  const bloodPressureText = values.find((value) => value.metric === 'systolic')?.sourceText ?? text;
+  if ((systolic !== undefined && systolic >= 140) || (diastolic !== undefined && diastolic >= 90)) {
+    tags.push({ tag: 'bpHigh', text: bloodPressureText });
+  } else if (
+    (systolic !== undefined && systolic < 90) ||
+    (diastolic !== undefined && diastolic < 60) ||
+    // 95/60 不满足严格低血压阈值，但“站起来发黑/头晕”已经说明体位性症状；
+    // 只在这种情况下把临界低值标成 bpLow，让老人端回复和检测层口径一致。
+    (((systolic !== undefined && systolic < 100) || (diastolic !== undefined && diastolic < 65)) &&
+      /(头晕|头昏|发黑|黑朦|站不稳|晕倒|昏倒|晕过去|昏过去)/.test(text))
+  ) {
+    tags.push({ tag: 'bpLow', text: bloodPressureText });
+  }
+  const glucoseValue = values.find((value) => value.metric === 'bloodGlucose');
+  if (glucoseValue !== undefined) {
+    if (glucoseValue.value >= 7.0) tags.push({ tag: 'glucoseHigh', text: glucoseValue.sourceText });
+    else if (glucoseValue.value < 3.9) tags.push({ tag: 'glucoseLow', text: glucoseValue.sourceText });
+  }
+  const temperatureValue = values.find((value) => value.metric === 'temperature');
+  // 产品安全分流阈值，不是诊断标准：按测量部位各自的发热起点进入观察/复测路径，
+  // 具体升温分级由 safety.temperature.fever 依据读数、部位与伴发症状决定。
+  if (
+    temperatureValue !== undefined &&
+    isFeverishTemperature(temperatureValue.value, resolveTemperatureSite(temperatureValue.temperatureSite))
+  ) {
+    tags.push({ tag: 'fever', text: temperatureValue.sourceText });
+  }
+  return tags;
 }
 
 /**
@@ -173,6 +260,12 @@ export function parseElderInput(text: string): ParsedInput {
         matchedTexts.push(match[0]);
         break;
       }
+    }
+  }
+  for (const directional of vitalDirectionTags(text)) {
+    if (!tags.includes(directional.tag)) {
+      tags.push(directional.tag);
+      matchedTexts.push(directional.text);
     }
   }
   return { tags: tags.filter((tag, index) => tags.indexOf(tag) === index), matchedTexts };
@@ -232,6 +325,35 @@ function buildValueAwareMetricReply(text: string, metric: 'spo2' | 'restingHr' |
   return undefined;
 }
 
+/**
+ * 体温回复只描述“读数 + 下一步复测/联系谁”，不根据单次读数下诊断。
+ * 分级按测量部位各用一套产品分流阈值（temperatureBands.ts），不是诊断标准；
+ * 原文没说部位时如实说"未说明部位"，并要求用同一部位复测，绝不默认成腋温。
+ */
+function buildTemperatureReply(text: string): string | undefined {
+  const extracted = extractHealthValues(text).find((item) => item.metric === 'temperature');
+  if (!extracted) return undefined;
+  const site = resolveTemperatureSite(extracted.temperatureSite);
+  const band = temperatureBand(site);
+  const value = extracted.value;
+  const grade = classifyTemperature(value, site);
+  const reading = value.toFixed(1);
+  const siteText = site === 'unknown' ? '未说明测量部位' : band.label;
+  const record = `您刚才说的体温是 ${reading} ℃（${siteText}），先记下测量时间。`;
+  const sitePrompt =
+    site === 'unknown' ? '这次没说是腋温、口温还是耳温；下次可以说“腋温37.8”，复测也请用同一部位。' : '';
+  if (grade === 'urgent') {
+    return `${record}这个读数很高，先让老人休息、补充水分，不要自行加退烧药；立即联系医疗人员。如果出现意识不清、呼吸困难、抽搐或明显虚弱，立即拨打当地急救电话。这不是诊断。`;
+  }
+  if (grade === 'alert') {
+    return `${record}这个读数偏高，今天尽快联系医生确认处理；同时观察有没有喘、胸痛、意识变化或明显虚弱。这不是诊断。`;
+  }
+  if (grade === 'watch') {
+    return `${record}先多喝水、注意休息，按设备说明用同一部位复测一次；如果持续升高、伴喘、胸痛、意识变化或明显虚弱，尽快联系医生或家人。${sitePrompt}`;
+  }
+  return `${record}按设备说明用同一部位复测一次；如果伴不舒服或后续升高，再告诉我。${sitePrompt}`;
+}
+
 function buildRuleBasedReply(
   elderText: string,
   newTags: SymptomTag[],
@@ -239,6 +361,16 @@ function buildRuleBasedReply(
   isNewFall: boolean,
   context?: AgentContext,
 ): string {
+  if (newTags.includes('syncope'))
+    return (
+      INTENT_RULES.find((rule) => rule.tag === 'syncope')?.replies[0] ??
+      '先让老人平躺或侧卧，确认意识和呼吸；如果还没完全恢复，立即拨打当地急救电话。'
+    );
+  if (newTags.includes('melena'))
+    return (
+      INTENT_RULES.find((rule) => rule.tag === 'melena')?.replies[0] ??
+      '大便发黑或便血需要尽快联系医生；如果伴头晕、心慌或晕倒，立即就医。'
+    );
   if (newTags.includes('chestPain'))
     return (
       INTENT_RULES.find((rule) => rule.tag === 'chestPain')?.replies[0] ??
@@ -256,6 +388,10 @@ function buildRuleBasedReply(
     const bloodPressureReply = buildBloodPressureReply(elderText);
     if (bloodPressureReply) return bloodPressureReply;
   }
+  if (newTags.includes('bpLow')) {
+    const bloodPressureReply = buildBloodPressureReply(elderText);
+    if (bloodPressureReply) return `${bloodPressureReply} 如果站起来发黑或站不稳，先坐下或躺下，不要独自走动。`;
+  }
   if (newTags.includes('spo2Low')) {
     const r = buildValueAwareMetricReply(elderText, 'spo2');
     if (r) return r;
@@ -266,6 +402,10 @@ function buildRuleBasedReply(
   }
   if (newTags.includes('glucoseHigh') || newTags.includes('glucoseLow')) {
     const r = buildValueAwareMetricReply(elderText, 'bloodGlucose');
+    if (r) return r;
+  }
+  if (newTags.includes('fever')) {
+    const r = buildTemperatureReply(elderText);
     if (r) return r;
   }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DayRecord, ElderProfile, Finding, MetricKey, Observation } from '../types';
-import { METRICS } from '../types';
+import { METRICS, TEMPERATURE_SITE_LABELS } from '../types';
 import { computeBaseline, recentMean, diffDays } from '../engine/baseline';
 import { severityBadge } from '../engine/escalate';
 import Sparkline from './Sparkline';
@@ -31,6 +31,13 @@ const DISPLAY_METRICS: MetricKey[] = [
   'bloodGlucose',
 ];
 
+function formatReadingTime(timestamp: string): string {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return timestamp.slice(0, 10);
+  const pad = (value: number): string => `${value}`.padStart(2, '0');
+  return `${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+}
+
 export default function ProfileView({
   records,
   observations,
@@ -43,6 +50,12 @@ export default function ProfileView({
 }: ProfileViewProps) {
   const profileFindings = findings.filter((f) => f.severity === 'alert' || f.severity === 'urgent');
   const [editingProfile, setEditingProfile] = useState(false);
+  // 体温不进入趋势网格：不同部位的正常范围不同，画成一条线或求均值都会误导。
+  const temperatureReadings = records
+    .flatMap((record) => record.measurements ?? [])
+    .filter((measurement) => measurement.metric === 'temperature' && Number.isFinite(measurement.value))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 12);
 
   return (
     <div className="profile-view detail-view">
@@ -154,6 +167,26 @@ export default function ProfileView({
           })}
         </div>
       </div>
+
+      {temperatureReadings.length > 0 && (
+        <div className="card">
+          <h3>体温记录（按部位）</h3>
+          <p className="muted">
+            腋温、口温、耳温、额温的正常范围不同，不能直接比较或求平均。这里按读数原样列出，复测请尽量用同一部位。
+          </p>
+          <ul className="timeline">
+            {temperatureReadings.map((measurement) => (
+              <li key={measurement.id}>
+                <span className="tl-src">{measurement.visibility === 'private' ? '私密' : '体温'}</span>
+                <span className="tl-date">{formatReadingTime(measurement.timestamp)}</span>
+                <span className="tl-text">
+                  {measurement.value.toFixed(1)} ℃ · {TEMPERATURE_SITE_LABELS[measurement.temperatureSite ?? 'unknown']}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <h3>近期记录</h3>

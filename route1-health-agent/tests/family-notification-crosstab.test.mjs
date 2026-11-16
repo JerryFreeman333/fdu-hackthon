@@ -204,6 +204,35 @@ async function main() {
     await elderTab.getByRole('button', { name: '我的' }).last().click();
     const stillGranted = await waitFor(() => elderTab.getByRole('button', { name: /暂停共享/ }).isVisible(), 6000);
     check('老人端刷新后共享授权仍在', stillGranted);
+
+    // ===== 8. 一次性共享清单必须随事件一起跨端到达 =====
+    // 只把事件镜像过去、不把 one_time 的共享 ID 发过去，家属端会在自己的
+    // visibleFamilyEvents 里把事件重新过滤掉（表现为"共享了但看不到"）。
+    await elderTab.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+    await elderTab.getByRole('button', { name: /打字聊天/ }).click();
+    const onceInput = elderTab.locator('#elder-chat input.chat-input');
+    await onceInput.waitFor({ timeout: 5000 });
+    await onceInput.fill('告诉我女儿，我父亲昨天摔了一跤');
+    await elderTab.locator('#elder-chat button', { hasText: '发送' }).click();
+    const sentOnce = await waitFor(async () => {
+      const text = await elderTab.locator('body').innerText();
+      return text.includes('这次会分享给家属一次');
+    }, 8000);
+    check('老人端完成一次性分享', sentOnce);
+
+    await familyTab.getByRole('navigation').getByRole('button', { name: '首页' }).click();
+    const oneTimeVisible = await waitFor(async () => {
+      const text = await familyTab.locator('body').innerText();
+      return text.includes('老人转述') && text.includes('跌倒');
+    }, 12000);
+    check('一次性共享的家人安全事件跨端可见', oneTimeVisible);
+
+    await familyTab.getByRole('navigation').getByRole('button', { name: '消息' }).click();
+    const oneTimeLedger = await waitFor(
+      () => familyTab.getByRole('button', { name: '我已知悉' }).first().isVisible(),
+      10000,
+    );
+    check('一次性共享同样进入通知台账（不是只画一张卡）', oneTimeLedger);
   } catch (err) {
     log('错误:', err instanceof Error ? err.message : String(err));
     check('完成所有断言', false, err instanceof Error ? err.message : String(err));

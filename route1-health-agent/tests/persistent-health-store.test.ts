@@ -38,6 +38,7 @@ const event: HealthEvent = {
 const snapshot: HealthRecordSnapshot = {
   events: [event],
   familyEvents: [],
+  historyEvents: [],
   chat: [{ id: 'chat-1', role: 'elder', text: '今天有点喘', time: '09-11 08:00', persisted: true }],
 };
 
@@ -54,10 +55,52 @@ test('save 后 hydrate 能把快照读回来（刷新页面不丢数据）', asy
   assert.equal(reader.load().chat[0]?.text, '今天有点喘');
 });
 
+test('既往事实账本随快照持久化，刷新后仍与今天的事件流分离', async () => {
+  const kv = memoryKv();
+  const historySnapshot: HealthRecordSnapshot = {
+    ...snapshot,
+    historyEvents: [
+      {
+        id: 'history-1',
+        eventDate: '2026-09-08',
+        recordedAt: '2026-09-11T08:00:00',
+        source: 'chat',
+        text: '我前天胸闷',
+        tags: ['dyspnea'],
+        hasHealthValue: false,
+        status: 'occurred',
+        visibility: 'family_ok',
+        sourceMessageId: 'chat-1',
+      },
+    ],
+  };
+  new PersistentHealthRecordStore(kv).save(historySnapshot);
+
+  const reader = new PersistentHealthRecordStore(kv);
+  assert.equal(await reader.hydrate(), true);
+  assert.equal(reader.load().historyEvents[0]?.eventDate, '2026-09-08');
+  assert.equal(reader.load().events[0]?.type, 'observation', '既往账本不得混入今天的事件流');
+  assert.equal(reader.load().events.length, 1);
+});
+
+test('旧版本快照缺少 historyEvents 时按空账本水合，不丢失既有数据', async () => {
+  const kv = memoryKv();
+  await kv.set('ankang-route1-health-snapshot-v1', {
+    version: 1,
+    savedAt: '2026-09-11T08:00:00.000Z',
+    snapshot: { events: [event], familyEvents: [], chat: [] },
+  });
+
+  const reader = new PersistentHealthRecordStore(kv);
+  assert.equal(await reader.hydrate(), true);
+  assert.equal(reader.load().events[0]?.id, 'event-1');
+  assert.deepEqual(reader.load().historyEvents, []);
+});
+
 test('无历史数据时 hydrate 返回 false，load 为空快照', async () => {
   const reader = new PersistentHealthRecordStore(memoryKv());
   assert.equal(await reader.hydrate(), false);
-  assert.deepEqual(reader.load(), { events: [], familyEvents: [], chat: [] });
+  assert.deepEqual(reader.load(), { events: [], familyEvents: [], historyEvents: [], chat: [] });
 });
 
 test('没有底层 KV（IDB 不可用）时退化为纯会话内存，不抛错', async () => {
@@ -72,7 +115,7 @@ test('坏数据/版本不符时按无历史处理，绝不把应用搞挂', asyn
   await kv.set('ankang-route1-health-snapshot-v1', { version: 999, snapshot: 'garbage' });
   const reader = new PersistentHealthRecordStore(kv);
   assert.equal(await reader.hydrate(), false);
-  assert.deepEqual(reader.load(), { events: [], familyEvents: [], chat: [] });
+  assert.deepEqual(reader.load(), { events: [], familyEvents: [], historyEvents: [], chat: [] });
 
   await kv.set('ankang-route1-health-snapshot-v1', 'totally not an object');
   const reader2 = new PersistentHealthRecordStore(kv);
@@ -97,7 +140,7 @@ test('clear 同时清空内存缓存与底层存储', async () => {
   const store = new PersistentHealthRecordStore(kv);
   store.save(snapshot);
   store.clear();
-  assert.deepEqual(store.load(), { events: [], familyEvents: [], chat: [] });
+  assert.deepEqual(store.load(), { events: [], familyEvents: [], historyEvents: [], chat: [] });
   assert.equal(kv.dump().size, 0);
 });
 

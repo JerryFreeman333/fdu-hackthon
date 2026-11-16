@@ -29,6 +29,7 @@ const METRIC_TO_UNIT_HINT: Record<MetricKey, string[]> = {
   systolic: ['mmhg', 'mmHg'],
   diastolic: ['mmhg', 'mmHg'],
   bloodGlucose: ['mmol/l', 'mmol/L', 'mg/dl'],
+  temperature: ['℃', '°c', 'c', '摄氏', '摄氏度'],
 };
 
 function unitsCompatible(unit: string, key: MetricKey): boolean {

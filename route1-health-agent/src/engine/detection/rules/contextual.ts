@@ -1,5 +1,5 @@
 import { addFinding } from '../helpers';
-import { fmt, hadTag } from '../signals';
+import { fmt, hadOccurredObservation, hadTag } from '../signals';
 import type { DetectionRule } from '../types';
 
 export const nightWakesRule: DetectionRule = {
@@ -77,4 +77,84 @@ export const fatigueReminderRule: DetectionRule = {
   },
 };
 
-export const contextualRules: DetectionRule[] = [nightWakesRule, weightRiseRule, fatigueReminderRule];
+/**
+ * 发热、心慌、体重下降先进入“记录并观察”，不凭一句话升级家属告警。
+ * 真正的升级由体温/心率等结构化读数或伴发危险症状决定；这里只保证这些
+ * 老人明确说出的信号不会像旧版一样被静默丢弃。
+ */
+export const feverReminderRule: DetectionRule = {
+  id: 'symptom.fever.reminder',
+  evaluate(context) {
+    const fever = hadOccurredObservation(context.observations, 'fever', context.today, context.config.recentDays);
+    if (!fever) return null;
+    return addFinding(context.findings, {
+      date: context.today,
+      severity: 'watch',
+      title: '您提到发热',
+      detail:
+        '先记录体温、测量时间和伴随症状，多喝水、注意休息。体温持续升高、反复三天以上，或伴喘、意识不清、明显虚弱时，尽快联系医生。这不是诊断。',
+      evidence: [`${fever.date} 说“${fever.text}”`],
+      carePath: '记录体温和测量时间；持续或加重时联系医生。',
+      ruleId: 'symptom.fever.reminder',
+      score: 1,
+      signalKeys: ['fever'],
+      familyEligible: fever.visibility !== 'private',
+    });
+  },
+};
+
+export const palpitationsReminderRule: DetectionRule = {
+  id: 'symptom.palpitations.reminder',
+  evaluate(context) {
+    const palpitations = hadOccurredObservation(
+      context.observations,
+      'palpitations',
+      context.today,
+      context.config.recentDays,
+    );
+    if (!palpitations) return null;
+    return addFinding(context.findings, {
+      date: context.today,
+      severity: 'watch',
+      title: '您提到心慌/心悸',
+      detail:
+        '先坐下休息，记录持续时间和当时在做什么。如果同时出现胸痛、喘、晕倒或明显乏力，不要在家继续观察，立即联系家人或急救。',
+      evidence: [`${palpitations.date} 说“${palpitations.text}”`],
+      carePath: '休息后复测心率；反复出现或伴胸痛、晕厥、呼吸困难时尽快就医。',
+      ruleId: 'symptom.palpitations.reminder',
+      score: 1,
+      signalKeys: ['palpitations'],
+      familyEligible: palpitations.visibility !== 'private',
+    });
+  },
+};
+
+export const weightLossReminderRule: DetectionRule = {
+  id: 'weight.short_term_loss',
+  evaluate(context) {
+    const weightLoss = hadOccurredObservation(context.observations, 'weightLoss', context.today, 14);
+    if (!weightLoss) return null;
+    return addFinding(context.findings, {
+      date: context.today,
+      severity: 'watch',
+      title: '您提到近期体重下降',
+      detail:
+        '体重短期下降的原因很多，先确认饮食、活动和测量方式有没有变化，并继续规律称重。如果持续下降或伴乏力、食欲差、发热等表现，建议尽快和医生核对。这不是诊断。',
+      evidence: [`${weightLoss.date} 说“${weightLoss.text}”`],
+      carePath: '继续规律称重并记录饮食变化；持续下降或伴其他不适时联系医生。',
+      ruleId: 'weight.short_term_loss',
+      score: 1,
+      signalKeys: ['weightLoss'],
+      familyEligible: weightLoss.visibility !== 'private',
+    });
+  },
+};
+
+export const contextualRules: DetectionRule[] = [
+  nightWakesRule,
+  weightRiseRule,
+  fatigueReminderRule,
+  feverReminderRule,
+  palpitationsReminderRule,
+  weightLossReminderRule,
+];

@@ -13,6 +13,8 @@ import type { UserRole } from '../types';
  * - dispatch.append       { record }
  * - family.link           { link, sharing }
  * - family.consent        { sharing, updatedAt }（老人端授权的唯一权威广播）
+ * - family.share          { sharedFindingIds, sharedFamilyEventIds }（老人端一次性共享清单）
+ * - history.share         { views: SharedHistoricalFact[] }（老人端脱敏后的既往事实派生视图）
  * - chat.append           { message }
  * - chat.share            { sharedFindingIds, sharedFamilyEventIds }
  *
@@ -30,6 +32,13 @@ export type CrossTabMessage =
   | { type: 'family.link'; link: unknown; sharing: UserRole | null }
   | { type: 'chat.append'; message: unknown }
   | { type: 'chat.share'; sharedFindingIds: string[]; sharedFamilyEventIds: string[] }
+  /**
+   * 家人事实账本中"已授权可见"的那一部分（不是原始事件）。
+   * 老人端在本地先跑 visibleFamilyEvents，再广播结果；private 与未授权事件
+   * 永远不离开老人设备。家属端只做镜像合并，用于展示家人安全卡片与近况记录。
+   * payload: { events: FamilyHealthEvent[] }
+   */
+  | { type: 'family.events.append'; events: unknown[] }
   /**
    * P0-1 配套：健康事件在**同浏览器**各 tab 间保持一致（与 IndexedDB 持久化同一信任域，
    * 只走 BroadcastChannel，不进 PeerJS——私密事件不能落到另一台设备的存储里）。
@@ -50,7 +59,27 @@ export type CrossTabMessage =
    * 载荷只有授权位与时间戳，没有任何健康内容，走 PeerJS 也安全。
    * payload: { sharing: 'denied' | 'granted'; updatedAt: string }
    */
-  | { type: 'family.consent'; sharing: 'denied' | 'granted'; updatedAt: string };
+  | { type: 'family.consent'; sharing: 'denied' | 'granted'; updatedAt: string }
+  /**
+   * 老人端的一次性共享清单。家属端必须拿到同一组 ID，否则它会在自己的
+   * visibleFamilyEvents / collectFamilyNotifications 里把 one_time 内容再过滤掉。
+   * 载荷只有 ID，没有正文；只向已完成握手的家属端发送。
+   * payload: { sharedFindingIds: string[]; sharedFamilyEventIds: string[] }
+   */
+  | { type: 'family.share'; sharedFindingIds?: string[]; sharedFamilyEventIds?: string[] }
+  /**
+   * 既往事实的脱敏派生视图。原始 HistoricalHealthEvent 不跨端；载荷校验失败
+   * 或授权撤回时，家属端应替换为空数组并删除本地持久化。
+   * payload: { views: SharedHistoricalFact[] }
+   */
+  | { type: 'history.share'; familyLinkId: string; views?: unknown[] }
+  | { type: 'history.request'; familyLinkId: string; requestId: string }
+  /**
+   * 家属端只能“请求”老人暂停共享，不能单方面改写老人端的授权。
+   * 老人端收到后调用 revokeFamilyShare()，再由 family.consent 广播权威结果。
+   * payload: { requestId: string }
+   */
+  | { type: 'family.consent.request'; requestId: string };
 
 export interface CrossTabMessageEnvelope {
   tabId: string;

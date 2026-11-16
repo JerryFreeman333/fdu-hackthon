@@ -261,3 +261,21 @@ void test('gated urgent 仍优先于轻微变化分支；无发现的日子保�
   assert.equal(calm.tone, 'ok');
   assert.equal(calm.title, '今天总体正常');
 });
+
+void test('家人安全事件在窗口内时，首页状态必须是 danger 而不是"没有任何信号"', () => {
+  const status = familyStatus([], [], 0, 0, 0, 1);
+  assert.equal(status.tone, 'danger');
+  assert.equal(status.title, '家人发生安全事件，需要立即确认');
+  assert.match(status.detail, /老人转述/);
+
+  const multi = familyStatus([], [], 2, 0, 0, 2);
+  assert.equal(multi.title, '有 2 件家人安全事件需要立即确认');
+});
+
+void test('家人安全事件被授权挡住时，首页状态必须是 unknown 且只暴露数量', () => {
+  const state = familyStatus([], [], 0, 0, 0, 0, 1);
+  assert.equal(state.tone, 'unknown');
+  assert.match(state.title, /家人安全提醒被隐私设置挡住/);
+  assert.doesNotMatch(state.title, /黑便|父亲|摔/);
+  assert.match(state.detail, /直接联系老人/);
+});

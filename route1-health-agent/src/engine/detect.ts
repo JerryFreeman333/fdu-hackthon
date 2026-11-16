@@ -9,11 +9,15 @@ import { metricBaselineRules } from './detection/rules/metricBaseline';
 import { multiSignalRule } from './detection/fusion';
 import {
   bloodPressureSafetyRule,
+  lowBloodPressureSafetyRule,
   fallSafetyRule,
   glucoseSafetyRule,
   heartRateSafetyRule,
+  melenaSafetyRule,
   redFlagSymptomRule,
   spo2SafetyRule,
+  syncopeSafetyRule,
+  temperatureSafetyRule,
 } from './detection/safety';
 import type { DetectionConfig, DetectionContext, DetectionRule } from './detection/types';
 
@@ -30,11 +34,15 @@ const RULES: DetectionRule[] = [
   ...contextualRules,
   multiSignalRule,
   bloodPressureSafetyRule,
+  lowBloodPressureSafetyRule,
   spo2SafetyRule,
   heartRateSafetyRule,
   glucoseSafetyRule,
+  temperatureSafetyRule,
   redFlagSymptomRule,
   fallSafetyRule,
+  syncopeSafetyRule,
+  melenaSafetyRule,
 ];
 
 function buildSignals(

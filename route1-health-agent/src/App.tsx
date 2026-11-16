@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, ElderProfile, FamilyHealthEvent, FamilyLink, FamilySharing, UserRole } from './types';
+import type {
+  ChatMessage,
+  ElderProfile,
+  FamilyHealthEvent,
+  FamilyLink,
+  FamilySharing,
+  HistoricalHealthEvent,
+  UserRole,
+} from './types';
 import type { HomeSafetyAction } from './adapters/HomeSafetyActionAdapter';
 import { METRICS } from './types';
 import { records as seedRecords, seedChat, seedObservations, seedPhotoObservations } from './data/demo';
@@ -29,8 +37,30 @@ import { runtimeConfig, runtimeConfigurationErrors } from './config/runtime';
 import { runDetection } from './engine/detect';
 import { buildAgentContext } from './engine/context';
 import { collectFamilyNotifications, collectGatedFindings, collectTodayMinorFindings } from './engine/escalate';
-import { isRecordFromToday, ledgerRecordToNotification } from './engine/notify';
-import { visibleFamilyEvents } from './engine/familyLedger';
+import { isRecordFromToday, ledgerRecordToNotification, type DeliveryOutcome } from './engine/notify';
+import {
+  activeFamilySafetyEvents,
+  buildFamilySafetyItem,
+  gatedFamilySafetyEvents,
+  mergeFamilyEvents,
+  sanitizeFamilyEventsPayload,
+  visibleFamilyEvents,
+} from './engine/familyLedger';
+import { familySafetyFinding, familySafetyFindingId } from './engine/familySafetyNotify';
+import {
+  buildSharedHistoricalFacts,
+  createHistoricalShareGrant,
+  createHistoryId,
+  loadHistoricalShareGrants,
+  loadSharedHistoricalFacts,
+  saveHistoricalShareGrants,
+  saveSharedHistoricalFacts,
+  sanitizeSharedHistoryPayload,
+  type HistoricalShareGrant,
+  type HistoricalShareScope,
+  type SharedHistorySnapshot,
+} from './engine/historySharing';
+import HistorySharingPanel from './components/HistorySharingPanel';
 import { PersistentHealthRecordStore } from './store/PersistentHealthRecordStore';
 import { createIdbKeyValueStore } from './store/IdbKeyValueStore';
 import { clearAllLocalData } from './store/clearLocalData';
@@ -40,7 +70,7 @@ const healthRecordStore = new PersistentHealthRecordStore(
   typeof indexedDB !== 'undefined' ? createIdbKeyValueStore() : null,
 );
 import { useNotificationDispatch } from './hooks/useNotificationDispatch';
-import { pushPermission, requestPushPermission } from './adapters/BrowserNotificationChannel';
+import { pushPermission, requestPushPermission, sendBrowserPush } from './adapters/BrowserNotificationChannel';
 import { loadWebhookConfig, sendWebhookPush } from './adapters/WebhookPushChannel';
 import { useCrossDeviceSync } from './hooks/useCrossDeviceSync';
 import type { CrossTabMessageEnvelope } from './hooks/useCrossTabSync';
@@ -142,22 +172,32 @@ function clearLegacyHomeSafetyStorage() {
   window.localStorage.removeItem(LEGACY_HOME_ACTION_KEY);
 }
 
-function buildSeedSnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
+function buildSeedSnapshot(): {
+  events: HealthEvent[];
+  familyEvents: FamilyHealthEvent[];
+  historyEvents: HistoricalHealthEvent[];
+  chat: ChatMessage[];
+} {
   clearLegacyHealthStorage();
   // HealthKit 真实模式 fail-closed：即使本机此前选择过演示模式，也不注入合成数据。
-  if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], chat: [] };
+  if (runtimeConfig.deviceMode === 'healthkit') return { events: [], familyEvents: [], historyEvents: [], chat: [] };
   const events = legacySnapshotToEvents({
     records: seedRecords,
     observations: [...seedObservations, ...seedPhotoObservations],
     measurements: [],
     labResults: [],
   });
-  return { events, familyEvents: [], chat: seedChat };
+  return { events, familyEvents: [], historyEvents: [], chat: seedChat };
 }
 
 /** personal 模式的起点：一切从空白开始，检测只对真实输入发声（评审 P1-2）。 */
-function emptySnapshot(): { events: HealthEvent[]; familyEvents: FamilyHealthEvent[]; chat: ChatMessage[] } {
-  return { events: [], familyEvents: [], chat: [] };
+function emptySnapshot(): {
+  events: HealthEvent[];
+  familyEvents: FamilyHealthEvent[];
+  historyEvents: HistoricalHealthEvent[];
+  chat: ChatMessage[];
+} {
+  return { events: [], familyEvents: [], historyEvents: [], chat: [] };
 }
 
 function initialHomeSafetyActions(demoMode: boolean): HomeSafetyAction[] {
@@ -264,6 +304,13 @@ function AppRoot({
   const demoMode = storedProfile.dataMode === 'demo';
   const [events, setEvents] = useState<HealthEvent[]>(initial.events);
   const [familyEvents, setFamilyEvents] = useState<FamilyHealthEvent[]>(initial.familyEvents);
+  // P2-A：既往事实独立账本，不进入 events，也不参与检测。
+  const [historyEvents, setHistoryEvents] = useState<HistoricalHealthEvent[]>(initial.historyEvents);
+  // 既往事实的逐条授权与家属端脱敏派生视图。两者都独立于 familySharing。
+  const [historyGrants, setHistoryGrants] = useState<HistoricalShareGrant[]>(() => loadHistoricalShareGrants());
+  const [historySnapshot, setHistorySnapshot] = useState<SharedHistorySnapshot | null>(() =>
+    loadSharedHistoricalFacts(),
+  );
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [homeSafetyActions, setHomeSafetyActions] = useState<HomeSafetyAction[]>(() =>
     initialHomeSafetyActions(demoMode),
@@ -333,6 +380,7 @@ function AppRoot({
     confirmLinkRequest,
     shareFindingIds,
     shareFamilyEventIds,
+    applyRemoteShareIds,
     applyRemoteConsent,
     unbindFamily,
   } = useFamilyBinding({ showToast, today });
@@ -351,16 +399,38 @@ function AppRoot({
    * 本实例就是权威本身（老人端，或同 tab 切换角色）时，用自己的 familySharing。
    * 之前家属端用自己的 familySharing（恒为 denied）算通知列表 → 永远为空。
    */
-  const effectiveFamilySharing: FamilySharing = remoteConsent
-    ? remoteConsent.sharing === 'granted'
-      ? 'granted'
-      : 'denied'
-    : familySharing;
+  // 角色决定权威来源：老人端永远以自己的 familySharing 为准，绝不采纳
+  // 家属端写在同浏览器 localStorage 里的 remoteConsent。否则老人页刷新一次
+  // 就可能把自己降格成"家属消费端"，canDispatch 随之关闭，所有通知静默消失。
+  const effectiveFamilySharing: FamilySharing =
+    role === 'elder' || !remoteConsent ? familySharing : remoteConsent.sharing === 'granted' ? 'granted' : 'denied';
 
   const activeProfile: ElderProfile = useMemo(
     () => ({ ...storedProfile.profile, familySharing }),
     [storedProfile, familySharing],
   );
+  const historyFamilyLinkId = demoMode ? demoFamilyLink.id : familyLink?.status === 'active' ? familyLink.id : '';
+  const historyKnownNames = useMemo(() => {
+    const tokens = [activeProfile.name, activeProfile.familyContact]
+      .flatMap((value) => value.split(/[\s,，、/]+/))
+      .map((value) => value.trim())
+      .filter(
+        (value) =>
+          value.length >= 2 &&
+          value.length <= 8 &&
+          !/\d/.test(value) &&
+          !/^(女儿|儿子|家人|孩子|配偶|父亲|母亲)$/.test(value),
+      );
+    return [...new Set(tokens)];
+  }, [activeProfile.name, activeProfile.familyContact]);
+  const derivedHistoryFacts = useMemo(
+    () => buildSharedHistoricalFacts(historyEvents, historyGrants, historyFamilyLinkId, today, historyKnownNames),
+    [historyEvents, historyGrants, historyFamilyLinkId, today, historyKnownNames],
+  );
+  const sharedHistoricalFacts =
+    historySnapshot?.familyLinkId === historyFamilyLinkId
+      ? historySnapshot.views.filter((fact) => fact.expiresAt >= today)
+      : [];
   const healthData = useMemo(() => materializeHealthData(events), [events]);
   const { records, observations, measurements } = healthData;
   const familyRecords = useMemo(
@@ -371,14 +441,57 @@ function AppRoot({
     () => visibleFamilyEvents(familyEvents, effectiveFamilySharing, sharedFamilyEventIds),
     [familyEvents, effectiveFamilySharing, sharedFamilyEventIds],
   );
+  // 家人安全通道（P1-C）：与老人本人检测完全隔离；被隐私/授权挡住时只暴露数量。
+  const gatedFamilySafetyCount = useMemo(
+    () => gatedFamilySafetyEvents(familyEvents, effectiveFamilySharing, sharedFamilyEventIds).length,
+    [familyEvents, effectiveFamilySharing, sharedFamilyEventIds],
+  );
+  const demoGatedFamilySafetyCount = useMemo(
+    () => gatedFamilySafetyEvents(familyEvents, demoSharing ? 'granted' : 'denied', sharedFamilyEventIds).length,
+    [familyEvents, demoSharing, sharedFamilyEventIds],
+  );
   const findings = useMemo(() => runDetection(events, today), [events, today]);
+  /**
+   * 家人安全通道进入同一套家属通知链路。
+   * 只吃 activeFamilySafetyEvents（今天/昨天、且已过 visibility / shareMode 门控），
+   * 因此历史家人事件不会冒充当前急症，未授权内容也不会进派发队列。
+   * 演示模式的授权是 prop 级 override（demoSharing），必须单独取，否则演示里
+   * 家人安全事件永远进不了通知列表。
+   */
+  const familySafetySharing: FamilySharing = demoMode ? (demoSharing ? 'granted' : 'denied') : effectiveFamilySharing;
+  const familySafetyFindings = useMemo(
+    () =>
+      activeFamilySafetyEvents(familyEvents, familySafetySharing, sharedFamilyEventIds, today)
+        .map(buildFamilySafetyItem)
+        .map((item) => familySafetyFinding(item, today)),
+    [familyEvents, familySafetySharing, sharedFamilyEventIds, today],
+  );
+  /**
+   * 一次性共享的家人安全事件 ID。派发引擎的授权参数是 "familySharing"，
+   * 长期授权为 denied 时它不会放行任何 finding；一次性共享必须显式并入
+   * oneTimeSharedFindingIds，否则卡片看得见、系统通知和微信台账却永远不会产生。
+   * 用 denied + sharedFamilyEventIds 取到的正好是 one_time 已授权子集。
+   */
+  const oneTimeFamilySafetyFindingIds = useMemo(
+    () =>
+      activeFamilySafetyEvents(familyEvents, 'denied', sharedFamilyEventIds, today).map((event) =>
+        familySafetyFindingId(event.id),
+      ),
+    [familyEvents, sharedFamilyEventIds, today],
+  );
+  const oneTimeFamilyFindingIds = useMemo(
+    () => [...sharedFindingIds, ...oneTimeFamilySafetyFindingIds],
+    [sharedFindingIds, oneTimeFamilySafetyFindingIds],
+  );
+  /** 家属可见事实 = 老人本人检测结果 ∪ 家人安全事件；任务/对话上下文仍只用前者。 */
+  const findingsForFamily = useMemo(() => [...findings, ...familySafetyFindings], [findings, familySafetyFindings]);
   const agentContext = useMemo(
     () => buildAgentContext(activeProfile, events, today, findings),
     [activeProfile, events, today, findings],
   );
   const familyNotifs = useMemo(
-    () => collectFamilyNotifications(findings, effectiveFamilySharing, sharedFindingIds, today),
-    [findings, effectiveFamilySharing, sharedFindingIds, today],
+    () => collectFamilyNotifications(findingsForFamily, effectiveFamilySharing, oneTimeFamilyFindingIds, today),
+    [findingsForFamily, effectiveFamilySharing, oneTimeFamilyFindingIds, today],
   );
   // 第三种未知（评审 P0-2）：今日存在但被隐私门控挡住的 alert/urgent 数量。
   // 家属首页状态必须知道它，否则会把被挡住的紧急信号表述成"今天总体正常"。
@@ -433,14 +546,53 @@ function AppRoot({
     mergeRecord,
     mergeAcknowledge,
   } = useNotificationDispatch({
-    findings,
+    findings: findingsForFamily,
     familySharing,
     familyLink,
     // 评审 P0-1 修复：派发只发生在"权威实例"上（老人端 / 同 tab 切角色）。
     // 从网络学到授权的家属消费端（remoteConsent 非空）不派发——否则同浏览器
     // 双 tab（持久化恢复出 granted+active）会双重弹通知、双重发微信推送。
-    canDispatch: remoteConsent === null,
+    canDispatch: role === 'elder' || remoteConsent === null,
+    oneTimeSharedFindingIds: oneTimeFamilyFindingIds,
+    // 老人本人不需要为自己转述的家人事件弹系统通知；家属端会自行补发。
+    suppressBrowserPushForFamilySafety: role === 'elder',
   });
+
+  const grantHistoryShare = useCallback(
+    (eventId: string, scope: HistoricalShareScope, redactions: string[]) => {
+      if (role !== 'elder' || !historyEvents.some((event) => event.id === eventId)) return;
+      if (!historyFamilyLinkId) {
+        showToast('请先完成家属绑定，再授权既往情况。');
+        return;
+      }
+      const grant = createHistoricalShareGrant(
+        eventId,
+        scope,
+        historyFamilyLinkId,
+        today,
+        new Date().toISOString(),
+        redactions,
+      );
+      setHistoryGrants((current) => [...current.filter((item) => item.eventId !== eventId), grant]);
+      showToast(
+        scope === 'summary_only'
+          ? `已授权家属查看这一条的摘要，有效至 ${grant.expiresAt}。`
+          : `已授权家属查看这一条的脱敏原话，有效至 ${grant.expiresAt}。`,
+      );
+    },
+    [role, historyEvents, historyFamilyLinkId, today, showToast],
+  );
+
+  const revokeHistoryShare = useCallback(
+    (eventId: string) => {
+      const revokedAt = new Date().toISOString();
+      setHistoryGrants((current) =>
+        current.map((item) => (item.eventId === eventId && !item.revokedAt ? { ...item, revokedAt } : item)),
+      );
+      showToast('已撤回这一条既往情况的家属授权。');
+    },
+    [showToast],
+  );
 
   /**
    * 评审 P0-1 修复：家属端通知 = 本地检测结果 ∪ 派发台账。
@@ -457,6 +609,65 @@ function AppRoot({
       .map(ledgerRecordToNotification);
     return [...familyNotifs, ...fromLedger];
   }, [familyNotifs, dispatchRecords, today]);
+
+  /**
+   * 家属端微信推送补发（P0-1）。
+   *
+   * 微信 token 存在家属自己的浏览器里，老人端读不到它——跨设备时老人端记录的
+   * webhook_push 只能是 unavailable。让"收件端"用自己的配置把这条通知推到自己的微信，
+   * token 不需要离开家属设备，也不会出现"老人在自己手机上配家属的微信"这种荒谬配置。
+   *
+   * 边界必须说清楚：这要求家属端页面至少打开过一次并收到台账；真正"手机关页面也能收到"
+   * 需要服务端持久推送队列，浏览器架构本身给不了。
+   */
+  const relayedPushKeysRef = useRef<Set<string>>(new Set());
+  const relayFamilyLinkRef = useRef<string | null>(null);
+  relayFamilyLinkRef.current = role === 'family' && familyLinkActive ? familyLink.id : null;
+  useEffect(() => {
+    if (role !== 'family' || !familyLinkActive) return;
+    const relayFamilyLink = relayFamilyLinkRef.current;
+    const webhookConfig = loadWebhookConfig();
+    const pending = dispatchRecords
+      .filter((record) => sync.status.mode === 'cross-device' || record.findingId.startsWith('family-safety:'))
+      .filter((record) => record.lifecycle === 'new' && isRecordFromToday(record, today))
+      .filter((record) => {
+        const key = `${record.findingId}:${record.updatedAt ?? record.createdAt}:${webhookConfig ? 'wx' : 'no-wx'}`;
+        return !relayedPushKeysRef.current.has(key);
+      })
+      .slice(0, 5);
+    if (pending.length === 0) return;
+    void (async () => {
+      for (const record of pending) {
+        if (relayFamilyLinkRef.current !== relayFamilyLink) return;
+        const key = `${record.findingId}:${record.updatedAt ?? record.createdAt}:${webhookConfig ? 'wx' : 'no-wx'}`;
+        if (relayedPushKeysRef.current.has(key)) continue;
+        relayedPushKeysRef.current.add(key);
+
+        const deliveries = [...record.deliveries];
+        const replaceChannel = (outcome: DeliveryOutcome): void => {
+          const index = deliveries.findIndex((item) => item.channel === outcome.channel);
+          const next = { ...outcome, at: new Date().toISOString() };
+          if (index >= 0) deliveries[index] = next;
+          else deliveries.push(next);
+        };
+
+        const browserAttempt = record.deliveries.find((item) => item.channel === 'browser_push');
+        // 老人端没有系统通知权限 / 不支持时，由家属自己的设备弹一次。
+        if (!browserAttempt || browserAttempt.status !== 'sent') {
+          replaceChannel(sendBrowserPush(`family-${record.findingId}`, record.title, record.message));
+        }
+
+        const webhookAttempt = record.deliveries.find((item) => item.channel === 'webhook_push');
+        // 老人端送达的不重发；发送失败时保留它的失败结论，只补"那边没配置"的缺口。
+        if (webhookConfig && (!webhookAttempt || webhookAttempt.status === 'unavailable')) {
+          replaceChannel(await sendWebhookPush(webhookConfig, { title: record.title, body: record.message }));
+        }
+
+        if (relayFamilyLinkRef.current !== relayFamilyLink) return;
+        mergeRecord({ ...record, deliveries });
+      }
+    })();
+  }, [role, familyLinkActive, sync.status.mode, dispatchRecords, today, mergeRecord]);
 
   // 另一端广播来的"今日信号摘要"（P0-1 配套，只有数量没有内容）：
   // 跨设备时家属端自己的事件流是空的，必须用老人端广播来的数量才能如实显示
@@ -492,6 +703,13 @@ function AppRoot({
         const payload = envelope.payload as { events?: unknown[] };
         const incoming = Array.isArray(payload?.events) ? (payload.events as HealthEvent[]) : [];
         if (incoming.length > 0) setEvents((current) => mergeHealthEvents(current, incoming));
+      } else if (envelope.type === 'family.events.append') {
+        // 家人事实只在老人端产生；家属端只做镜像，老人端不接受远端反向写入。
+        if (role !== 'family') return;
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
+        const payload = envelope.payload as { events?: unknown };
+        const incoming = sanitizeFamilyEventsPayload(payload?.events);
+        if (incoming.length > 0) setFamilyEvents((current) => mergeFamilyEvents(current, incoming));
       } else if (envelope.type === 'signals.summary') {
         // P1：陌生人（未绑定 PeerJS 对端）报来的信号摘要不接受，防止伪造"有急事被挡住"。
         if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
@@ -524,6 +742,47 @@ function AppRoot({
         if ((payload?.sharing !== 'granted' && payload?.sharing !== 'denied') || typeof payload?.updatedAt !== 'string')
           return;
         applyRemoteConsent({ sharing: payload.sharing, updatedAt: payload.updatedAt });
+      } else if (envelope.type === 'family.share') {
+        // 一次性共享清单的权威来源同样是老人端。家属端没有这份清单时，
+        // 即使 family.events.append 已经把事件送过来，one_time 内容仍会在
+        // visibleFamilyEvents 里被过滤掉——跨设备表现为"共享了但看不到"。
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
+        if (role !== 'family') return;
+        const payload = envelope.payload as { sharedFindingIds?: unknown; sharedFamilyEventIds?: unknown };
+        applyRemoteShareIds({
+          sharedFindingIds: Array.isArray(payload?.sharedFindingIds) ? payload.sharedFindingIds : [],
+          sharedFamilyEventIds: Array.isArray(payload?.sharedFamilyEventIds) ? payload.sharedFamilyEventIds : [],
+        });
+      } else if (envelope.type === 'history.share') {
+        // 既往事实只接受老人端的脱敏派生视图；结构化校验后强制替换，
+        // 空数组表示撤回/到期，家属端必须清除本地副本。
+        if (!familyLinkActiveRef.current || role !== 'family' || envelope.fromRole !== 'elder') return;
+        const payload = envelope.payload as { familyLinkId?: unknown; views?: unknown } | null;
+        if (payload?.familyLinkId !== historyFamilyLinkId || !Array.isArray(payload.views)) return;
+        const snapshot = {
+          familyLinkId: historyFamilyLinkId,
+          views: sanitizeSharedHistoryPayload(payload.views).filter((fact) => fact.expiresAt >= today),
+        };
+        setHistorySnapshot(snapshot);
+        saveSharedHistoricalFacts(snapshot);
+      } else if (envelope.type === 'history.request') {
+        if (!familyLinkActiveRef.current || role !== 'elder' || envelope.fromRole !== 'family') return;
+        const payload = envelope.payload as { familyLinkId?: unknown; requestId?: unknown } | null;
+        if (payload?.familyLinkId !== historyFamilyLinkId || typeof payload.requestId !== 'string') return;
+        sync.broadcast(
+          'history.share',
+          { familyLinkId: historyFamilyLinkId, views: derivedHistoryFacts, requestId: payload.requestId },
+          envelope.via === 'peer' ? { local: false, peer: true } : { local: true, peer: false },
+        );
+      } else if (envelope.type === 'family.consent.request') {
+        // 家属端只能请求，真正撤销必须由老人本人在隐私设置里确认。
+        // 陌生人（未完成绑定的 PeerJS 对端）不能触发提示，否则任何人都能
+        // 远程骚扰老人；收到请求也不自动撤销，避免家属单方面关掉共享。
+        if (envelope.via === 'peer' && !familyLinkActiveRef.current) return;
+        if (role !== 'elder') return;
+        const payload = envelope.payload as { requestId?: unknown };
+        if (typeof payload?.requestId !== 'string') return;
+        showToast('家属请求暂停共享。请到「我的 → 隐私设置」确认是否暂停；在您确认前授权保持不变。');
       } else if (envelope.type === 'family.link') {
         // P0-2：绑定握手。只有老人端应答（家属端保持沉默，避免多 tab 时错误的
         // rejected 抢在正确的 accepted 之前到达）；accepted/rejected 的消费方是
@@ -610,6 +869,10 @@ function AppRoot({
     storedProfile,
     onProfileChange,
     applyRemoteConsent,
+    applyRemoteShareIds,
+    derivedHistoryFacts,
+    historyFamilyLinkId,
+    today,
   ]);
 
   // 本地确认时也广播一份，让另一个 tab 能即时反映出来。
@@ -625,15 +888,19 @@ function AppRoot({
   // 把本地新派发的台账广播给其它 tab：另一 tab 的 findings 签名未变，
   // 不会重跑派发引擎，所以不会重复触发系统通知，只接收并合并台账。
   // P1：台账含告警正文，PeerJS 通道只在绑定完成后启用，未绑定对端拿不到内容。
-  const lastBroadcastRecordIdsRef = useRef<Set<string>>(new Set());
+  // 广播的版本键必须包含 updatedAt：同一条 finding 从 alert 升级成 urgent 时
+  // findingId 没变，只按 id 去重会把升级永远留在老人端。
+  const lastBroadcastRecordVersionsRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
-    const currentIds = new Set(dispatchRecords.map((record) => record.findingId));
+    const currentVersions = new Map<string, string>();
     for (const record of dispatchRecords) {
-      if (!lastBroadcastRecordIdsRef.current.has(record.findingId)) {
+      const version = JSON.stringify(record);
+      currentVersions.set(record.findingId, version);
+      if (lastBroadcastRecordVersionsRef.current.get(record.findingId) !== version) {
         sync.broadcast('dispatch.append', record, { peer: familyLinkActiveRef.current });
       }
     }
-    lastBroadcastRecordIdsRef.current = currentIds;
+    lastBroadcastRecordVersionsRef.current = currentVersions;
   }, [dispatchRecords, sync]);
 
   // P1：绑定完成瞬间，把既有台账完整补发给刚通过握手的家属端——
@@ -650,6 +917,73 @@ function AppRoot({
       sync.broadcast('dispatch.append', record, { local: false, peer: true });
     }
   }, [familyLinkActive, dispatchRecords, sync]);
+
+  // 家人事实跨端镜像：老人端只广播 visibleFamilyFacts（已过隐私与授权门控），
+  // private / 未授权事件的原文永远不离开老人设备。家属端用于安全卡片与近况记录。
+  const lastFamilyFactsSignatureRef = useRef('');
+  useEffect(() => {
+    if (role !== 'elder') return;
+    const signature = visibleFamilyFacts
+      .map((event) => `${event.id}:${event.visibility}:${event.shareMode}:${event.timestamp}`)
+      .sort()
+      .join('|');
+    if (signature === lastFamilyFactsSignatureRef.current) return;
+    lastFamilyFactsSignatureRef.current = signature;
+    if (visibleFamilyFacts.length === 0) return;
+    sync.broadcast('family.events.append', { events: visibleFamilyFacts }, { peer: familyLinkActive });
+  }, [role, visibleFamilyFacts, sync, familyLinkActive]);
+
+  // 既往事实授权：只持久化在老人端；家属端只保存脱敏派生视图。
+  useEffect(() => {
+    // 同浏览器双 tab 共用一个 localStorage key；家属端把自己读到的陈旧
+    // 授权副本写回去，会让刚撤回的授权复活。授权只有一个写入方：老人端。
+    if (role !== 'elder') return;
+    saveHistoricalShareGrants(historyGrants);
+  }, [role, historyGrants]);
+  useEffect(() => {
+    if (role !== 'family' || !historySnapshot) return;
+    const next =
+      historySnapshot.familyLinkId === historyFamilyLinkId
+        ? { ...historySnapshot, views: historySnapshot.views.filter((fact) => fact.expiresAt >= today) }
+        : null;
+    if (next && next.views.length === historySnapshot.views.length) return;
+    setHistorySnapshot(next);
+    saveSharedHistoricalFacts(next);
+  }, [role, today, historyFamilyLinkId, historySnapshot]);
+
+  // 老人端只广播脱敏派生视图，原始 HistoricalHealthEvent 永不离开本机。
+  // 空数组同样是有效快照：撤回/到期后必须让家属端删除，而不是继续显示。
+  const lastHistoryShareSignatureRef = useRef('');
+  useEffect(() => {
+    if (demoMode) return;
+    if (role !== 'elder' || !familyLinkActive) {
+      lastHistoryShareSignatureRef.current = '';
+      return;
+    }
+    const snapshot = { familyLinkId: historyFamilyLinkId, views: derivedHistoryFacts };
+    const signature = JSON.stringify([sync.status.mode, snapshot]);
+    if (signature === lastHistoryShareSignatureRef.current) return;
+    lastHistoryShareSignatureRef.current = signature;
+    setHistorySnapshot(snapshot);
+    saveSharedHistoricalFacts(snapshot);
+    sync.broadcast('history.share', snapshot, { peer: true });
+  }, [demoMode, role, familyLinkActive, historyFamilyLinkId, derivedHistoryFacts, sync, sync.status.mode]);
+
+  useEffect(() => {
+    if (demoMode || role !== 'family' || !historyFamilyLinkId) return;
+    const request = () =>
+      sync.broadcast(
+        'history.request',
+        {
+          familyLinkId: historyFamilyLinkId,
+          requestId: createHistoryId(),
+        },
+        { peer: true },
+      );
+    request();
+    window.addEventListener('focus', request);
+    return () => window.removeEventListener('focus', request);
+  }, [demoMode, role, historyFamilyLinkId, sync.broadcast, sync.status.mode]);
 
   // 老人端广播今日信号摘要（P0-1 配套，只有数量没有内容，隐私安全）。
   // broadcast 内部按签名去重（签名含通道选择）：数值不变时不会反复发；
@@ -685,6 +1019,37 @@ function AppRoot({
     );
   }, [demoMode, familyLinkActive, familySharing, consentUpdatedAt, sync, sync.status.mode]);
 
+  // 一次性共享清单必须与事件同时到达家属端。只广播事件、不广播 ID 时，
+  // 家属端的 visibleFamilyEvents 会用自己那份空数组把 one_time 事件过滤掉。
+  // 这里发送的是完整快照（撤销后为空数组），不是增量，避免家属端残留旧授权。
+  const lastSharedIdsSignatureRef = useRef('');
+  useEffect(() => {
+    if (role !== 'elder' || !familyLinkActive) {
+      lastSharedIdsSignatureRef.current = '';
+      return;
+    }
+    const signature = `${sync.status.mode}|${sharedFindingIds.join(',')}|${sharedFamilyEventIds.join(',')}`;
+    if (signature === lastSharedIdsSignatureRef.current) return;
+    lastSharedIdsSignatureRef.current = signature;
+    sync.broadcast('family.share', { sharedFindingIds, sharedFamilyEventIds }, { peer: true });
+  }, [role, familyLinkActive, sharedFindingIds, sharedFamilyEventIds, sync, sync.status.mode]);
+
+  // 撤销授权后，家属端不能在本地持久化里继续留着已经无权查看的家人事实。
+  // 保留 one_time 已授权项；persistent/private 内容从 React state 移除，
+  // 随后的健康快照 effect 会把删除写回 IndexedDB——"隐藏"不等于"删除"。
+  useEffect(() => {
+    if (role !== 'family') return;
+    if (remoteConsent?.sharing !== 'denied') return;
+    // 同浏览器双 tab 共用同一份 IndexedDB：家属 tab 的"删除"会写穿到老人端
+    // 的账本（老人端本人仍有权保留这些事实）。只有跨设备收件端才拥有独立
+    // 存储，可以在撤销后物理删除自己那份镜像。
+    if (sync.status.mode !== 'cross-device') return;
+    setFamilyEvents((current) => {
+      const retained = visibleFamilyEvents(current, 'denied', sharedFamilyEventIds);
+      return retained.length === current.length ? current : retained;
+    });
+  }, [role, remoteConsent, sharedFamilyEventIds, sync.status.mode]);
+
   // 家属端可见的信号量取"本 tab 计算"与"老人端广播"的较大值：
   // 同浏览器双 tab 靠 events.append 已能对齐；跨设备时本 tab 没有事件流，
   // 只能靠摘要数量如实呈现，绝不把"另一端有事"显示成"总体正常"。
@@ -712,6 +1077,7 @@ function AppRoot({
     agentContext,
     setEvents,
     setFamilyEvents,
+    setHistoryEvents,
     setChat,
     showToast,
     onMedicationMissed: () => ensureMedicationCheck(activeProfile.medications),
@@ -842,8 +1208,13 @@ function AppRoot({
   }, [activeProfile.medications, ensureMedicationCheck]);
 
   useEffect(() => {
-    healthRecordStore.save({ events, familyEvents, chat: chat.filter((item) => item.persisted !== false) });
-  }, [events, familyEvents, chat]);
+    healthRecordStore.save({
+      events,
+      familyEvents,
+      historyEvents,
+      chat: chat.filter((item) => item.persisted !== false),
+    });
+  }, [events, familyEvents, historyEvents, chat]);
 
   useEffect(() => {
     if (familySharing !== 'denied') return;
@@ -1101,6 +1472,17 @@ function AppRoot({
             <HealthArchivePage
               owner={activeProfile.name}
               demoMode={demoMode}
+              historySection={
+                <HistorySharingPanel
+                  events={historyEvents}
+                  grants={historyGrants}
+                  familyLinkId={historyFamilyLinkId}
+                  knownNames={historyKnownNames}
+                  today={today}
+                  onGrant={grantHistoryShare}
+                  onRevoke={revokeHistoryShare}
+                />
+              }
               onRecognize={(file) => {
                 if (!demoMode && !import.meta.env.VITE_HEALTH_VISION_ENDPOINT?.trim()) {
                   showToast('真实识别服务尚未配置，未写入模拟结果。');
@@ -1310,7 +1692,7 @@ function AppRoot({
             notifications={
               demoMode
                 ? demoSharing
-                  ? collectFamilyNotifications(findings, 'granted', sharedFindingIds, today)
+                  ? collectFamilyNotifications(findingsForFamily, 'granted', sharedFindingIds, today)
                   : []
                 : familyNotifications
             }
@@ -1318,6 +1700,8 @@ function AppRoot({
             onAcknowledgeDispatch={handleAcknowledge}
             findings={findings}
             familyEvents={demoMode ? (demoSharing ? familyEvents : []) : visibleFamilyFacts}
+            sharedHistoricalFacts={demoMode ? derivedHistoryFacts : sharedHistoricalFacts}
+            gatedFamilySafetyCount={demoMode ? demoGatedFamilySafetyCount : gatedFamilySafetyCount}
             tasks={tasks}
             homeSafetyActions={homeSafetyActions}
             homeTwinUrl={HOME_TWIN_URL}
@@ -1328,11 +1712,39 @@ function AppRoot({
             onHomeSafetyActionStatus={handleHomeSafetyActionStatus}
             onContactElder={contactElder}
             onContactDoctor={contactDoctor}
+            canPauseSharingLocally={remoteConsent === null}
             onRevokeSharing={() => {
-              setDemoSharing(false);
-              revokeFamilyShare();
+              if (demoMode) {
+                setDemoSharing(false);
+                revokeFamilyShare();
+                showToast('演示模式：已暂停共享。');
+                return;
+              }
+              // 同 tab 切换角色时，权威授权就在本实例里：本机立即停止显示。
+              // 真正的跨设备家属端没有撤销权（remoteConsent 非空），只能发请求，
+              // 由老人端确认后通过 family.consent 广播 denied。
+              if (remoteConsent === null) revokeFamilyShare();
+              sync.broadcast(
+                'family.consent.request',
+                { requestId: `revoke-${Date.now()}` },
+                { peer: familyLinkActiveRef.current },
+              );
+              showToast(
+                remoteConsent === null
+                  ? '已暂停本机查看，并向老人端发送暂停共享请求。'
+                  : '已向老人端发送暂停共享请求；老人确认后才会撤销授权。本机不会假称已经撤销。',
+              );
             }}
-            onUnbindFamily={unbindFamily}
+            onUnbindFamily={() => {
+              const crossDevice = sync.status.mode === 'cross-device';
+              unbindFamily();
+              // 解绑后不再有任何家人事实的访问依据；本地镜像必须立即清空，
+              // 不能只依赖下一次授权广播把它过滤成不可见。
+              // 同浏览器双 tab 与老人端共用存储，不能替老人删账本。
+              if (crossDevice) setFamilyEvents([]);
+              setHistorySnapshot(null);
+              saveSharedHistoricalFacts(null);
+            }}
             onBindFamily={(code) => bindFamily(code, familyLinkTransport as FamilyLinkTransport)}
             onViewChange={setFamilyView}
             view={familyView}

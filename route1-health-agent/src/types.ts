@@ -54,7 +54,29 @@ export type MetricKey =
   | 'spo2'
   | 'systolic'
   | 'diastolic'
-  | 'bloodGlucose';
+  | 'bloodGlucose'
+  | 'temperature';
+
+/**
+ * 体温测量部位。
+ *
+ * 体温不是一个"换不换单位"的问题：同一具身体在不同部位测出的读数系统性不同，
+ * 用一套阈值套所有读数，等于把腋温的正常值当成耳温的低烧。部位必须随读数一起
+ * 落库，否则下游只能靠猜。
+ *
+ * `unknown` 是显式状态，不允许被默认成 `axillary`：把"没说部位"悄悄当成腋温，
+ * 会让耳温读数被系统性低估、漏掉该复测的人。
+ */
+export type TemperatureSite = 'axillary' | 'oral' | 'ear' | 'forehead' | 'rectal' | 'unknown';
+
+export const TEMPERATURE_SITE_LABELS: Record<TemperatureSite, string> = {
+  axillary: '腋温',
+  oral: '口温',
+  ear: '耳温',
+  forehead: '额温',
+  rectal: '肛温',
+  unknown: '未说明测量部位',
+};
 
 export interface MetricMeta {
   key: MetricKey;
@@ -75,6 +97,7 @@ export const METRICS: Record<MetricKey, MetricMeta> = {
   systolic: { key: 'systolic', label: '收缩压', unit: 'mmHg', higherIsBad: true, decimals: 0 },
   diastolic: { key: 'diastolic', label: '舒张压', unit: 'mmHg', higherIsBad: true, decimals: 0 },
   bloodGlucose: { key: 'bloodGlucose', label: '血糖', unit: 'mmol/L', higherIsBad: true, decimals: 1 },
+  temperature: { key: 'temperature', label: '体温', unit: '℃', higherIsBad: true, decimals: 1 },
 };
 
 export interface HealthMeasurement {
@@ -86,6 +109,11 @@ export interface HealthMeasurement {
   source: DataSource;
   confidence?: number;
   visibility?: PrivacyScope;
+  /**
+   * 仅体温使用：测量部位。旧数据 / 拍照 OCR / 设备导入可能缺失，
+   * 下游必须按 `unknown` 处理，绝不默认成某个部位。
+   */
+  temperatureSite?: TemperatureSite;
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -124,7 +152,13 @@ export type SymptomTag =
   | 'glucoseHigh'
   | 'glucoseLow'
   | 'chestPain'
-  | 'neuroChange';
+  | 'neuroChange'
+  | 'syncope'
+  | 'bpLow'
+  | 'fever'
+  | 'melena'
+  | 'palpitations'
+  | 'weightLoss';
 
 export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   fatigue: '疲劳乏力',
@@ -137,13 +171,19 @@ export const SYMPTOM_LABELS: Record<SymptomTag, string> = {
   moodLow: '情绪低落',
   fall: '跌倒',
   bpHigh: '血压偏高',
+  bpLow: '血压偏低',
   chestPain: '胸痛',
+  syncope: '晕厥/意识丧失',
   neuroChange: '突发神经系统异常',
   spo2Low: '血氧偏低',
   hrHigh: '心率偏快',
   hrLow: '心率偏慢',
   glucoseHigh: '血糖偏高',
   glucoseLow: '血糖偏低',
+  fever: '发热',
+  melena: '黑便/便血',
+  palpitations: '心慌心悸',
+  weightLoss: '体重下降',
 };
 
 export interface Observation {
@@ -164,10 +204,40 @@ export interface Observation {
   metadata?: Record<string, string | number | boolean>;
 }
 
+/**
+ * 老人本人的既往健康事实账本（P2-A）。
+ *
+ * 与 `HealthEvent` 严格隔离：既往事实不写入 `Observation.date`、不进入本人检测，
+ * 也不用于今天的安全判断。`eventDate` 只在老人明确说出日期时填写（如“前天”），
+ * 日期不详时必须为 null，绝不拿录入当天冒充发生日期。
+ */
+export interface HistoricalHealthEvent {
+  id: string;
+  /** 发生日期 YYYY-MM-DD；日期不详为 null。 */
+  eventDate: string | null;
+  /** 录入时间（本地 ISO 时间戳），仅用于排序/审计。 */
+  recordedAt: string;
+  source: DataSource;
+  text: string;
+  tags: SymptomTag[];
+  hasHealthValue: boolean;
+  status: ClaimStatus;
+  visibility: PrivacyScope;
+  sourceMessageId?: string;
+}
+
 /** 家庭成员事实账本：独立于老人的 HealthEvent，不参与老人基线/检测。 */
 export interface FamilyHealthEvent {
   id: string;
+  /** 老人提到这件事的录入时间，不是事件发生时间。 */
   timestamp: string;
+  /**
+   * 事件发生日期（YYYY-MM-DD）；日期不详为 null。
+   * 旧数据没有这个字段，读取时用 timestamp 的日期兜底（旧实现把发生日期写进了 timestamp）。
+   */
+  eventDate?: string | null;
+  /** 相对时间语义；用于判断这是不是"当前急症"，而不是用录入时间冒充发生时间。 */
+  timeScope?: 'today' | 'yesterday' | 'lastNight' | 'historical' | 'unknown';
   source: DataSource;
   subject: Exclude<ElderSubject, 'self' | 'unknown'>;
   text: string;

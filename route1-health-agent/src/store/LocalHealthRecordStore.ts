@@ -1,8 +1,8 @@
-import type { ChatMessage, FamilyHealthEvent } from '../types';
+import type { ChatMessage, FamilyHealthEvent, HistoricalHealthEvent } from '../types';
 import type { HealthRecordSnapshot, HealthRecordStore } from './HealthRecordStore';
 import type { HealthEvent } from '../pipeline/events';
 
-const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], chat: [] };
+const EMPTY: HealthRecordSnapshot = { events: [], familyEvents: [], historyEvents: [], chat: [] };
 
 let sessionSnapshot: HealthRecordSnapshot = EMPTY;
 
@@ -10,6 +10,7 @@ function cloneSnapshot(snapshot: HealthRecordSnapshot): HealthRecordSnapshot {
   return {
     events: snapshot.events.map((event) => ({ ...event }) as HealthEvent),
     familyEvents: snapshot.familyEvents.map((event) => ({ ...event }) as FamilyHealthEvent),
+    historyEvents: (snapshot.historyEvents ?? []).map((event) => ({ ...event }) as HistoricalHealthEvent),
     chat: snapshot.chat.map((message) => ({ ...message }) as ChatMessage),
   };
 }

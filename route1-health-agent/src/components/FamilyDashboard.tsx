@@ -4,12 +4,22 @@ import type { FamilyNotification } from '../engine/escalate';
 import type { FamilyNotificationRecord } from '../engine/notify';
 import { describeDeliveries } from '../engine/notify';
 import type { HomeSafetyAction } from '../adapters/HomeSafetyActionAdapter';
-import { METRICS, SYMPTOM_LABELS, type MetricKey } from '../types';
-import { familyStatusLabel, familySubjectLabel } from '../engine/familyLedger';
+import { METRICS, SYMPTOM_LABELS, TEMPERATURE_SITE_LABELS, type MetricKey } from '../types';
+import {
+  buildFamilySafetyItem,
+  familyEventDate,
+  familyStatusLabel,
+  familySubjectLabel,
+  isActiveFamilySafetyEvent,
+  isFamilySafetyEvent,
+} from '../engine/familyLedger';
+import type { FamilySafetyItem } from '../engine/familyLedger';
 import { severityBadge } from '../engine/escalate';
 import { familyVisibleFindings, familyVisibleTasksForSharing } from '../engine/familyDisclosure';
 import { buildMedicationCareView } from '../engine/medicationCare';
 import { familyStatus, currentFamilyNotifications } from '../engine/dashboardStatus';
+import { selectFamilyPriority } from '../engine/familyPriority';
+import { historyStatusLabel, type SharedHistoricalFact } from '../engine/historySharing';
 import {
   loadWebhookConfig,
   saveWebhookConfig,
@@ -54,6 +64,10 @@ interface FamilyDashboardProps {
   todayMinorFindingCount: number;
   findings: Finding[];
   familyEvents: FamilyHealthEvent[];
+  /** 老人逐条授权、脱敏后的既往事实；没有授权时为空。 */
+  sharedHistoricalFacts: SharedHistoricalFact[];
+  /** 被隐私/授权挡住、只允许显示数量的家人安全事件（P1-C）。 */
+  gatedFamilySafetyCount: number;
   tasks: CareTask[];
   homeSafetyActions: HomeSafetyAction[];
   /** 路线二 Home Twin 前端入口。开发环境默认 http://localhost:5174。 */
@@ -66,6 +80,9 @@ interface FamilyDashboardProps {
   onContactElder: () => void;
   onContactDoctor: () => void;
   onRevokeSharing: () => void;
+  /** 同一实例持有老人授权（同 tab 切换角色）时，本机可以立即停止显示；
+   * 真正的跨设备家属端只能向老人发请求，不能单方面撤销。 */
+  canPauseSharingLocally?: boolean;
   /** 评审 P0-2 恢复出口：家属端主动解除本机与老人端的绑定（重新绑定需要新邀请码）。 */
   onUnbindFamily?: () => void;
   /** P0-2：绑定是异步握手（跨 tab / 跨设备都要等老人端应答），结果带原因归类。 */
@@ -98,12 +115,122 @@ function formatAckTime(iso: string | undefined): string {
   return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
 }
 
+/**
+ * 家人安全通道：只在已授权事件上渲染主体、症状与原话；
+ * 被挡住的事件只显示数量，不泄露任何内容。
+ */
+function FamilySafetyCard({
+  items,
+  pastItems,
+  gatedCount,
+  onContactElder,
+}: {
+  items: FamilySafetyItem[];
+  pastItems: FamilySafetyItem[];
+  gatedCount: number;
+  onContactElder: () => void;
+}): ReactNode {
+  if (items.length === 0 && gatedCount === 0 && pastItems.length === 0) return null;
+  return (
+    <section className="card">
+      <div className="section-head">
+        <div>
+          <span className="page-kicker">家人安全提醒</span>
+          <h3>家人发生安全事件，需要立即确认</h3>
+          <span className="muted">
+            来自老人主动提到并授权家属查看的家人事实；与老人本人健康档案分开保存，不参与老人检测。
+          </span>
+        </div>
+      </div>
+      <div className="family-feed">
+        {items.map((item) => (
+          <div className="family-item family-item-urgent" key={item.id}>
+            <div className="finding-head">
+              <span className="badge badge-urgent">紧急</span>
+              <b>{item.title}</b>
+              <span className="muted right">{item.date}</span>
+            </div>
+            <p>{item.message}</p>
+            <p className="muted">转述原话：{item.text}</p>
+            <div className="family-actions">
+              <button className="btn-primary" onClick={onContactElder}>
+                联系老人确认
+              </button>
+            </div>
+          </div>
+        ))}
+        {pastItems.length > 0 && (
+          <>
+            <h4>已超过当前确认窗口的家人安全记录</h4>
+            <span className="muted">这些事件发生在更早，不再按"现在正在发生"推送；记录保留，方便您了解经过。</span>
+            {pastItems.map((item) => (
+              <div className="family-item" key={item.id}>
+                <div className="finding-head">
+                  <span className="badge badge-muted">已记录</span>
+                  <b>
+                    老人转述：其{item.subjectLabel}出现
+                    {item.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}
+                  </b>
+                  <span className="muted right">{item.date || '日期不详'}</span>
+                </div>
+                <p className="muted">转述原话：{item.text}</p>
+              </div>
+            ))}
+          </>
+        )}
+        {gatedCount > 0 && (
+          <p className="family-empty">
+            另有 {gatedCount} 条家人安全提醒被隐私设置挡住，具体内容不可见。需要了解情况，请直接联系老人。
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 const MEDICATION_STATUS_BADGES: Record<CareTask['status'], string> = {
   pending: 'badge badge-watch',
   in_progress: 'badge badge-info',
   completed: 'badge badge-ok',
   dismissed: 'badge badge-muted',
 };
+
+/**
+ * 老人逐条授权后的既往事实。
+ * 这里只渲染已脱敏派生视图：没有 eventId 以外的来源字段、没有精确日期、
+ * 没有聊天上下文；摘要档连原话都没有。未授权时整个组件不渲染，不显示数量。
+ */
+function SharedHistoryCard({ facts }: { facts: SharedHistoricalFact[] }) {
+  if (facts.length === 0) return null;
+  return (
+    <section className="card shared-history-card">
+      <div className="section-head">
+        <div>
+          <h3>老人授权查看的既往情况</h3>
+          <span className="muted">逐条授权、只到月份；到期自动隐藏，撤回在同步后生效。</span>
+        </div>
+      </div>
+      <div className="family-feed">
+        {facts.map((fact) => (
+          <div className="family-item shared-history-item" key={fact.id}>
+            <div className="finding-head">
+              <span className="badge badge-muted">既往</span>
+              <b>{fact.tags.length > 0 ? fact.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、') : '健康情况'}</b>
+              <span className="muted right">{fact.eventMonth ? `${fact.eventMonth}（仅到月）` : '日期不详'}</span>
+            </div>
+            <span className="muted">状态：{historyStatusLabel(fact.status)}</span>
+            {fact.scope === 'summary_with_text' && fact.text ? (
+              <p className="shared-history-text">老人授权分享的脱敏原话：{fact.text}</p>
+            ) : (
+              <p className="muted">老人只授权了摘要，原话不对家属展示。</p>
+            )}
+            <span className="muted">授权至 {fact.expiresAt}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function renderSyncBanner(status: CrossDeviceStatus, _tabId: string): ReactNode {
   if (status.mode === 'cross-device') {
@@ -147,12 +274,23 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   // "当前状态"只看现行授权下仍可见的通知；台账里授权期间送达的历史记录
   // 继续留在消息页，但不得充当首页/隐私页的当前急症（撤销授权必须如实生效）。
   const currentNotifications = currentFamilyNotifications(props.notifications, props.profile.familySharing);
+  // 只有"今天/昨天"的家人安全事件按"正在发生"处理；更早的仍展示，但不冒充当前急症。
+  const familySafetyItems = props.familyEvents
+    .filter((event) => isFamilySafetyEvent(event) && isActiveFamilySafetyEvent(event, props.today))
+    .map(buildFamilySafetyItem)
+    .reverse();
+  const pastFamilySafetyItems = props.familyEvents
+    .filter((event) => isFamilySafetyEvent(event) && !isActiveFamilySafetyEvent(event, props.today))
+    .map(buildFamilySafetyItem)
+    .reverse();
   const state = familyStatus(
     currentNotifications,
     props.dispatchRecords,
     props.todaySignalCount,
     props.gatedAlertCount,
     props.todayMinorFindingCount,
+    familySafetyItems.length,
+    props.gatedFamilySafetyCount,
   );
   // ===== 微信推送设置（评审 P0-6/P1-3）=====
   const initialWebhook = loadWebhookConfig();
@@ -163,7 +301,10 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
   const webhookConfigured = Boolean(loadWebhookConfig());
   const canViewSharedDetail = props.profile.familySharing === 'granted';
   const familyFindings = canViewSharedDetail ? familyVisibleFindings(props.findings) : [];
-  const recentFamilyEvents = props.familyEvents.slice(-5).reverse();
+  const recentFamilyEvents = props.familyEvents
+    .filter((event) => !isFamilySafetyEvent(event))
+    .sort((a, b) => (familyEventDate(b) ?? '').localeCompare(familyEventDate(a) ?? ''))
+    .slice(0, 5);
   const activeTasks = familyVisibleTasksForSharing(props.tasks, props.findings, props.profile.familySharing).slice(
     0,
     3,
@@ -191,6 +332,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               联系老人
             </button>
           </div>
+          <SharedHistoryCard facts={props.sharedHistoricalFacts} />
         </div>
       );
     }
@@ -233,6 +375,13 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             </div>
           )}
         </section>
+        <FamilySafetyCard
+          items={familySafetyItems}
+          pastItems={pastFamilySafetyItems}
+          gatedCount={props.gatedFamilySafetyCount}
+          onContactElder={props.onContactElder}
+        />
+        <SharedHistoryCard facts={props.sharedHistoricalFacts} />
         {recentFamilyEvents.length > 0 && (
           <section className="card">
             <div className="section-head">
@@ -247,7 +396,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                   <div className="finding-head">
                     <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
                     <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
-                    <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                    <span className="muted right">{familyEventDate(event) ?? '日期不详'}</span>
                   </div>
                   <p>{event.text}</p>
                   <span className="muted">状态：{familyStatusLabel(event.status)}</span>
@@ -272,7 +421,20 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     const inWeek = (date: string) => date.slice(0, 10) >= startDate && date.slice(0, 10) <= endDate;
     const weekRecords = props.records.filter((r) => inWeek(r.date));
     const weekFindings = familyFindings.filter((f) => inWeek(f.date));
-    const weekEvents = props.familyEvents.filter((e) => inWeek(e.timestamp));
+    // 用事件发生日期而不是录入时间：今天补记"去年摔过"不应出现在本周近况里。
+    const weekEvents = props.familyEvents.filter((e) => {
+      const occurredOn = familyEventDate(e);
+      return occurredOn !== null && inWeek(occurredOn);
+    });
+    // 体温按部位单独汇总：跨部位求均值会把耳温的高读数与腋温的低读数抹平。
+    const weekTemperatures = new Map<string, number[]>();
+    for (const record of weekRecords) {
+      for (const measurement of record.measurements ?? []) {
+        if (measurement.metric !== 'temperature' || !Number.isFinite(measurement.value)) continue;
+        const site = measurement.temperatureSite ?? 'unknown';
+        weekTemperatures.set(site, [...(weekTemperatures.get(site) ?? []), measurement.value]);
+      }
+    }
     if (!canViewSharedDetail) {
       return (
         <div className="family-detail">
@@ -314,27 +476,41 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
           </div>
           <p>按七天汇总已共享的身体数据与异常记录，最新一期截至今天。共有 {weekRecords.length} 天身体数据记录。</p>
           <div className="archive-grid">
-            {(Object.keys(METRICS) as MetricKey[]).map((key) => {
-              const values = weekRecords
-                .map((r) => r.metrics[key])
-                .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-              if (!values.length) return null;
-              const meta = METRICS[key];
-              return (
-                <div className="card" key={key}>
-                  <strong>{meta.label}</strong>
-                  <h2>
-                    {(values.reduce((a, b) => a + b, 0) / values.length).toFixed(meta.decimals)}{' '}
-                    <small>{meta.unit}</small>
-                  </h2>
-                  <p>日汇总均值 · {values.length} 天有记录</p>
-                  <small>
-                    范围 {Math.min(...values)}–{Math.max(...values)} {meta.unit}
-                  </small>
-                </div>
-              );
-            })}
+            {(Object.keys(METRICS) as MetricKey[])
+              .filter((key) => key !== 'temperature')
+              .map((key) => {
+                const values = weekRecords
+                  .map((r) => r.metrics[key])
+                  .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+                if (!values.length) return null;
+                const meta = METRICS[key];
+                return (
+                  <div className="card" key={key}>
+                    <strong>{meta.label}</strong>
+                    <h2>
+                      {(values.reduce((a, b) => a + b, 0) / values.length).toFixed(meta.decimals)}{' '}
+                      <small>{meta.unit}</small>
+                    </h2>
+                    <p>日汇总均值 · {values.length} 天有记录</p>
+                    <small>
+                      范围 {Math.min(...values)}–{Math.max(...values)} {meta.unit}
+                    </small>
+                  </div>
+                );
+              })}
           </div>
+          {weekTemperatures.size > 0 && (
+            <div className="card">
+              <strong>体温（按部位）</strong>
+              <p className="muted">不同测量部位不可直接比较，也不做跨部位平均。以下按部位分别汇总。</p>
+              {[...weekTemperatures.entries()].map(([site, values]) => (
+                <p key={site}>
+                  {TEMPERATURE_SITE_LABELS[site as keyof typeof TEMPERATURE_SITE_LABELS]}：{values.length} 次，范围{' '}
+                  {Math.min(...values).toFixed(1)}–{Math.max(...values).toFixed(1)} ℃
+                </p>
+              ))}
+            </div>
+          )}
           <h3>{weekFindings.length > 0 ? `本周有 ${weekFindings.length} 项需要您留意` : '本周暂无已共享的异常记录'}</h3>
           <p className="muted">缺少数据不代表身体正常；报告只依据父母已授权共享的记录。</p>
           {weekFindings.length > 0 && (
@@ -367,7 +543,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                   <div className="finding-head">
                     <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
                     <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
-                    <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                    <span className="muted right">{familyEventDate(event) ?? '日期不详'}</span>
                   </div>
                   <p>{event.text}</p>
                 </div>
@@ -645,6 +821,12 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
     const priorityHomeAction = openHomeActions[0];
     const priorityNotification = currentNotifications[0];
     const priorityTask = activeTasks[0];
+    const priority = selectFamilyPriority({
+      notification: priorityNotification,
+      familySafety: familySafetyItems[0],
+      homeAction: priorityHomeAction,
+      task: priorityTask,
+    });
     return (
       <div className="family-dashboard family-home-page">
         <header className="family-welcome">
@@ -672,6 +854,14 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             </button>
           </div>
         </section>
+
+        <FamilySafetyCard
+          items={familySafetyItems}
+          pastItems={pastFamilySafetyItems}
+          gatedCount={props.gatedFamilySafetyCount}
+          onContactElder={props.onContactElder}
+        />
+        <SharedHistoryCard facts={props.sharedHistoricalFacts} />
 
         <div className="family-feature-grid">
           {(
@@ -717,25 +907,39 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               <h2>一件事，一次处理清楚</h2>
             </div>
           </div>
-          {priorityHomeAction ? (
-            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
-              <span className="priority-type">居家安全</span>
-              <strong>{priorityHomeAction.title}</strong>
-              <p>{priorityHomeAction.description}</p>
-              <span className="priority-next">查看原因与处理步骤 →</span>
-            </button>
-          ) : priorityNotification ? (
+          {priority.kind === 'urgent-notification' ? (
             <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
-              <span className="priority-type">状态变化</span>
-              <strong>{priorityNotification.finding.title}</strong>
-              <p>{priorityNotification.message}</p>
+              <span className="priority-type">紧急健康变化</span>
+              <strong>{priority.notification.finding.title}</strong>
+              <p>{priority.notification.message}</p>
               <span className="priority-next">查看为什么现在通知您 →</span>
             </button>
-          ) : priorityTask ? (
+          ) : priority.kind === 'family-safety' ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
+              <span className="priority-type">家人安全</span>
+              <strong>{priority.item.title}</strong>
+              <p>{priority.item.message}</p>
+              <span className="priority-next">查看并联系老人 →</span>
+            </button>
+          ) : priority.kind === 'home-safety' ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('tasks')}>
+              <span className="priority-type">居家安全</span>
+              <strong>{priority.action.title}</strong>
+              <p>{priority.action.description}</p>
+              <span className="priority-next">查看原因与处理步骤 →</span>
+            </button>
+          ) : priority.kind === 'notification' ? (
+            <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
+              <span className="priority-type">状态变化</span>
+              <strong>{priority.notification.finding.title}</strong>
+              <p>{priority.notification.message}</p>
+              <span className="priority-next">查看为什么现在通知您 →</span>
+            </button>
+          ) : priority.kind === 'task' ? (
             <button className="priority-entry" type="button" onClick={() => props.onViewChange('messages')}>
               <span className="priority-type">家庭待办</span>
-              <strong>{priorityTask.title}</strong>
-              <p>{priorityTask.description}</p>
+              <strong>{priority.task.title}</strong>
+              <p>{priority.task.description}</p>
               <span className="priority-next">去处理 →</span>
             </button>
           ) : (
@@ -772,6 +976,15 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
               : '父母的健康变化、通知和协同提醒集中在这里。'}
           </p>
         </header>
+
+        {props.view === 'messages' && (
+          <FamilySafetyCard
+            items={familySafetyItems}
+            pastItems={pastFamilySafetyItems}
+            gatedCount={props.gatedFamilySafetyCount}
+            onContactElder={props.onContactElder}
+          />
+        )}
 
         {props.view === 'tasks' && (
           <a className="btn-primary" href={familyActionUrl(props.homeTwinUrl)}>
@@ -1061,8 +1274,17 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
             </button>
           )}
           <button className="btn-secondary" onClick={props.onRevokeSharing}>
-            暂停老人共享
+            {props.demoMode
+              ? '暂停演示共享'
+              : props.canPauseSharingLocally === false
+                ? '请求老人暂停共享'
+                : '暂停本机查看'}
           </button>
+          <p className="muted">
+            {props.canPauseSharingLocally === false
+              ? '共享授权由老人端掌握。这里只会发送请求，老人确认后才会撤销；本机不会假称已经撤销。'
+              : '本机会立即停止显示家属数据，并向老人端发送暂停共享请求。'}
+          </p>
           {props.onClearData && (
             <button className="danger-text-button" onClick={props.onClearData}>
               清空本机全部数据
@@ -1180,7 +1402,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                           我已知悉
                         </button>
                       ) : (
-                        <span className="muted">您已确认 · {dispatch.acknowledgedAt?.slice(11, 16)}</span>
+                        <span className="muted">您已确认 · {formatAckTime(dispatch.acknowledgedAt)}</span>
                       )}
                     </div>
                   )}
@@ -1214,7 +1436,7 @@ export default function FamilyDashboard(props: FamilyDashboardProps) {
                 <div className="finding-head">
                   <span className="badge badge-info">{familySubjectLabel(event.subject)}</span>
                   <b>{event.tags.map((tag) => SYMPTOM_LABELS[tag]).join('、')}</b>
-                  <span className="muted right">{event.timestamp.slice(0, 10)}</span>
+                  <span className="muted right">{familyEventDate(event) ?? '日期不详'}</span>
                 </div>
                 <p>{event.text}</p>
                 <span className="muted">状态：{familyStatusLabel(event.status)}</span>

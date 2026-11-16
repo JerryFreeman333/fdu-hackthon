@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessage, ElderProfile, FamilyHealthEvent, Finding } from '../types';
+import type { ChatMessage, ElderProfile, FamilyHealthEvent, Finding, HistoricalHealthEvent } from '../types';
 import { formatLocalDate } from '../data/demo';
 import { chatClockLabel } from '../engine/clock';
 import type { HealthEvent } from '../pipeline/events';
@@ -14,6 +14,7 @@ import { canUseLlmUnderstanding, understandElderInputWithLlm } from '../engine/l
 import { parsePrivacyIntent } from '../engine/privacy';
 import { planElderTurn } from '../engine/elderTurn';
 import { removeCorrectedChatHealthEvents, removeCorrectedFamilyEvents } from '../engine/correction';
+import { appendHistoricalHealthEvents, removeCorrectedHistoricalHealthEvents } from '../engine/historyLedger';
 import { recordSharingAudit } from '../engine/sharingAudit';
 import { createTurnQueue, type TurnQueue } from '../engine/turnQueue';
 import { appConfig } from '../config/appConfig';
@@ -40,6 +41,7 @@ interface UseElderChatOptions {
   agentContext: Parameters<typeof generateAgentReply>[4];
   setEvents: Dispatch<SetStateAction<HealthEvent[]>>;
   setFamilyEvents: Dispatch<SetStateAction<FamilyHealthEvent[]>>;
+  setHistoryEvents: Dispatch<SetStateAction<HistoricalHealthEvent[]>>;
   setChat: Dispatch<SetStateAction<ChatMessage[]>>;
   showToast: (text: string) => void;
   onMedicationMissed: (createdAt: string) => void;
@@ -71,6 +73,7 @@ export function useElderChat({
   agentContext,
   setEvents,
   setFamilyEvents,
+  setHistoryEvents,
   setChat,
   showToast,
   onMedicationMissed,
@@ -173,9 +176,15 @@ export function useElderChat({
     const { correction } = plan;
     if (correction) {
       setFamilyEvents((current) => removeCorrectedFamilyEvents(current, correction.messageId));
+      setHistoryEvents((current) =>
+        removeCorrectedHistoricalHealthEvents(current, correction.messageId, correction.tags),
+      );
     }
     if (plan.familyEventsToAppend.length > 0) {
       setFamilyEvents((current) => [...current, ...plan.familyEventsToAppend]);
+    }
+    if (plan.historyEventsToAppend.length > 0) {
+      setHistoryEvents((current) => appendHistoricalHealthEvents(current, plan.historyEventsToAppend));
     }
     if (plan.sharingAuditEntries.length > 0) {
       recordSharingAudit(plan.sharingAuditEntries);

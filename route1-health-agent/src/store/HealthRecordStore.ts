@@ -1,4 +1,12 @@
-import type { ChatMessage, DayRecord, FamilyHealthEvent, HealthMeasurement, LabResult, Observation } from '../types';
+import type {
+  ChatMessage,
+  DayRecord,
+  FamilyHealthEvent,
+  HealthMeasurement,
+  HistoricalHealthEvent,
+  LabResult,
+  Observation,
+} from '../types';
 import type { HealthEvent } from '../pipeline/events';
 
 export interface HealthRecordSnapshot {
@@ -6,6 +14,8 @@ export interface HealthRecordSnapshot {
   events: HealthEvent[];
   /** 家庭成员事实账本，与老人事件流隔离，不参与本人检测。 */
   familyEvents: FamilyHealthEvent[];
+  /** 老人本人的既往事实账本（P2-A），与今天的事件流隔离。 */
+  historyEvents: HistoricalHealthEvent[];
   chat: ChatMessage[];
 }
 

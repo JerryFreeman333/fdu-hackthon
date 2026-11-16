@@ -57,10 +57,13 @@ try {
   assert.equal(new URL(target).searchParams.get('view'), 'family-actions');
   await nav.getByRole('button', { name: '首页', exact: true }).click();
   await family.getByRole('button', { name: /隐私设置.*数据共享/ }).click();
-  await family.getByRole('button', { name: '暂停老人共享' }).click();
+  await family.getByRole('button', { name: '暂停演示共享' }).click();
   await nav.getByRole('button', { name: '首页', exact: true }).click();
   await family.getByRole('button', { name: /药物建档.*查看/ }).click();
-  await family.getByText('请先绑定家人，并由父母授权共享药物资料。').waitFor();
+  await family
+    .getByText(/请先绑定家人|老人尚未授权家属查看详细用药信息/)
+    .first()
+    .waitFor();
   console.log('PASS family navigation, medication propagation, archive edit/persistence, route2 link, consent gate');
 } finally {
   await browser.close();

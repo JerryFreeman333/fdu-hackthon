@@ -135,7 +135,17 @@ function subjectFromShareRecipient(clause: string): ElderSubject | null {
   return 'self';
 }
 
-function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSubject {
+/**
+ * `historySubjects` 只用于两件事：解析“他/她”的指代、以及显式接续词
+ * （后来/也/还……）的跨回合延续。**不能**在没有代词、没有接续词的新句子里
+ * 沿用上一回合的家属主体——老人说“今天起夜三次”时，省略的主语默认是老人本人，
+ * 不是上一句里的老伴。旧实现会把老人数据记到家属名下，这是评审实测的 P0。
+ */
+function subjectFromText(
+  clause: string,
+  historySubjects: ElderSubject[],
+  sameTurnSubjects: ElderSubject[] = [],
+): ElderSubject {
   // 分享句式判定必须先于多主体冲突检查：
   // “告诉女儿妈妈摔倒了”里女儿是接收人，唯一的健康事实主体是妈妈。
   const shareRecipientSubject = subjectFromShareRecipient(clause);
@@ -157,15 +167,29 @@ function subjectFromText(clause: string, priorSubjects: ElderSubject[]): ElderSu
   if (/(我妈|我母亲|妈妈|母亲)/.test(clause)) return 'mother';
   if (/(儿子|女儿|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆|家里人)/.test(clause)) return 'family_other';
 
-  const pronounSubject = inferPronounSubject(clause, priorSubjects);
+  const pronounSubject = inferPronounSubject(clause, [...historySubjects, ...sameTurnSubjects]);
   if (pronounSubject) return pronounSubject;
 
   if (/(我|我的|我自己|本人)/.test(clause)) return 'self';
 
   // An explicitly ambiguous group is a boundary, not an invitation to pick one member.
-  if (priorSubjects.at(-1) === 'unknown') return 'unknown';
-  const lastKnownSubject = [...priorSubjects].reverse().find((subject) => subject !== 'unknown');
-  if (lastKnownSubject) return lastKnownSubject;
+  const lastSeen = [...historySubjects, ...sameTurnSubjects].at(-1);
+  if (lastSeen === 'unknown') return 'unknown';
+
+  // 同一回合内的省略主语：延续上一分句的主体（“我爸走路不稳，后来摔了一跤”）。
+  const lastSameTurnSubject = [...sameTurnSubjects].reverse().find((subject) => subject !== 'unknown');
+  if (lastSameTurnSubject) return lastSameTurnSubject;
+
+  // 跨回合只在显式接续词出现时继承家属主体（“我爸有点喘” → “他/后来也头晕”）。
+  // 裸省略（“今天起夜三次”）一律回到老人本人。
+  const continuesPreviousTurn =
+    /^(?:今天|昨天|这两天|最近|刚才|现在)?[^。！？\n]{0,4}(?:也|还|又|后来|随后|之后|接着|然后|仍然|还是|一直|同样)/.test(
+      clause.trim(),
+    );
+  if (continuesPreviousTurn) {
+    const lastHistorySubject = [...historySubjects].reverse().find((subject) => subject !== 'unknown');
+    if (lastHistorySubject) return lastHistorySubject;
+  }
 
   return 'self';
 }
@@ -254,7 +278,14 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
   }
   if (/大前天/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 3) };
   if (/前天/.test(clause)) return { scope: 'historical', eventDate: subtractDays(today, 2) };
-  if (/(去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/.test(clause))
+  // 相对周表达不能默认成今天：老人说“上周摔了一跤”，安全规则若按今天处理
+  // 会推一条“刚刚跌倒”的紧急通知。这里统一归为历史，且不编造具体日期
+  //（中文的“上周三”在不同地区有不同周起点，宁可留空也不猜）。
+  if (
+    /(上周|上个?星期|上个?礼拜|上周末|周末|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次|曾经|有过|晕倒史|晕厥史|黑便史|便血史|跌倒史|摔倒史|(?:晕倒|昏倒|晕厥|晕过去|昏过去)(?:过|过几次|过两回|过一回)|(?:摔倒|跌倒|摔过|跌过)(?:过|过几次|过两回|过一回))/.test(
+      clause,
+    )
+  )
     return { scope: 'historical', eventDate: null };
   if (/(昨晚|昨天晚上|昨天夜里|昨夜)/.test(clause)) return { scope: 'lastNight', eventDate: subtractDays(today, 1) };
 
@@ -262,7 +293,7 @@ function timeFromText(clause: string, today: string): { scope: TimeScope; eventD
 }
 
 const EXPLICIT_TIME_PATTERN =
-  /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|三|四|五|六|七|八|九|十)天前|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
+  /(?:今天|刚才|刚刚|现在|目前|昨天|昨日|昨晚|昨天晚上|昨天夜里|昨夜|前天|大前天|过去(?:\d+|一|两|二|三|四|五|六|七|八|九|十)天|(?:\d+|一|两|三|四|五|六|七|八|九|十)天前|上周[一二三四五六日天]?|上个?星期[一二三四五六日天]?|上个?礼拜[一二三四五六日天]?|上周末|周末|去年|上个月|以前|之前|多年前|小时候|前几天|前两天|几天前|前些天|早些天|上回|上次|那次)/;
 
 function hasExplicitTime(clause: string): boolean {
   return EXPLICIT_TIME_PATTERN.test(clause) || /20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}/.test(clause);
@@ -270,7 +301,7 @@ function hasExplicitTime(clause: string): boolean {
 
 function isRhetoricalNegation(clause: string): boolean {
   const healthEventLanguage =
-    /(心慌|心悸|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
+    /(晕倒|昏倒|晕过去|昏过去|失去意识|意识丧失|心慌|心悸|发烧|发热|体温|温度|黑便|便血|摔倒|摔了|跌倒|跌了|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/;
   return (
     healthEventLanguage.test(clause) &&
     /(?:谁说|谁讲|哪有|哪里有|哪能有|才没有|根本没有|我(?:根本)?没有|我没(?:有)?|并没有)/.test(clause)
@@ -289,6 +320,16 @@ function isStandaloneNegation(clause: string): boolean {
 function tagMentionedInClause(clause: string, tags: SymptomTag[]): boolean {
   return tags.some((tag) => {
     if (tag === 'fall') return /(摔|跌倒|跌了|摔了|倒了)/.test(clause);
+    if (tag === 'syncope') return /(晕倒|昏倒|晕过去|昏过去|失去意识|意识丧失|不省人事)/.test(clause);
+    if (tag === 'bpLow') return /血压(?:有)?(?:点)?(?:低|偏低)/.test(clause);
+    // 部位词本身就是体温语境："腋温37.6"没有"发烧"两个字，但已经是发热读数。
+    if (tag === 'fever')
+      return /(发烧|发热|低烧|高烧|烧到|烧了|体温(?:高|偏高)?|温度|腋温|腋下|口温|口腔|舌下|耳温|耳道|额温|额头|肛温|直肠)/.test(
+        clause,
+      );
+    if (tag === 'melena') return /(黑便|大便发黑|柏油样便|便血)/.test(clause);
+    if (tag === 'palpitations') return /(心慌|心悸|心跳得厉害|心跳很乱)/.test(clause);
+    if (tag === 'weightLoss') return /(瘦了|体重(?:下降|减轻|掉了))/.test(clause);
     if (tag === 'medicationMissed')
       return /(?:漏服|忘记吃|没吃|没服|没用).{0,6}药|药.{0,6}(?:没吃|没服|没用)/.test(clause);
     if (tag === 'poorSleep') return /(没睡好|睡不好|失眠)/.test(clause);
@@ -305,9 +346,14 @@ function tagMentionedInClause(clause: string, tags: SymptomTag[]): boolean {
 function isImmediatePostposedDenial(clause: string, previous: StructuredClaim): boolean {
   if (previous.subject !== 'self' || previous.status !== 'occurred' || previous.tags.length === 0) return false;
   if (/(后来|之后|以后|现在|目前|已经|刚才|昨天|今天|明天|之前|以前)/.test(clause)) return false;
-  if (!/^(?:(?:其实|不过|但是|而且|只是)\s*)?(?:没有|没|未|不是|并没有)/.test(clause.trim())) return false;
+  const parts = clause.trim().split(CONTRAST_SPLIT);
+  const denial = parts.at(-1)?.trim() ?? clause.trim();
+  if (!/^(?:(?:其实|不过|但是|而且|只是|就是)\s*)?(?:没有|没|未|不是|并没有)/.test(denial)) return false;
+  // 转折后必须仍在否认前一个事实（“不过没摔”）。如果转折后是新的阳性症状
+  //（“没问题就是有点头晕”），它不是后置否认，不能把前一句/本句症状吞掉。
+  if (parts.length > 1 && !tagMentionedInClause(denial, previous.tags)) return false;
   if (/了(?:啊|呀|呢)?$/.test(clause.trim())) return false;
-  return tagMentionedInClause(clause, previous.tags);
+  return tagMentionedInClause(denial, previous.tags);
 }
 
 /**
@@ -336,7 +382,9 @@ const POSITIVE_NEGATION_IDIOMS: RegExp[] = [
 ];
 
 /** 转折连词：窗口内若隔着转折，否定语素只作用于转折前的内容。 */
-const CONTRAST_CONNECTIVES = /(?:但是|可是|然而|不过|但是|只是|但)/g;
+const CONTRAST_CONNECTIVES = /(?:但是|可是|然而|不过|只是|就是|但)/g;
+/** 去掉全局标志的同一组转折词，供 split 等一次性操作使用（避免 lastIndex 污染）。 */
+const CONTRAST_SPLIT = /(?:但是|可是|然而|不过|只是|就是|但)/;
 
 /** 关键词之后紧跟的"痊愈/消失"表达，等价于否定（"头晕好了""肿消了"）。 */
 const RECOVERY_AFTER_KEYWORD =
@@ -406,7 +454,7 @@ function structuralNegationStatus(clause: string, tags: SymptomTag[]): 'negated'
 
 export function statusFromText(clause: string, tags: SymptomTag[], hasHealthValue: boolean): ClaimStatus {
   const semanticSymptomLanguage =
-    /(心慌|心悸|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
+    /(晕倒|昏倒|晕过去|昏过去|失去意识|意识丧失|心慌|心悸|发烧|发热|体温|温度|黑便|便血|摔倒|跌倒|喘|胸闷|胸痛|头晕|头昏|疼|痛|肿|失眠|睡不好|起夜|漏服|忘记吃|血压|心率|体重|气短|憋气)/.test(
       clause,
     );
 
@@ -418,6 +466,14 @@ export function statusFromText(clause: string, tags: SymptomTag[], hasHealthValu
     (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)
   )
     return 'hypothetical';
+  // 泛化的求助问句不是“已经发生”的事实：“晕倒了怎么办”没有主语和当下时间，
+  // 直接按 occurred 会推一条“刚刚晕厥”的家属急救通知。保留为 uncertain，
+  // 让回复先问清是谁、是否现在发生；“我刚才晕倒了”仍走 occurred。
+  const genericAdviceQuestion =
+    /(?:怎么办|怎么处理|如何处理|严重吗|要不要紧|该不该|要不要去医院)/.test(clause) &&
+    !/(我|本人|我自己)/.test(clause) &&
+    !/(现在|刚才|刚刚|今天|目前)/.test(clause);
+  if (genericAdviceQuestion && (tags.length > 0 || hasHealthValue || semanticSymptomLanguage)) return 'uncertain';
   if (/(差点|差一点|差点儿|险些).{0,8}(摔|跌|撞|滑倒|晕倒)/.test(clause)) return 'near_miss';
   if (tags.includes('medicationMissed') && /(没|没有|未|忘|漏).{0,6}(吃|服|用)?(?:了)?药/.test(clause))
     return 'occurred';
@@ -441,9 +497,12 @@ export function statusFromText(clause: string, tags: SymptomTag[], hasHealthValu
   // 放在 improvement 语义之后，"今天没那么喘了"这类带比较基线的好转仍按既有语义记为 occurred。
   const structuralNegation = tags.length > 0 ? structuralNegationStatus(clause, tags) : null;
   if (structuralNegation) return structuralNegation;
+  // 兜底正则也必须尊重转折：“没问题就是有点头晕”里的“没”只否定“问题”，
+  // 不否定后半个子句的头晕。旧实现按整句匹配，把真实症状整句吞掉。
+  const contrastTail = clause.split(CONTRAST_SPLIT).at(-1) ?? clause;
   if (
     /(没|没有|未曾|从来没|并没有|不是).{0,5}(摔|跌|喘|胸闷|疼|痛|头晕|肿|失眠|起夜|漏服|忘记吃|血压|心率|体重|睡|不舒服|难受)/.test(
-      clause,
+      contrastTail,
     )
   )
     return 'negated';
@@ -481,7 +540,7 @@ function recentPriorSubjects(messages: ChatMessage[]): ElderSubject[] {
       const parsed = parseElderInput(clause);
       const hasHealthValue = extractHealthValues(clause).length > 0;
       const coordinatedSubjects = coordinatedSubjectsFromText(clause);
-      const subject = coordinatedSubjects?.[0] ?? subjectFromText(clause, sameTurnSubjects);
+      const subject = coordinatedSubjects?.[0] ?? subjectFromText(clause, [], sameTurnSubjects);
       const status = statusFromText(clause, parsed.tags, hasHealthValue);
       const hasContextHealthLanguage =
         parsed.tags.length > 0 ||
@@ -631,7 +690,7 @@ export function understandElderInputWithOverrides(
 
   const priorSubjects = recentPriorSubjects(recentMessages);
   const claims: StructuredClaim[] = [];
-  let subjectsSeen = [...priorSubjects];
+  let sameTurnSubjects: ElderSubject[] = [];
   let lastTags: SymptomTag[] = [];
   let lastHealthValue = false;
   let lastTime: { scope: TimeScope; eventDate: string | null } | null = null;
@@ -648,7 +707,7 @@ export function understandElderInputWithOverrides(
     const hasAmbiguousMeasurementAssignment = coordinatedSubjects
       ? hasAmbiguousCoordinatedMeasurement(clause, coordinatedSubjects)
       : false;
-    const subject = coordinatedSubjects?.[0] ?? subjectFromText(clause, subjectsSeen);
+    const subject = coordinatedSubjects?.[0] ?? subjectFromText(clause, priorSubjects, sameTurnSubjects);
     const isOmittedComparison =
       explicitTags.length === 0 &&
       /(今天|现在|目前)/.test(clause) &&
@@ -707,7 +766,7 @@ export function understandElderInputWithOverrides(
         tags: [],
         hasHealthValue: false,
       });
-      subjectsSeen.push('unknown');
+      sameTurnSubjects.push('unknown');
       lastTags = [];
       lastHealthValue = false;
       continue;
@@ -725,7 +784,7 @@ export function understandElderInputWithOverrides(
           hasHealthValue,
         });
       }
-      subjectsSeen = ['unknown'];
+      sameTurnSubjects = ['unknown'];
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
@@ -742,7 +801,7 @@ export function understandElderInputWithOverrides(
         hasHealthValue,
         outcome: 'death_reported',
       });
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
@@ -758,14 +817,14 @@ export function understandElderInputWithOverrides(
         tags,
         hasHealthValue,
       });
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
     if (isPureCorrectionMarker(clause)) {
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
@@ -778,7 +837,7 @@ export function understandElderInputWithOverrides(
       status === 'occurred' &&
       isPureSelfReassurance(clause)
     ) {
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
@@ -801,14 +860,14 @@ export function understandElderInputWithOverrides(
         tags,
         hasHealthValue,
       });
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
     }
 
     if (subject === 'self' && tags.length === 0 && !hasHealthValue && !hasFirstPerson) {
-      subjectsSeen.push(subject);
+      sameTurnSubjects.push(subject);
       lastTags = tags;
       lastHealthValue = hasHealthValue;
       continue;
@@ -822,7 +881,7 @@ export function understandElderInputWithOverrides(
       tags,
       hasHealthValue,
     });
-    subjectsSeen.push(subject);
+    sameTurnSubjects.push(subject);
     lastTags = tags;
     lastHealthValue = hasHealthValue;
   }
@@ -847,11 +906,11 @@ export function understandElderInputWithOverrides(
       claim.status === 'uncertain' &&
       claim.tags.length === 0 &&
       !claim.hasHealthValue &&
-      /(?:血压|血氧|心率|血糖)/.test(claim.text),
+      /(?:血压|血氧|心率|血糖|体温|温度)/.test(claim.text),
   );
   // 输入不含任何可识别的健康信息时，给一句温和的引导，而不是宣称“没听清”。
   const hasAnyHealthSignal =
-    /(血压|血氧|spo2|心跳|心率|脉搏|血糖|痛|疼|晕|发烧|发热|睡|起夜|累|喘|肿|麻|摔|跌|药|胸口|心口|闷|咳|肚子|不舒服|乏力|没劲|心衰|中风|肺|脑)/i.test(
+    /(血压|血氧|spo2|心跳|心率|脉搏|血糖|体温|温度|痛|疼|晕|昏|发烧|发热|低烧|高烧|黑便|便血|心慌|心悸|瘦了|睡|起夜|累|喘|肿|麻|摔|跌|药|胸口|心口|闷|咳|肚子|不舒服|乏力|没劲|心衰|中风|肺|脑)/i.test(
       trimmed,
     );
   const isGibberish =
@@ -887,6 +946,24 @@ export function acceptedSelfClaims(input: StructuredElderInput): StructuredClaim
       claim.status === 'occurred' &&
       (claim.tags.length > 0 || claim.hasHealthValue) &&
       claim.eventDate !== null,
+  );
+}
+
+/**
+ * 老人本人的既往健康事实（P2-A）。
+ *
+ * 与 `acceptedSelfClaims` 分开：后者保留“过去但日期明确”的 claim 语义，
+ * 供理解层与时间回归断言使用；本函数把**所有** timeScope=historical 的
+ * occurred 事实挑出来，写入独立既往账本，避免它们变成 Observation.date。
+ * eventDate 可能为 null（“我以前摔过”），这是允许的；绝不补今天的日期。
+ */
+export function historicalSelfClaims(input: StructuredElderInput): StructuredClaim[] {
+  return input.claims.filter(
+    (claim) =>
+      claim.subject === 'self' &&
+      claim.status === 'occurred' &&
+      claim.timeScope === 'historical' &&
+      (claim.tags.length > 0 || claim.hasHealthValue),
   );
 }
 

@@ -1,4 +1,4 @@
-import type { ElderSubject, ClaimStatus } from './understanding';
+import type { ElderSubject, ClaimStatus, TimeScope } from './understanding';
 import { SYMPTOM_LABELS } from '../types';
 import type { SymptomTag } from '../types';
 
@@ -56,9 +56,30 @@ export function buildSelfSharingAcknowledgement(recordSummary: string, shareMode
   return `${scope}：${summary}。${duration}`;
 }
 
+export interface HistoricalClaimView {
+  eventDate: string | null;
+  tags: SymptomTag[];
+}
+
+/**
+ * 既往事实的独立确认（P2-A）：明确说明它属于过去、已记入既往情况，
+ * 且不参与今天的安全判断，避免老人把“已记录”误解成“今天又发生了”。
+ */
+export function buildHistoricalSelfClaimsReply(claims: HistoricalClaimView[]): string {
+  const entries = claims
+    .slice(0, 3)
+    .map((claim) => {
+      const labels = [...new Set(claim.tags)].map((tag) => SYMPTOM_LABELS[tag]);
+      return `${labels.join('、') || '健康情况'}（${claim.eventDate ?? '日期不详'}）`;
+    })
+    .filter(Boolean);
+  return `您说的是过去的情况：${entries.join('；')}。我已记入既往情况，不用于今天的安全判断。`;
+}
+
 export interface UnacceptedClaimView {
   status: ClaimStatus;
   tags: SymptomTag[];
+  timeScope?: TimeScope;
 }
 
 /**
@@ -82,6 +103,15 @@ export function buildUnacceptedClaimsReply(claims: UnacceptedClaimView[]): strin
     const nearMissLabels = labelsFor('near_miss');
     if (nearMissLabels.length > 0)
       return `还好有惊无险，您说的${nearMissLabels.join('、')}没有真的发生。这条我不会记成健康事件，不过接下来行动慢一点，要是有哪里疼或者不舒服，马上告诉我。`;
+    const historicalLabels = [
+      ...new Set(
+        claims
+          .filter((claim) => claim.timeScope === 'historical' && claim.tags.length > 0)
+          .flatMap((claim) => claim.tags),
+      ),
+    ].map((tag) => SYMPTOM_LABELS[tag]);
+    if (historicalLabels.length > 0)
+      return `您说的是过去的情况：${historicalLabels.join('、')}。我不会把它当成今天刚发生的急症；如果需要单独记录，请告诉我具体日期和后来有没有再看医生。`;
   }
   return '我先不把这句话记成您的健康事实。您可以告诉我：说的是您自己，还是家里其他人？事情已经发生了，还是只是想问问这种情况怎么办？';
 }
